@@ -1,0 +1,94 @@
+# Testing
+
+## Layers
+
+| Layer                | Runner        | Location                                                         |
+| -------------------- | ------------- | ---------------------------------------------------------------- |
+| Schema/unit tests    | Vitest (node) | `packages/*/src/**/*.test.ts`, `apps/extension/src/**/*.test.ts` |
+| E2E smoke + pipeline | Playwright    | `e2e/`                                                           |
+| Manifest audit       | Node script   | `scripts/verify-manifest.mjs`                                    |
+
+## Unit tests (Vitest 5)
+
+123 tests covering:
+
+- **shared**: snapshot schema v2 accept/reject paths (schema version incl.
+  legacy v1 readability, caps, invalid tags, null-vs-empty alt), settings
+  validation, message contracts (discriminated union, error codes, friendly
+  messages), severity counting
+- **seo-core**: all 27 rules across healthy/broken/edge fixtures
+  (metadata incl. duplicates & canonical conflicts, robots directives,
+  headings, images incl. decorative alt & quality heuristics, links incl.
+  accessible names, structured data incl. invalid JSON and @graph), scoring
+  math (penalties, floors, weights, labels, info-not-penalized, per-ruleId
+  dedup, determinism, REGRESSION cases), truncation detection, CSV escaping
+  (RFC 4180) and JSON round-trip
+- **extension**: URL guard accept/reject matrix (chrome://, extension pages,
+  file://, view-source, …)
+
+Run: `pnpm test` · Watch: `pnpm test:watch`
+
+## E2E tests (Playwright 1.64)
+
+Six tests, each with a fresh browser profile (clean IndexedDB):
+
+1. **Popup smoke** — popup renders; clicking Analyze on a chrome-extension://
+   page produces the friendly unsupported-page error (guard + error UI)
+2. **Dashboard smoke** — sidebar renders, empty overview state, navigation
+   through all nine sections
+3. **Options smoke** — settings render, two-step clear-all-data flow,
+   privacy information present
+4. **Pipeline** — the **real** `extractPageSnapshot` runs inside a **real**
+   rendered fixture page (served via route interception, no network); the
+   result must validate against `PageSnapshotSchema` and produce correct
+   v2 findings (missing-attr alt → error, decorative info, unnamed link →
+   error, JSON-LD pass, remediation present on every actionable finding)
+5. **Real flow** — the full production pipeline: analyze message → URL guard
+   → real `chrome.scripting` injection on a real page → Zod validation →
+   seo-core analysis → Dexie persistence → dashboard rendering → **real
+   JSON/CSV file downloads** verified byte-for-byte
+6. **Keyboard command** — the `analyze-page` command is registered and bound
+
+### The E2E build variant (test-only)
+
+MV3 toolbar clicks and keyboard accelerators cannot be synthesized by
+automation (CDP keystrokes never reach Chrome's command dispatcher), so test 5
+runs against a **test-only build** (`wxt.config.e2e.ts` →
+`.output/chrome-mv3-e2e`) that is byte-identical to production except for two
+manifest keys: the name gains "(E2E TEST BUILD)" and a host permission is
+added for the single fixture origin (`https://fixture.test/*`). The
+`chrome.tabs.query` + `chrome.scripting.executeScript` path is then exercised
+for real. This artifact is never shipped; `pnpm verify:manifest` and CI audit
+only the production build, which keeps exactly `["activeTab", "scripting"]`.
+The production messaging path itself is proven by tests 1–3 (runtime message
+round-trips against the production build).
+
+### Running e2e
+
+```bash
+npx playwright install chromium   # once
+pnpm test:e2e                     # builds + runs
+```
+
+Browser requirement: Playwright's **full Chromium with new headless**
+(`channel: 'chromium'`). The default headless shell has no extension support,
+and branded Chrome ignores `--load-extension` since Chrome 137 — see
+[DEVELOPMENT.md](DEVELOPMENT.md#gotchas-learned-during-phase-0-read-before-upgrading).
+
+## Manifest audit
+
+`pnpm verify:manifest` (also a CI step) parses
+`apps/extension/.output/chrome-mv3/manifest.json` and fails unless:
+
+- `permissions` is exactly `["activeTab", "scripting"]`
+- `host_permissions`, `optional_host_permissions`, `optional_permissions`,
+  `content_scripts`, `web_accessible_resources` are absent/empty
+- any declared CSP excludes `unsafe-eval` and remote sources
+- `background.service_worker` exists
+
+## CI (GitHub Actions)
+
+On every push/PR: frozen-lockfile install → lint (ESLint + Prettier) →
+typecheck → unit tests → production Chrome build → manifest audit → Playwright
+(with Chromium installed per commit) → gitleaks secret scan. See
+`.github/workflows/ci.yml`.

@@ -1,0 +1,12 @@
+@import 'tailwindcss';
+
+/*
+ * Vittix global styles. Only Tailwind utilities are used — no remote fonts,
+ * no remote assets (extension CSP forbids them and we want it that way).
+ */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}

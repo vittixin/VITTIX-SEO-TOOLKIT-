@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secret scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-test:
+    name: Lint, typecheck, test, build, e2e
+    runs-on: ubuntu-latest
+    needs: secrets
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        # Version is read from packageManager in package.json.
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint (ESLint + Prettier)
+        run: pnpm lint
+
+      - name: Typecheck (strict, all workspaces)
+        run: pnpm typecheck
+
+      - name: Unit tests (Vitest)
+        run: pnpm test
+
+      - name: Production Chrome MV3 build
+        run: pnpm build:chrome
+
+      - name: Verify manifest permissions & privacy posture
+        run: pnpm verify:manifest
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E extension tests
+        run: pnpm exec playwright test
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vittix-extension-chrome-mv3
+          path: apps/extension/.output/chrome-mv3
+          retention-days: 14
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

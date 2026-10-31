@@ -1,0 +1,18 @@
+packages:
+  - apps/*
+  - packages/*
+
+# pnpm 11 build-script policy: explicitly allow esbuild's install script.
+allowBuilds:
+  esbuild: true
+
+# pnpm 11 supply-chain guard (minimumReleaseAge): the current lucide-react
+# release is pinned exactly and locked in pnpm-lock.yaml.
+minimumReleaseAgeExclude:
+  - lucide-react@1.65.0
+
+# @wxt-dev/module-react accepts @vitejs/plugin-react ^4||^5||^6, but 6.x targets
+# Vite 8 only (it imports "vite/internal", which does not exist in Vite 7).
+# Pin the 5.x line, which officially supports Vite ^7, to match our Vite 7 pin.
+overrides:
+  '@vitejs/plugin-react': 5.1.4

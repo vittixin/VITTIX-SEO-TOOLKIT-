@@ -1,0 +1,23 @@
+{
+  "name": "@vittix/seo-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure TypeScript SEO analyzers, rule engine, scoring engine and export serializers for Vittix SEO Toolkit.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@vittix/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6"
+  }
+}

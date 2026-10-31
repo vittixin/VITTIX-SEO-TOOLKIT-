@@ -1,0 +1,100 @@
+import type { PageMeta, PageSnapshot } from '@vittix/shared';
+import { SNAPSHOT_SCHEMA_VERSION } from '@vittix/shared';
+
+/**
+ * Test-only snapshot builder for the v2 schema. Not exported from the
+ * package index. New-in-v2 fields default to healthy single values so tests
+ * only specify what a rule exercises.
+ */
+export function buildSnapshot(
+  overrides: {
+    schemaVersion?: PageSnapshot['schemaVersion'];
+    url?: string;
+    title?: string;
+    titleCount?: number;
+    meta?: Partial<PageMeta>;
+    descriptions?: string[];
+    canonicals?: string[];
+    headings?: PageSnapshot['headings'];
+    headingCounts?: PageSnapshot['headingCounts'];
+    images?: PageSnapshot['images'];
+    imageCount?: number;
+    links?: PageSnapshot['links'];
+    linkCount?: number;
+    structuredData?: PageSnapshot['structuredData'];
+    structuredDataCount?: number;
+    textStats?: PageSnapshot['textStats'];
+    extractedAt?: string;
+  } = {},
+): PageSnapshot {
+  const canonicals = overrides.canonicals ?? ['https://example.com/page'];
+  const descriptions = overrides.descriptions ?? [
+    'A sufficiently long example meta description that comfortably sits inside the healthy seventy to one hundred sixty character target range.',
+  ];
+  const meta: PageMeta = {
+    description: descriptions[0] ?? null,
+    canonical: canonicals[0] ?? null,
+    robots: 'index, follow',
+    viewport: 'width=device-width, initial-scale=1',
+    charset: 'UTF-8',
+    lang: 'en',
+    ogTitle: 'Example Page Title',
+    ogDescription: 'An example page description.',
+    ogImage: 'https://example.com/og.png',
+    twitterCard: 'summary_large_image',
+    twitterTitle: null,
+    twitterDescription: null,
+    twitterImage: null,
+    ...overrides.meta,
+  };
+  const links = overrides.links ?? [
+    { href: '/about', text: 'About us', rel: null, target: null, accessibleName: 'About us' },
+    {
+      href: 'https://other.com/',
+      text: 'Other site',
+      rel: 'noopener',
+      target: '_blank',
+      accessibleName: 'Other site',
+    },
+  ];
+  const images = overrides.images ?? [
+    { src: 'https://example.com/a.png', alt: 'A bar chart of quarterly sales' },
+    { src: 'https://example.com/b.png', alt: 'A photo of the workshop' },
+  ];
+  const structuredData = overrides.structuredData ?? [
+    { raw: '{ "@context": "https://schema.org", "@type": "WebPage" }' },
+  ];
+  return {
+    schemaVersion: overrides.schemaVersion ?? SNAPSHOT_SCHEMA_VERSION,
+    url: overrides.url ?? 'https://example.com/page',
+    title: overrides.title ?? 'Example Page Title For Healthy Tests',
+    titleCount: overrides.titleCount ?? 1,
+    meta,
+    descriptions,
+    canonicals,
+    headings: overrides.headings ?? [
+      { tag: 'h1', text: 'Main heading' },
+      { tag: 'h2', text: 'Section' },
+    ],
+    headingCounts: overrides.headingCounts ?? { h1: 1, h2: 1, h3: 0, h4: 0, h5: 0, h6: 0 },
+    images,
+    imageCount: overrides.imageCount ?? images.length,
+    links,
+    linkCount: overrides.linkCount ?? links.length,
+    structuredData,
+    structuredDataCount: overrides.structuredDataCount ?? structuredData.length,
+    textStats: overrides.textStats ?? { wordCount: 350 },
+    extractedAt: overrides.extractedAt ?? '2026-10-31T12:00:00.000Z',
+  };
+}
+
+/** A finding-shaped assertion helper. */
+export function findByRuleId<T extends { ruleId: string }>(items: T[], ruleId: string): T {
+  const match = items.find((item) => item.ruleId === ruleId);
+  if (!match) {
+    throw new Error(
+      `Expected a finding with ruleId "${ruleId}", got: ${items.map((i) => i.ruleId).join(', ')}`,
+    );
+  }
+  return match;
+}

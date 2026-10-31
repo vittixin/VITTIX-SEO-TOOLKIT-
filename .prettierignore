@@ -1,0 +1,11 @@
+node_modules/
+.output/
+.wxt/
+dist/
+coverage/
+playwright-report/
+test-results/
+
+pnpm-lock.yaml
+apps/extension/public/icon/
+codex-session-*.md

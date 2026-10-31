@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+.output/
+dist/
+stats.html
+
+# WXT generated
+.wxt/
+
+# Environment & secrets (never commit)
+.env
+.env.*
+*.local
+
+# Test artifacts
+playwright-report/
+test-results/
+coverage/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log

@@ -1,0 +1,91 @@
+import { expect, test } from '@playwright/test';
+import { extensionPageUrl, loadExtension } from './helpers/extension';
+
+const SECTION_TITLES: Record<string, string> = {
+  metadata: 'Metadata',
+  headings: 'Headings',
+  images: 'Images',
+  links: 'Links',
+  findings: 'Findings',
+  history: 'Audit History',
+  export: 'Export',
+  settings: 'Settings',
+};
+
+test.describe('Vittix SEO Toolkit smoke tests', () => {
+  test('popup renders, runs the guard, and shows a friendly error on unsupported pages', async () => {
+    const { context, page, extensionId } = await loadExtension();
+    try {
+      await page.goto(extensionPageUrl(extensionId, 'popup.html'));
+
+      await expect(page.getByText('Vittix SEO Toolkit')).toBeVisible();
+      await expect(page.getByTestId('analyze-button')).toBeEnabled();
+      await expect(page.getByTestId('open-dashboard')).toBeVisible();
+
+      // The popup itself is a chrome-extension:// page — the analyzer must
+      // reject it with an understandable message instead of failing silently.
+      await page.getByTestId('analyze-button').click();
+      const error = page.getByTestId('analysis-error');
+      await expect(error).toBeVisible();
+      await expect(error).toContainText(/only inspects regular http\(s\) web pages/i);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('dashboard renders with sidebar navigation and an empty overview', async () => {
+    const { context, page, extensionId } = await loadExtension();
+    try {
+      await page.goto(extensionPageUrl(extensionId, 'dashboard.html'));
+
+      await expect(page.getByText('Vittix SEO Toolkit')).toBeVisible();
+      await expect(page.getByTestId('nav-overview')).toBeVisible();
+      await expect(page.getByTestId('nav-metadata')).toBeVisible();
+      await expect(page.getByTestId('nav-headings')).toBeVisible();
+      await expect(page.getByTestId('nav-images')).toBeVisible();
+      await expect(page.getByTestId('nav-links')).toBeVisible();
+      await expect(page.getByTestId('nav-findings')).toBeVisible();
+      await expect(page.getByTestId('nav-history')).toBeVisible();
+      await expect(page.getByTestId('nav-export')).toBeVisible();
+      await expect(page.getByTestId('nav-settings')).toBeVisible();
+
+      // Fresh profile → no audits yet → empty state, no fabricated results.
+      await expect(page.getByText('No audit yet')).toBeVisible();
+
+      // Navigate through every section and confirm its title.
+      for (const [section, title] of Object.entries(SECTION_TITLES)) {
+        await page.getByTestId(`nav-${section}`).click();
+        await expect(page.getByTestId('section-title')).toContainText(title);
+      }
+
+      // History shows the empty state on a fresh profile.
+      await page.getByTestId('nav-history').click();
+      await expect(page.getByText('No audits stored yet')).toBeVisible();
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('options page renders settings, clear-data flow and privacy information', async () => {
+    const { context, page, extensionId } = await loadExtension();
+    try {
+      await page.goto(extensionPageUrl(extensionId, 'options.html'));
+
+      await expect(page.getByText('Vittix SEO Toolkit — Options')).toBeVisible();
+      await expect(page.getByText('History retention')).toBeVisible();
+      await expect(page.getByText('Maximum stored audits')).toBeVisible();
+
+      // Danger zone: two-step clear-all confirmation.
+      await page.getByTestId('clear-all-button').click();
+      await expect(page.getByTestId('clear-all-confirm')).toBeVisible();
+      await page.getByTestId('clear-all-confirm').click();
+      await expect(page.getByText('All audit data deleted.')).toBeVisible();
+
+      // Privacy information is present.
+      await expect(page.getByText('Nothing ever leaves your browser')).toBeVisible();
+      await expect(page.getByText('Minimal permissions by design')).toBeVisible();
+    } finally {
+      await context.close();
+    }
+  });
+});

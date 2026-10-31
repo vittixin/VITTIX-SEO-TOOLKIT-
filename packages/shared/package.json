@@ -1,0 +1,20 @@
+{
+  "name": "@vittix/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared Zod schemas, TypeScript types and constants for Vittix SEO Toolkit.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  }
+}

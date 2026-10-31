@@ -10,21 +10,25 @@
 
 ## Unit tests (Vitest 5)
 
-123 tests covering:
+154 tests covering:
 
-- **shared**: snapshot schema v2 accept/reject paths (schema version incl.
-  legacy v1 readability, caps, invalid tags, null-vs-empty alt), settings
-  validation, message contracts (discriminated union, error codes, friendly
-  messages), severity counting
-- **seo-core**: all 27 rules across healthy/broken/edge fixtures
-  (metadata incl. duplicates & canonical conflicts, robots directives,
-  headings, images incl. decorative alt & quality heuristics, links incl.
-  accessible names, structured data incl. invalid JSON and @graph), scoring
-  math (penalties, floors, weights, labels, info-not-penalized, per-ruleId
-  dedup, determinism, REGRESSION cases), truncation detection, CSV escaping
+- **shared**: snapshot schema v3 accept/reject paths (schema versions 1/2/3
+  incl. legacy readability, caps, invalid tags, null-vs-empty alt, omitted/
+  hidden/svg defaults), settings validation, message contracts (discriminated
+  union, error codes, friendly messages), severity counting
+- **seo-core**: all 34 rules across healthy/broken/edge fixtures
+  (metadata incl. duplicates, canonical conflicts, lang format, viewport
+  responsiveness, robots reconciliation; hreflang syntax/duplicates/
+  consistency; headings; images incl. decorative alt & quality heuristics;
+  links incl. accessible names & generic-anchor quality; structured data
+  incl. invalid JSON, @graph, @context/@type structure), scoring math
+  (penalties, floors, weights, labels, info-not-penalized, per-ruleId dedup,
+  determinism, REGRESSION cases), truncation detection, CSV escaping
   (RFC 4180) and JSON round-trip
 - **extension**: URL guard accept/reject matrix (chrome://, extension pages,
-  file://, view-source, …)
+  file://, view-source, …) AND stored-record migration/compatibility tests
+  (v1/v2 records accept v3 defaults, future versions rejected, malformed
+  rows skipped, truncated rows flagged)
 
 Run: `pnpm test` · Watch: `pnpm test:watch`
 
@@ -41,8 +45,11 @@ Six tests, each with a fresh browser profile (clean IndexedDB):
 4. **Pipeline** — the **real** `extractPageSnapshot` runs inside a **real**
    rendered fixture page (served via route interception, no network); the
    result must validate against `PageSnapshotSchema` and produce correct
-   v2 findings (missing-attr alt → error, decorative info, unnamed link →
-   error, JSON-LD pass, remediation present on every actionable finding)
+   v3 findings: aria-labelledby resolution, hidden-element exclusion +
+   counts (`[hidden]`, `aria-hidden` ancestor, `display:none`), hreflang
+   extraction incl. malformed/duplicate codes, inline-SVG stats, generic
+   internal anchors, JSON-LD structural warning, and remediation present on
+   every actionable finding
 5. **Real flow** — the full production pipeline: analyze message → URL guard
    → real `chrome.scripting` injection on a real page → Zod validation →
    seo-core analysis → Dexie persistence → dashboard rendering → **real

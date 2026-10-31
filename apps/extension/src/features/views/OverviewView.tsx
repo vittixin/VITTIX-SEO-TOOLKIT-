@@ -1,4 +1,4 @@
-import { ExternalLink, Search } from 'lucide-react';
+import { ExternalLink, Search, TriangleAlert } from 'lucide-react';
 import type { AuditRecord } from '@vittix/shared';
 import { ComparePanel } from '@/src/components/ComparePanel';
 import { EmptyState } from '@/src/components/EmptyState';
@@ -81,6 +81,21 @@ export function OverviewView({
         <StatCard label="Info" value={auditCount(audit, 'info')} tone="sky" />
         <StatCard label="Passed checks" value={auditCount(audit, 'pass')} tone="emerald" />
       </section>
+
+      {audit.result.truncated ? (
+        <div
+          data-testid="truncation-banner"
+          role="status"
+          className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"
+        >
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <p>
+            <strong>Incomplete audit.</strong> This page exceeds the extraction caps, so some
+            headings, images, links or metadata values were omitted. Counts and the score may
+            undercount. Re-run the analysis on a smaller page variant for a complete audit.
+          </p>
+        </div>
+      ) : null}
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h3 className="text-sm font-semibold text-slate-900">Category scores</h3>

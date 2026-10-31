@@ -72,17 +72,54 @@ export const StructuredDataEntrySchema = z.object({
 });
 export type StructuredDataEntry = z.infer<typeof StructuredDataEntrySchema>;
 
+/** One `<link rel="alternate" hreflang>` entry. */
+export const HreflangEntrySchema = z.object({
+  lang: z.string().max(35),
+  href: z.string().max(2_000),
+});
+export type HreflangEntry = z.infer<typeof HreflangEntrySchema>;
+
+/** Counts of elements omitted because extraction caps were hit (v3). */
+export const OmittedCountsSchema = z.object({
+  headings: nonNegativeInt.default(0),
+  images: nonNegativeInt.default(0),
+  links: nonNegativeInt.default(0),
+  descriptions: nonNegativeInt.default(0),
+  canonicals: nonNegativeInt.default(0),
+  structuredData: nonNegativeInt.default(0),
+  hreflang: nonNegativeInt.default(0),
+});
+export type OmittedCounts = z.infer<typeof OmittedCountsSchema>;
+
+/** Counts of hidden elements excluded from analysis collections (v3). */
+export const HiddenCountsSchema = z.object({
+  headings: nonNegativeInt.default(0),
+  images: nonNegativeInt.default(0),
+  links: nonNegativeInt.default(0),
+});
+export type HiddenCounts = z.infer<typeof HiddenCountsSchema>;
+
+/** Inline `<svg>` accessibility inspection (v3, deterministic subset). */
+export const SvgStatsSchema = z.object({
+  /** Inline <svg role="img"> elements found. */
+  total: nonNegativeInt.default(0),
+  /** Of those, how many expose no accessible name (title text or aria-label). */
+  unnamed: nonNegativeInt.default(0),
+});
+export type SvgStats = z.infer<typeof SvgStatsSchema>;
+
 /**
  * A bounded, serializable snapshot of a page. This is the ONLY data the
  * extractor takes out of a page — nothing else is collected or transmitted.
  *
- * v2 fields carry defaults so stored v1 audits (Phase 0) still validate.
- * Fresh extractions always use the current SNAPSHOT_SCHEMA_VERSION.
+ * v2/v3 fields carry defaults so stored v1/v2 audits (earlier phases) still
+ * validate. Fresh extractions always use the current SNAPSHOT_SCHEMA_VERSION.
  */
 export const PageSnapshotSchema = z.object({
   schemaVersion: z.union([
     z.literal(SNAPSHOT_SCHEMA_VERSIONS[0]),
     z.literal(SNAPSHOT_SCHEMA_VERSIONS[1]),
+    z.literal(SNAPSHOT_SCHEMA_VERSIONS[2]),
   ]),
   url: z.string().min(1),
   title: z.string(),
@@ -108,6 +145,29 @@ export const PageSnapshotSchema = z.object({
     .default([]),
   /** Total JSON-LD script count (may exceed retained entries). */
   structuredDataCount: nonNegativeInt.default(0),
+  /**
+   * Every meta[name=robots] content value (cap 5; first duplicates
+   * `meta.robots`). Enables duplicate/conflicting-directive detection. (v3)
+   */
+  robotsValues: z.array(z.string().max(500)).max(SNAPSHOT_LIMITS.robotsValues).default([]),
+  /** Hreflang alternate links (cap 10). (v3) */
+  hreflang: z.array(HreflangEntrySchema).max(SNAPSHOT_LIMITS.hreflang).default([]),
+  /** Total hreflang link count (may exceed retained entries). (v3) */
+  hreflangCount: nonNegativeInt.default(0),
+  /** Per-collection counts of elements omitted due to extraction caps. (v3) */
+  omitted: OmittedCountsSchema.default({
+    headings: 0,
+    images: 0,
+    links: 0,
+    descriptions: 0,
+    canonicals: 0,
+    structuredData: 0,
+    hreflang: 0,
+  }),
+  /** Per-collection counts of hidden elements (excluded from analysis). (v3) */
+  hidden: HiddenCountsSchema.default({ headings: 0, images: 0, links: 0 }),
+  /** Inline SVG accessibility stats. (v3) */
+  svg: SvgStatsSchema.default({ total: 0, unnamed: 0 }),
   textStats: TextStatsSchema,
   extractedAt: z.string().min(1),
 });

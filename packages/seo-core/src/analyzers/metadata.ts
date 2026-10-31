@@ -1,5 +1,5 @@
 import type { Finding, PageSnapshot } from '@vittix/shared';
-import { DESCRIPTION_LENGTH_BOUNDS, TITLE_LENGTH_BOUNDS } from '../rules.js';
+import { DESCRIPTION_LENGTH_BOUNDS, LANG_TAG_PATTERN, TITLE_LENGTH_BOUNDS } from '../rules.js';
 import { finding } from './util.js';
 
 /**
@@ -317,10 +317,67 @@ function technicalRules(snapshot: PageSnapshot): Finding[] {
         },
       ),
     );
+    findings.push(
+      finding(
+        'viewport-responsive',
+        'technical',
+        'pass',
+        'Viewport content not assessable',
+        'No viewport meta is declared, so there is no content to inspect.',
+      ),
+    );
   } else {
     findings.push(
       finding('viewport-present', 'technical', 'pass', 'Mobile viewport declared', viewport),
     );
+    // Inspect the declared content: responsive pages should use
+    // width=device-width. Fixed widths and user-scalable=no are flagged.
+    const lower = viewport.toLowerCase();
+    const hasDeviceWidth = /width\s*=\s*device-width/i.test(lower);
+    const hasFixedWidth = /width\s*=\s*\d/i.test(lower);
+    const pinchDisabled =
+      /user-scalable\s*=\s*no/i.test(lower) || /maximum-scale\s*=\s*1(\.0+)?(\s|,|$)/i.test(lower);
+    if (hasDeviceWidth && !pinchDisabled) {
+      findings.push(
+        finding(
+          'viewport-responsive',
+          'technical',
+          'pass',
+          'Viewport is responsive',
+          'The viewport uses width=device-width and does not disable pinch zoom.',
+        ),
+      );
+    } else if (hasFixedWidth || !hasDeviceWidth) {
+      findings.push(
+        finding(
+          'viewport-responsive',
+          'technical',
+          'warn',
+          'Viewport is not responsive',
+          `The viewport "${viewport}" does not use width=device-width; mobile browsers must scale a fixed layout, which typically fails mobile usability checks.`,
+          {
+            evidence: viewport,
+            remediation:
+              'Change the viewport to <meta name="viewport" content="width=device-width, initial-scale=1">.',
+          },
+        ),
+      );
+    } else {
+      findings.push(
+        finding(
+          'viewport-responsive',
+          'technical',
+          'warn',
+          'Pinch zoom is disabled',
+          'The viewport disables user scaling (user-scalable=no or maximum-scale=1), which harms accessibility and is treated as a mobile-friendliness failure by search engines.',
+          {
+            evidence: viewport,
+            remediation:
+              'Remove user-scalable=no / maximum-scale=1 from the viewport so users can zoom.',
+          },
+        ),
+      );
+    }
   }
 
   const lang = snapshot.meta.lang?.trim() ?? '';
@@ -337,8 +394,42 @@ function technicalRules(snapshot: PageSnapshot): Finding[] {
         },
       ),
     );
+    findings.push(
+      finding(
+        'lang-format',
+        'technical',
+        'pass',
+        'Language format not assessable',
+        'No lang attribute is declared, so there is no format to validate.',
+      ),
+    );
+  } else if (LANG_TAG_PATTERN.test(lang)) {
+    findings.push(finding('lang-present', 'technical', 'pass', 'Language declared', lang));
+    findings.push(
+      finding(
+        'lang-format',
+        'technical',
+        'pass',
+        'Language tag format is valid',
+        `${lang} matches the expected language-tag shape (e.g. "en", "en-US", "zh-Hans"). Full BCP-47 registry validation is not performed.`,
+      ),
+    );
   } else {
     findings.push(finding('lang-present', 'technical', 'pass', 'Language declared', lang));
+    findings.push(
+      finding(
+        'lang-format',
+        'technical',
+        'warn',
+        'Language tag looks malformed',
+        `"${lang}" does not match the expected language-tag shape (2–3 letter code, optionally followed by script/region subtags, e.g. "en", "en-US", "zh-Hans"). Values like "english" or "en_US" are not valid language tags.`,
+        {
+          evidence: lang,
+          remediation:
+            'Use a valid BCP-47 language tag, e.g. <html lang="en"> or <html lang="en-US"> (hyphen, not underscore).',
+        },
+      ),
+    );
   }
 
   if (!snapshot.url.toLowerCase().startsWith('https://')) {
@@ -367,7 +458,41 @@ function technicalRules(snapshot: PageSnapshot): Finding[] {
     );
   }
 
-  const robots = snapshot.meta.robots?.toLowerCase() ?? '';
+  // Robots directives — reconcile ALL meta[name=robots] tags (v3 extraction
+  // collects every value). Conflicting duplicate tags are flagged before the
+  // effective-directive evaluation.
+  const robotsValues = (
+    snapshot.robotsValues.length > 0
+      ? snapshot.robotsValues
+      : snapshot.meta.robots
+        ? [snapshot.meta.robots]
+        : []
+  ).map((value) => value.trim());
+
+  const distinctRobots = new Set(robotsValues.map((value) => value.toLowerCase()));
+  if (robotsValues.length > 1 && distinctRobots.size > 1) {
+    findings.push(
+      finding(
+        'robots-directives',
+        'technical',
+        'warn',
+        'Conflicting robots meta tags',
+        `${robotsValues.length} <meta name="robots"> tags declare different directives (${robotsValues
+          .slice(0, 2)
+          .map((value) => `"${value.slice(0, 40)}"`)
+          .join(
+            ' vs ',
+          )}). Search engines merge directives unpredictably — most lenient value usually wins, which is rarely what the author intended.`,
+        {
+          evidence: robotsValues.join(' | ').slice(0, 300),
+          remediation:
+            'Keep a single <meta name="robots"> tag per page and reconcile the values across templates and plugins.',
+        },
+      ),
+    );
+  }
+
+  const robots = (snapshot.meta.robots ?? '').toLowerCase();
   if (robots === '') {
     findings.push(
       finding(

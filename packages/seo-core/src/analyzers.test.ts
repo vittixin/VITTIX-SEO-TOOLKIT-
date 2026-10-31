@@ -4,6 +4,7 @@ import { analyzeHeadings } from './analyzers/headings.js';
 import { analyzeImages } from './analyzers/images.js';
 import { analyzeLinks } from './analyzers/links.js';
 import { analyzeStructuredData } from './analyzers/structured-data.js';
+import { analyzeHreflang } from './analyzers/hreflang.js';
 import { buildSnapshot, findByRuleId } from './testing/fixtures.js';
 
 describe('analyzeMetadata — title rules', () => {
@@ -486,5 +487,250 @@ describe('analyzeStructuredData', () => {
       }),
     );
     expect(findByRuleId(findings, 'structured-data-present').detail).toContain('@graph');
+  });
+});
+
+describe('analyzeMetadata — lang format (v3)', () => {
+  it('warns on malformed language tags', () => {
+    for (const bad of ['english', 'en_US', '123']) {
+      const findings = analyzeMetadata(buildSnapshot({ meta: { lang: bad } }));
+      expect(findByRuleId(findings, 'lang-format').severity).toBe('warn');
+      expect(findByRuleId(findings, 'lang-format').evidence).toBe(bad);
+    }
+  });
+
+  it('passes valid BCP-47 shaped tags', () => {
+    for (const good of ['en', 'en-US', 'zh-Hans', 'de-DE-1996']) {
+      const findings = analyzeMetadata(buildSnapshot({ meta: { lang: good } }));
+      expect(findByRuleId(findings, 'lang-format').severity).toBe('pass');
+    }
+  });
+
+  it('is neutral when no lang is declared', () => {
+    const findings = analyzeMetadata(buildSnapshot({ meta: { lang: null } }));
+    expect(findByRuleId(findings, 'lang-format').severity).toBe('pass');
+  });
+});
+
+describe('analyzeMetadata — viewport responsiveness (v3)', () => {
+  it('warns on fixed-width viewports', () => {
+    const findings = analyzeMetadata(buildSnapshot({ meta: { viewport: 'width=1024' } }));
+    expect(findByRuleId(findings, 'viewport-responsive').severity).toBe('warn');
+    expect(findByRuleId(findings, 'viewport-responsive').detail).toContain('device-width');
+  });
+
+  it('warns when pinch zoom is disabled', () => {
+    for (const viewport of [
+      'width=device-width, initial-scale=1, user-scalable=no',
+      'width=device-width, initial-scale=1, maximum-scale=1',
+    ]) {
+      const findings = analyzeMetadata(buildSnapshot({ meta: { viewport } }));
+      expect(findByRuleId(findings, 'viewport-responsive').severity).toBe('warn');
+      expect(findByRuleId(findings, 'viewport-responsive').title).toContain('zoom');
+    }
+  });
+
+  it('passes a responsive viewport', () => {
+    const findings = analyzeMetadata(buildSnapshot());
+    expect(findByRuleId(findings, 'viewport-responsive').severity).toBe('pass');
+  });
+});
+
+describe('analyzeMetadata — robots reconciliation (v3)', () => {
+  it('warns on conflicting robots meta tags', () => {
+    const findings = analyzeMetadata(
+      buildSnapshot({ robotsValues: ['index, follow', 'noindex, nofollow'] }),
+    );
+    const conflict = findings.find(
+      (f) => f.ruleId === 'robots-directives' && f.title.includes('Conflicting'),
+    );
+    expect(conflict?.severity).toBe('warn');
+    expect(conflict?.remediation).toBeTruthy();
+  });
+
+  it('does not warn when duplicate robots tags agree', () => {
+    const findings = analyzeMetadata(
+      buildSnapshot({ robotsValues: ['index, follow', 'index, follow'] }),
+    );
+    expect(
+      findings.some((f) => f.ruleId === 'robots-directives' && f.title.includes('Conflicting')),
+    ).toBe(false);
+  });
+
+  it('still errors on noindex regardless of duplicates', () => {
+    const findings = analyzeMetadata(buildSnapshot({ robotsValues: ['noindex', 'index, follow'] }));
+    const noindex = findings.find(
+      (f) => f.ruleId === 'robots-directives' && f.severity === 'error',
+    );
+    expect(noindex).toBeDefined();
+  });
+});
+
+describe('analyzeHreflang (v3)', () => {
+  it('passes when no hreflang entries exist', () => {
+    const findings = analyzeHreflang(buildSnapshot());
+    expect(findByRuleId(findings, 'hreflang-syntax').severity).toBe('pass');
+    expect(findByRuleId(findings, 'hreflang-duplicates').severity).toBe('pass');
+    expect(findByRuleId(findings, 'hreflang-consistency').severity).toBe('pass');
+  });
+
+  it('passes a well-formed self-referencing cluster', () => {
+    const findings = analyzeHreflang(
+      buildSnapshot({
+        hreflang: [
+          { lang: 'en', href: 'https://example.com/page' },
+          { lang: 'de', href: 'https://example.com/de' },
+          { lang: 'x-default', href: 'https://example.com/page' },
+        ],
+        hreflangCount: 3,
+      }),
+    );
+    expect(findByRuleId(findings, 'hreflang-syntax').severity).toBe('pass');
+    expect(findByRuleId(findings, 'hreflang-duplicates').severity).toBe('pass');
+    expect(findByRuleId(findings, 'hreflang-consistency').severity).toBe('pass');
+  });
+
+  it('errors on entries with a missing href', () => {
+    const findings = analyzeHreflang(
+      buildSnapshot({
+        hreflang: [
+          { lang: 'en', href: 'https://example.com/page' },
+          { lang: 'de', href: '' },
+        ],
+        hreflangCount: 2,
+      }),
+    );
+    const syntax = findByRuleId(findings, 'hreflang-syntax');
+    expect(syntax.severity).toBe('error');
+    expect(syntax.evidence).toContain('missing href');
+  });
+
+  it('warns on malformed language codes (underscore)', () => {
+    const findings = analyzeHreflang(
+      buildSnapshot({
+        hreflang: [{ lang: 'en_US', href: 'https://example.com/us' }],
+        hreflangCount: 1,
+      }),
+    );
+    expect(findByRuleId(findings, 'hreflang-syntax').severity).toBe('warn');
+    expect(findByRuleId(findings, 'hreflang-syntax').evidence).toContain('en_US');
+  });
+
+  it('warns on duplicate language codes', () => {
+    const findings = analyzeHreflang(
+      buildSnapshot({
+        hreflang: [
+          { lang: 'en', href: 'https://example.com/a' },
+          { lang: 'en', href: 'https://example.com/b' },
+        ],
+        hreflangCount: 2,
+      }),
+    );
+    const duplicates = findByRuleId(findings, 'hreflang-duplicates');
+    expect(duplicates.severity).toBe('warn');
+    expect(duplicates.evidence).toContain('en');
+  });
+
+  it('informs when the cluster lacks a self-reference', () => {
+    const findings = analyzeHreflang(
+      buildSnapshot({
+        hreflang: [{ lang: 'de', href: 'https://example.com/de' }],
+        hreflangCount: 1,
+      }),
+    );
+    expect(findByRuleId(findings, 'hreflang-consistency').severity).toBe('info');
+  });
+
+  it('warns when the canonical contradicts a self-referencing cluster', () => {
+    const findings = analyzeHreflang(
+      buildSnapshot({
+        canonicals: ['https://example.com/canonical-elsewhere'],
+        meta: { canonical: 'https://example.com/canonical-elsewhere' },
+        hreflang: [{ lang: 'en', href: 'https://example.com/page' }],
+        hreflangCount: 1,
+      }),
+    );
+    const consistency = findByRuleId(findings, 'hreflang-consistency');
+    expect(consistency.severity).toBe('warn');
+    expect(consistency.remediation).toContain('agree');
+  });
+});
+
+describe('analyzeLinks — internal link quality (v3)', () => {
+  it('warns on generic internal anchor text with evidence', () => {
+    const findings = analyzeLinks(
+      buildSnapshot({
+        links: [
+          {
+            href: '/pricing',
+            text: 'click here',
+            rel: null,
+            target: null,
+            accessibleName: 'click here',
+          },
+          {
+            href: '/docs',
+            text: 'Read more',
+            rel: null,
+            target: null,
+            accessibleName: 'Read more',
+          },
+          {
+            href: 'https://other.com/',
+            text: 'click here',
+            rel: null,
+            target: null,
+            accessibleName: 'click here',
+          },
+        ],
+        linkCount: 3,
+      }),
+    );
+    const quality = findByRuleId(findings, 'internal-link-quality');
+    expect(quality.severity).toBe('warn');
+    expect(quality.evidence).toContain('/pricing');
+    // External generic anchors are not counted.
+    expect(quality.evidence).not.toContain('other.com');
+  });
+
+  it('passes descriptive internal anchors', () => {
+    const findings = analyzeLinks(buildSnapshot());
+    expect(findByRuleId(findings, 'internal-link-quality').severity).toBe('pass');
+  });
+});
+
+describe('analyzeStructuredData — @context/@type structure (v3)', () => {
+  it('warns on parsed blocks missing @context or @type', () => {
+    const findings = analyzeStructuredData(
+      buildSnapshot({ structuredData: [{ raw: '{ "name": "No structure here" }' }] }),
+    );
+    const context = findByRuleId(findings, 'structured-data-context');
+    expect(context.severity).toBe('warn');
+    expect(context.detail).toContain('not validated');
+  });
+
+  it('passes blocks with @context and @type', () => {
+    const findings = analyzeStructuredData(buildSnapshot());
+    expect(findByRuleId(findings, 'structured-data-context').severity).toBe('pass');
+  });
+
+  it('is neutral when nothing parses', () => {
+    const findings = analyzeStructuredData(
+      buildSnapshot({ structuredData: [{ raw: '{ broken' }] }),
+    );
+    expect(findByRuleId(findings, 'structured-data-context').severity).toBe('pass');
+  });
+
+  it('accepts @graph containers as structural', () => {
+    const findings = analyzeStructuredData(
+      buildSnapshot({
+        structuredData: [
+          {
+            raw: '{ "@context": "https://schema.org", "@graph": [ { "@type": "Organization" } ] }',
+          },
+        ],
+      }),
+    );
+    expect(findByRuleId(findings, 'structured-data-context').severity).toBe('pass');
   });
 });

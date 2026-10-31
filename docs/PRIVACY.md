@@ -43,6 +43,17 @@ remote resources. You can verify this in DevTools or by inspecting the source.
 JSON/CSV exports are generated in-browser and downloaded only when you click
 an export button. What you do with those files is entirely up to you.
 
+## Single-page applications and iframes
+
+- Audits read the **currently rendered DOM** at the moment you click
+  Analyze — this works on SPAs, because client-side navigation changes the
+  real DOM that gets extracted. There is **no** background monitoring, no
+  auto-refresh, and no persistent script; after a client-side navigation,
+  use _Re-analyze_ from the popup.
+- **Iframes are not analyzed** — extraction targets the top frame of the
+  page you invoked it on. Content inside same-origin or cross-origin
+  iframes is never read.
+
 ## Permissions rationale
 
 - `activeTab`: temporary access to the tab you clicked from, so the URL can be

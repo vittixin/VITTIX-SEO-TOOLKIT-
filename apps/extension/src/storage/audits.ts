@@ -8,7 +8,7 @@ import { db } from './db';
  * console warning instead of crashing the UI. Legacy v1 snapshots remain
  * readable because the schema accepts versions 1 and 2.
  */
-function validateRow(row: unknown, context: string): AuditRecord | null {
+export function validateAuditRow(row: unknown, context: string): AuditRecord | null {
   const parsed = AuditRecordSchema.safeParse(row);
   if (parsed.success) return parsed.data;
   console.warn(
@@ -39,12 +39,12 @@ export async function saveAudit(record: NewAuditRecord): Promise<number> {
 
 export async function getAudit(id: number): Promise<AuditRecord | null> {
   const row = await db.audits.get(id);
-  return row === undefined ? null : (validateRow(row, `id ${id}`) ?? null);
+  return row === undefined ? null : (validateAuditRow(row, `id ${id}`) ?? null);
 }
 
 export async function getLatestAudit(): Promise<AuditRecord | null> {
   const [latest] = await db.audits.orderBy('analyzedAt').reverse().limit(1).toArray();
-  return latest === undefined ? null : (validateRow(latest, 'latest') ?? null);
+  return latest === undefined ? null : (validateAuditRow(latest, 'latest') ?? null);
 }
 
 /**
@@ -62,13 +62,13 @@ export async function getPreviousAudit(
     .reverse()
     .sortBy('analyzedAt');
   const previous = rows[0];
-  return previous === undefined ? null : (validateRow(previous, 'previous') ?? null);
+  return previous === undefined ? null : (validateAuditRow(previous, 'previous') ?? null);
 }
 
 export async function listAuditSummaries(limit = 200): Promise<AuditSummary[]> {
   const rows = await db.audits.orderBy('analyzedAt').reverse().limit(limit).toArray();
   return rows
-    .map((row) => validateRow(row, 'list'))
+    .map((row) => validateAuditRow(row, 'list'))
     .filter((row): row is AuditRecord => row !== null)
     .map(toSummary);
 }

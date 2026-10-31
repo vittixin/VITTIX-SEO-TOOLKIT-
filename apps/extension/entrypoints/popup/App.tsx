@@ -11,6 +11,7 @@ import { browser } from 'wxt/browser';
 import { FRIENDLY_ERROR_MESSAGES, type AnalyzeSuccess, type ErrorCode } from '@vittix/shared';
 import { ScoreRing } from '@/src/components/ScoreRing';
 import { isAnalyzableUrl, pageHost } from '@/src/extraction/guards';
+import { formatDate } from '@/src/lib/format';
 import { openDashboard, requestAnalyzeActiveTab } from '@/src/messaging/client';
 
 type Status = 'idle' | 'analyzing' | 'done' | 'error';
@@ -79,6 +80,8 @@ export function App() {
             <>
               <RefreshCw className="size-4 animate-spin" aria-hidden /> Inspecting page…
             </>
+          ) : status === 'done' ? (
+            <>Re-analyze Page</>
           ) : (
             <>Analyze Current Page</>
           )}
@@ -111,6 +114,9 @@ export function App() {
               <span className="font-semibold">{success.score.label}</span>
               <span className="text-slate-400"> · </span>
               <span className="text-slate-500">preliminary score</span>
+            </p>
+            <p className="truncate text-center text-xs text-slate-400" title={success.url}>
+              {pageHost(success.url) ?? success.url} · {formatDate(success.analyzedAt)}
             </p>
             <div className="grid grid-cols-4 gap-2 text-center text-xs">
               <div className="rounded-md bg-rose-50 py-1.5">

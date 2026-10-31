@@ -56,6 +56,9 @@ export function ComparePanel({
   const introduced = [...rulesNow.keys()].filter((ruleId) => !rulesBefore.has(ruleId));
 
   const scoreDelta = current.result.score.total - previous.result.score.total;
+  // Rule sets evolve; a delta across different rule-set versions mixes two
+  // different scoring models and would be misleading.
+  const crossVersion = current.result.ruleSetVersion !== previous.result.ruleSetVersion;
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -66,6 +69,19 @@ export function ComparePanel({
       <p className="mt-0.5 text-xs text-slate-400">
         {formatDate(previous.analyzedAt)} → {formatDate(current.analyzedAt)}
       </p>
+
+      {crossVersion ? (
+        <p
+          data-testid="compare-version-warning"
+          className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800"
+        >
+          These audits were produced by different rule-set versions (
+          <span className="font-mono">v{previous.result.ruleSetVersion}</span> vs{' '}
+          <span className="font-mono">v{current.result.ruleSetVersion}</span>). Rules and scoring
+          changed in between, so score and count deltas are <strong>not directly comparable</strong>{' '}
+          — treat them as indicative only.
+        </p>
+      ) : null}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-slate-200 p-3">

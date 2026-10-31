@@ -1,4 +1,5 @@
 import type { Finding, PageSnapshot } from '@vittix/shared';
+import { GENERIC_ANCHOR_TEXTS } from '../rules.js';
 import { finding } from './util.js';
 
 /**
@@ -121,6 +122,50 @@ export function analyzeLinks(snapshot: PageSnapshot): Finding[] {
     detailParts.push(`${unresolvable} unresolvable href${unresolvable === 1 ? '' : 's'}`);
   }
   if (truncated) detailParts.push(`capped at first ${snapshot.links.length} links`);
+
+  // --- internal link quality: generic anchor texts -----------------------------
+  const genericAnchors: string[] = [];
+  for (const link of snapshot.links) {
+    const name = (link.accessibleName ?? '').trim().toLowerCase();
+    if (name === '') continue;
+    try {
+      const resolved = new URL(link.href.trim(), snapshot.url);
+      if (pageOrigin !== null && resolved.host !== pageOrigin) continue;
+    } catch {
+      continue;
+    }
+    if ((GENERIC_ANCHOR_TEXTS as readonly string[]).includes(name)) {
+      genericAnchors.push(link.href);
+    }
+  }
+  if (genericAnchors.length > 0) {
+    findings.push(
+      finding(
+        'internal-link-quality',
+        'links',
+        'warn',
+        `${genericAnchors.length} internal ${genericAnchors.length === 1 ? 'link uses' : 'links use'} generic anchor text`,
+        'Internal links whose text is "click here", "read more", "learn more" and similar generic phrases carry no topical signal about the destination. Descriptive anchors help both users and search engines.',
+        {
+          evidence:
+            genericAnchors.slice(0, 3).join(', ') +
+            (genericAnchors.length > 3 ? `, … (${genericAnchors.length} total)` : ''),
+          remediation:
+            'Rewrite generic anchors to describe the destination, e.g. "read the pricing guide" instead of "read more".',
+        },
+      ),
+    );
+  } else {
+    findings.push(
+      finding(
+        'internal-link-quality',
+        'links',
+        'pass',
+        'Internal link anchors are descriptive',
+        `${internal} internal link${internal === 1 ? '' : 's'} checked; none use generic phrases like "click here" or "read more".`,
+      ),
+    );
+  }
 
   findings.push(finding('link-profile', 'links', 'info', 'Link profile', detailParts.join(' — ')));
 

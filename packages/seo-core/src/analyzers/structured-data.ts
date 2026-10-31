@@ -35,6 +35,15 @@ export function analyzeStructuredData(snapshot: PageSnapshot): Finding[] {
         'No JSON-LD blocks were present, so there is no syntax to check.',
       ),
     );
+    findings.push(
+      finding(
+        'structured-data-context',
+        'technical',
+        'pass',
+        'Nothing to check for @context/@type',
+        'No JSON-LD blocks were present, so there is no structure to inspect.',
+      ),
+    );
     return findings;
   }
 
@@ -89,6 +98,72 @@ export function analyzeStructuredData(snapshot: PageSnapshot): Finding[] {
         'pass',
         'All JSON-LD blocks parse as valid JSON',
         `${blocks.length} block${blocks.length === 1 ? '' : 's'} parsed successfully. Syntax only — schema.org validity is not checked.`,
+      ),
+    );
+  }
+
+  // --- basic @context / @type structural check --------------------------------
+  // Among the blocks that PARSE: a JSON-LD block should declare @context
+  // (typically https://schema.org) and @type. Blocks missing them are likely
+  // mis-templated. This is a structural check — NOT schema.org or
+  // rich-result validation.
+  const parseable = blocks
+    .map((block) => {
+      try {
+        return JSON.parse(block.raw) as unknown;
+      } catch {
+        return null;
+      }
+    })
+    .filter((parsed): parsed is Exclude<unknown, null> => parsed !== null);
+
+  const missingStructure: string[] = [];
+  for (const parsed of parseable) {
+    if (parsed === null || typeof parsed !== 'object') continue;
+    const record = parsed as Record<string, unknown>;
+    const hasContext = typeof record['@context'] === 'string' || Array.isArray(record['@graph']);
+    const hasType = record['@type'] !== undefined || Array.isArray(record['@graph']);
+    if (!hasContext || !hasType) {
+      const missing: string[] = [];
+      if (!hasContext) missing.push('@context');
+      if (!hasType) missing.push('@type');
+      missingStructure.push(missing.join(' + '));
+    }
+  }
+
+  if (parseable.length === 0) {
+    findings.push(
+      finding(
+        'structured-data-context',
+        'technical',
+        'pass',
+        'Nothing to check for @context/@type',
+        'No JSON-LD block parsed successfully, so there is no structure to inspect.',
+      ),
+    );
+  } else if (missingStructure.length > 0) {
+    findings.push(
+      finding(
+        'structured-data-context',
+        'technical',
+        'warn',
+        `${missingStructure.length} JSON-LD block${missingStructure.length === 1 ? ' is' : 's are'} missing @context or @type`,
+        'Parsed JSON-LD blocks should declare "@context" (usually https://schema.org) and "@type". Blocks without them are ignored as structured data. This is a structural check only — schema.org and rich-result validity are not validated.',
+        {
+          evidence: `blocks missing: ${missingStructure.slice(0, 3).join(', ')}`,
+          remediation:
+            'Add "@context": "https://schema.org" and a "@type" to each JSON-LD block, or move non-JSON-LD data out of ld+json scripts.',
+        },
+      ),
+    );
+  } else {
+    findings.push(
+      finding(
+        'structured-data-context',
+        'technical',
+        'pass',
+        'JSON-LD blocks declare @context and @type',
+        `${parseable.length} parsed block${parseable.length === 1 ? '' : 's'} checked for basic structure only.`,
       ),
     );
   }

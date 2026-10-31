@@ -1,5 +1,6 @@
 import { FINDING_SEVERITY_ORDER, type AnalysisResult, type PageSnapshot } from '@vittix/shared';
 import { analyzeHeadings } from './analyzers/headings.js';
+import { analyzeHreflang } from './analyzers/hreflang.js';
 import { analyzeImages } from './analyzers/images.js';
 import { analyzeLinks } from './analyzers/links.js';
 import { analyzeMetadata } from './analyzers/metadata.js';
@@ -14,6 +15,7 @@ import { RULE_SET_VERSION } from './rules.js';
 export function analyzeSnapshot(snapshot: PageSnapshot): AnalysisResult {
   const findings = [
     ...analyzeMetadata(snapshot),
+    ...analyzeHreflang(snapshot),
     ...analyzeHeadings(snapshot),
     ...analyzeImages(snapshot),
     ...analyzeLinks(snapshot),
@@ -32,13 +34,27 @@ export function analyzeSnapshot(snapshot: PageSnapshot): AnalysisResult {
   };
 }
 
-/** True when any collection was capped during extraction. */
+/**
+ * True when any collection was capped during extraction — either implicit
+ * (retained count below total) or explicit (v3 `omitted` counts report the
+ * exact number of capped-away elements).
+ */
 export function isTruncated(snapshot: PageSnapshot): boolean {
   const headingTotal = Object.values(snapshot.headingCounts).reduce((sum, count) => sum + count, 0);
-  return (
-    snapshot.headings.length < headingTotal ||
-    snapshot.images.length < snapshot.imageCount ||
-    snapshot.links.length < snapshot.linkCount ||
-    snapshot.structuredData.length < snapshot.structuredDataCount
-  );
+  const implicit =
+    snapshot.headings.length < headingTotal - (snapshot.hidden?.headings ?? 0) ||
+    snapshot.images.length < snapshot.imageCount - (snapshot.hidden?.images ?? 0) ||
+    snapshot.links.length < snapshot.linkCount - (snapshot.hidden?.links ?? 0) ||
+    snapshot.structuredData.length < snapshot.structuredDataCount;
+  const omitted = snapshot.omitted;
+  const explicit =
+    omitted !== undefined &&
+    (omitted.headings > 0 ||
+      omitted.images > 0 ||
+      omitted.links > 0 ||
+      omitted.descriptions > 0 ||
+      omitted.canonicals > 0 ||
+      omitted.structuredData > 0 ||
+      omitted.hreflang > 0);
+  return implicit || explicit;
 }

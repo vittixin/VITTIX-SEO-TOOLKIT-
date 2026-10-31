@@ -32,14 +32,33 @@ Delivered against the Phase 1 plan:
 Not done in Phase 1 (carried to Phase 2): aria-labelledby resolution,
 configurable scoring profiles, history summary CSV, i18n groundwork.
 
-## Phase 2 — Power features (proposed)
+## Phase 2 — Extraction accuracy & release hardening (DONE, 2026-10-31)
+
+- **Snapshot schema v3**: hreflang[]/hreflangCount, robotsValues[],
+  per-collection `omitted` counts, per-collection `hidden` counts, inline-SVG
+  accessibility stats — all defaulted for v1/v2 record readability
+- **Extraction accuracy**: aria-labelledby resolution (multiple IDREFs),
+  hidden-content exclusion (`[hidden]`, `aria-hidden` ancestors, inline
+  `display:none`/`visibility:hidden`) with counts, svg-title accessible
+  names, per-cap omitted reporting
+- **Rule set v0.3.0 (34 rules)**: lang-format, viewport-responsive,
+  hreflang-syntax/-duplicates/-consistency, internal-link-quality,
+  structured-data-context, robots reconciliation across duplicate tags
+- **SPA support**: live DOM is ground truth at click time; popup Re-analyze
+  action; no persistent scripts, no monitoring
+- **Scoring/history stability**: cross-rule-set-version comparison guard in
+  the dashboard, migration/compatibility tests for stored v1/v2/v3 records
+- **Release hardening**: dependency audit clean for production deps, bundle
+  network-surface reviewed, truncation banner + compare explanations in UI
+
+## Phase 3 — Power features (proposed)
 
 - Site mode: opt-in, clearly scoped multi-page runs with
   `optional_host_permissions` granted per site by the user
 - Structured data depth: schema.org vocabulary validation, required-property
-  checks (clearly scoped — syntax-only today)
+  checks (clearly scoped — syntax/structure-only today)
 - Configurable scoring profiles + rule weights per project
-- aria-labelledby resolution; image lazy-loading signals
+- Stylesheet-aware hidden-content detection; image lazy-loading signals
 - Performance & accessibility basics (Core Web Vitals pass, contrast quick
   checks) — local computation only
 - History summary CSV export; audit diffing across different URLs

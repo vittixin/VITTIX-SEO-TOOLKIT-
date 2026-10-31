@@ -2,9 +2,9 @@ import type { PageMeta, PageSnapshot } from '@vittix/shared';
 import { SNAPSHOT_SCHEMA_VERSION } from '@vittix/shared';
 
 /**
- * Test-only snapshot builder for the v2 schema. Not exported from the
- * package index. New-in-v2 fields default to healthy single values so tests
- * only specify what a rule exercises.
+ * Test-only snapshot builder for the v3 schema. Not exported from the
+ * package index. New-in-v3 fields default to healthy values (no omissions,
+ * no hidden content, no SVG) so tests only specify what a rule exercises.
  */
 export function buildSnapshot(
   overrides: {
@@ -15,6 +15,7 @@ export function buildSnapshot(
     meta?: Partial<PageMeta>;
     descriptions?: string[];
     canonicals?: string[];
+    robotsValues?: string[];
     headings?: PageSnapshot['headings'];
     headingCounts?: PageSnapshot['headingCounts'];
     images?: PageSnapshot['images'];
@@ -23,6 +24,11 @@ export function buildSnapshot(
     linkCount?: number;
     structuredData?: PageSnapshot['structuredData'];
     structuredDataCount?: number;
+    hreflang?: PageSnapshot['hreflang'];
+    hreflangCount?: number;
+    omitted?: Partial<PageSnapshot['omitted']>;
+    hidden?: Partial<PageSnapshot['hidden']>;
+    svg?: Partial<PageSnapshot['svg']>;
     textStats?: PageSnapshot['textStats'];
     extractedAt?: string;
   } = {},
@@ -31,10 +37,11 @@ export function buildSnapshot(
   const descriptions = overrides.descriptions ?? [
     'A sufficiently long example meta description that comfortably sits inside the healthy seventy to one hundred sixty character target range.',
   ];
+  const robotsValues = overrides.robotsValues ?? ['index, follow'];
   const meta: PageMeta = {
     description: descriptions[0] ?? null,
     canonical: canonicals[0] ?? null,
-    robots: 'index, follow',
+    robots: robotsValues[0] ?? null,
     viewport: 'width=device-width, initial-scale=1',
     charset: 'UTF-8',
     lang: 'en',
@@ -62,8 +69,11 @@ export function buildSnapshot(
     { src: 'https://example.com/b.png', alt: 'A photo of the workshop' },
   ];
   const structuredData = overrides.structuredData ?? [
-    { raw: '{ "@context": "https://schema.org", "@type": "WebPage" }' },
+    {
+      raw: '{ "@context": "https://schema.org", "@type": "WebPage" }',
+    },
   ];
+  const hreflang = overrides.hreflang ?? [];
   return {
     schemaVersion: overrides.schemaVersion ?? SNAPSHOT_SCHEMA_VERSION,
     url: overrides.url ?? 'https://example.com/page',
@@ -83,6 +93,21 @@ export function buildSnapshot(
     linkCount: overrides.linkCount ?? links.length,
     structuredData,
     structuredDataCount: overrides.structuredDataCount ?? structuredData.length,
+    robotsValues,
+    hreflang,
+    hreflangCount: overrides.hreflangCount ?? hreflang.length,
+    omitted: {
+      headings: 0,
+      images: 0,
+      links: 0,
+      descriptions: 0,
+      canonicals: 0,
+      structuredData: 0,
+      hreflang: 0,
+      ...overrides.omitted,
+    },
+    hidden: { headings: 0, images: 0, links: 0, ...overrides.hidden },
+    svg: { total: 0, unnamed: 0, ...overrides.svg },
     textStats: overrides.textStats ?? { wordCount: 350 },
     extractedAt: overrides.extractedAt ?? '2026-10-31T12:00:00.000Z',
   };

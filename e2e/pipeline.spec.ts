@@ -4,9 +4,13 @@ import { expect, test } from '@playwright/test';
 import { PageSnapshotSchema } from '../packages/shared/src/index.js';
 import { analyzeSnapshot } from '../packages/seo-core/src/analyze.js';
 import { extractPageSnapshot } from '../apps/extension/src/extraction/snapshot-inject.js';
+import { EXTRACTOR_LIMITS } from '../apps/extension/src/extraction/limits.js';
 import { loadExtension } from './helpers/extension.js';
 
-const LIMITS = { headings: 300, images: 500, links: 500, textSampleChars: 100_000, textField: 300 };
+// The extraction limits MUST come from the shared constant (single source of
+// truth in SNAPSHOT_LIMITS) — a local subset broke keyword truncation and
+// Zod validation once already.
+const LIMITS = EXTRACTOR_LIMITS;
 
 /**
  * Full vertical-slice test: the REAL extractor function runs inside a REAL

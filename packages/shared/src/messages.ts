@@ -37,6 +37,8 @@ export const AnalyzeSuccessSchema = z.object({
     total: z.number().min(0).max(100),
     label: z.string().min(1),
     preliminary: z.literal(true),
+    /** Present when a blocking issue capped the score (rule set v0.4.0+). */
+    capReason: z.string().nullable().optional(),
   }),
   counts: z.object({
     error: nonNegativeInt,
@@ -68,7 +70,7 @@ export function analyzeFailure(code: ErrorCode, message: string): AnalyzeFailure
 
 export function analyzeSuccess(
   audit: { id: number; url: string; title: string; analyzedAt: string },
-  score: { total: number; label: string },
+  score: { total: number; label: string; capReason?: string | null },
   counts: SeverityCounts,
 ): AnalyzeSuccess {
   return {

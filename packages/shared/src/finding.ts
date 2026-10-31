@@ -31,6 +31,12 @@ export const FindingSchema = z.object({
    * optional in the schema so Phase 0 records stay readable.
    */
   remediation: z.string().optional(),
+  /**
+   * Affected/checked ratio (0–1) for count-based rules (missing alt, unnamed
+   * links, generic anchors, thin coverage). Used by the scoring engine to
+   * scale the penalty; optional so older records validate.
+   */
+  ratio: z.number().min(0).max(1).optional(),
 });
 export type Finding = z.infer<typeof FindingSchema>;
 

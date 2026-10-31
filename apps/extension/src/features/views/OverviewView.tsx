@@ -69,6 +69,15 @@ export function OverviewView({
             </p>
           </div>
         </div>
+        {audit.result.score.capReason ? (
+          <p
+            data-testid="score-cap-reason"
+            className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs leading-relaxed text-rose-800"
+          >
+            <strong>Score capped:</strong> {audit.result.score.capReason}. Resolve the blocking
+            issues above to unlock the full score.
+          </p>
+        ) : null}
         <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-500">
           The scoring model is still being calibrated. Treat the score as an on-page hygiene
           indicator, not a search-ranking prediction.

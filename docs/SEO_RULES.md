@@ -1,4 +1,4 @@
-# SEO Rules — Rule Set v0.3.0
+# SEO Rules — Rule Set v0.4.0
 
 All rules are pure functions of a validated `PageSnapshot` (schema **v3**):
 the same snapshot always produces the same findings, in the same order
@@ -41,12 +41,12 @@ Severities:
 
 ## Social rules (all informational when absent)
 
-| Rule                     | Severity when triggered | Condition                       |
-| ------------------------ | ----------------------- | ------------------------------- |
-| `og-title-present`       | **info** when absent    | `meta[property=og:title]`       |
-| `og-description-present` | **info** when absent    | `meta[property=og:description]` |
-| `og-image-present`       | **info** when absent    | `meta[property=og:image]`       |
-| `twitter-card-present`   | **info** when absent    | `meta[name=twitter:card]`       |
+| Rule                     | Severity when triggered                         | Condition                       |
+| ------------------------ | ----------------------------------------------- | ------------------------------- |
+| `og-title-present`       | **warn** when absent (v0.4.0 — score-affecting) | `meta[property=og:title]`       |
+| `og-description-present` | **info** when absent                            | `meta[property=og:description]` |
+| `og-image-present`       | **warn** when absent (v0.4.0 — score-affecting) | `meta[property=og:image]`       |
+| `twitter-card-present`   | **info** when absent                            | `meta[name=twitter:card]`       |
 
 ## Heading rules
 
@@ -83,15 +83,29 @@ Severities:
 
 ## Scoring
 
-Formula (rule set v0.3.0):
+Formula (rule set v0.4.0):
 
 1. Each category starts at **100**.
 2. Only `error` (−25) and `warn` (−10) deduct. `info`/`pass` never do
    (`SCORE_AFFECTING_SEVERITIES = ['error', 'warn']`).
-3. Each rule penalizes **once per category** — findings sharing a ruleId are
+3. **Ratio scaling (v0.4.0)** — count-based rules (`image-alt-present`,
+   `image-alt-quality`, `link-anchor-text`, `internal-link-quality`) emit an
+   `affected/checked` ratio. When the affected fraction is **< 10%**, the
+   penalty drops one tier (error 25 → 10, warn 10 → 5): one missing alt out
+   of 200 images is a blemish, not a structural failure. Rules without a
+   ratio keep the flat penalty.
+4. Each rule penalizes **once per category** — findings sharing a ruleId are
    deduplicated, so one underlying issue can never be counted twice.
-4. Category scores floor at **0**.
-5. Total = `round(Σ categoryScore × weight) / 100`; weights sum to 100.
+5. Category scores floor at **0**.
+6. **Blocking-issue cap (v0.4.0)** — an `error` from a rule that prevents
+   indexing or meaningful evaluation (`robots-directives` noindex/none,
+   `title-present` missing, `h1-present` missing, `canonical-valid` error)
+   caps the **total** at **49** (label forced to "Poor") and sets
+   `Score.capReason`. Rationale: a page a search engine cannot index should
+   never look "average" no matter how polished the remaining signals are —
+   a flat −25 on a weight-5 technical category cost a noindex page only
+   ~1.25 points, which understated a release-blocking fault.
+7. Total = `round(Σ categoryScore × weight) / 100`; weights sum to 100.
 
 | Category  | Weight |
 | --------- | ------ |
@@ -102,12 +116,24 @@ Formula (rule set v0.3.0):
 | social    | 10     |
 | technical | 5      |
 
-Worked example: one metadata warn (−10) + one headings error (−25) +
-one images error (−25) + one links error (−25) + one technical warn (−10) →
-metadata 90 · headings 75 · images 75 · links 75 · social 100 · technical 90 →
-(90×30 + 75×20 + 75×20 + 75×15 + 100×10 + 90×5)/100 = **84** (Good).
+**Social category reasoning (v0.4.0):** previously every social rule was
+informational, so the category was always 100 and handed every page 10 free
+points. Missing `og:title` / `og:image` are now **warn** (score-affecting):
+social previews materially affect click-through on shared links.
+`og:description` and `twitter:card` remain informational.
 
-Labels: ≥90 Excellent · ≥75 Good · ≥50 Needs work · <50 Poor.
+Worked example (non-blocking): one metadata warn (−10) + one headings warn
+(−10) + one images error (−25) + one links error (−25) + one technical warn
+(−10) → metadata 90 · headings 90 · images 75 · links 75 · social 100 ·
+technical 90 → (90×30 + 90×20 + 75×20 + 75×15 + 100×10 + 90×5)/100 =
+**83** (Good).
+
+Blocking example: `robots-directives` noindex (−25 on technical → 75) but
+the cap forces the **total to 49 (Poor)** with
+`capReason: "Score capped at 49 — blocking issues: robots-directives"`.
+
+Labels: ≥90 Excellent · ≥75 Good · ≥50 Needs work · <50 Poor. A capped
+score always reports "Poor".
 
 > **Preliminary by construction.** `Score.preliminary` is the literal `true`
 > in the schema, so every UI rendering a score also renders the
@@ -116,9 +142,9 @@ Labels: ≥90 Excellent · ≥75 Good · ≥50 Needs work · <50 Poor.
 > relationship to Google rankings.
 >
 > **Incomplete audits.** When extraction caps truncate any collection
-> (headings > 300, images/links > 500, JSON-LD > 5), `result.truncated` is
-> `true` and the UI/export reflect it — scores from partial data may
-> undercount.
+> (headings > 300, images/links > 500, JSON-LD > 5, text sample > 100 kB),
+> `result.truncated` is `true` and the UI/export reflect it — scores from
+> partial data may undercount.
 >
 > Scoring changes are gated by regression tests (`scoring.test.ts`); any
 > intentional change must update the expected values AND this document in

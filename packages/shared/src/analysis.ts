@@ -5,11 +5,15 @@ import { PageSnapshotSchema } from './snapshot.js';
 /**
  * Scores are explicitly marked preliminary while the rule set is young.
  * `preliminary` is a literal `true` so UI code cannot forget the label.
+ * `capReason` is set when a blocking issue (noindex, missing title/h1,
+ * invalid canonical) caps the total — nullable/defaulted so stored records
+ * from earlier rule sets still validate.
  */
 export const ScoreSchema = z.object({
   total: z.number().min(0).max(100),
   label: z.string().min(1),
   preliminary: z.literal(true),
+  capReason: z.string().nullable().default(null),
   categories: z.array(
     z.object({
       category: z.enum(['metadata', 'headings', 'images', 'links', 'social', 'technical']),

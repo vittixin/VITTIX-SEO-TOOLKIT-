@@ -71,6 +71,8 @@ export function analyzeImages(snapshot: PageSnapshot): Finding[] {
               .join(', ') + (missingAttr.length > 3 ? `, … (${missingAttr.length} total)` : ''),
           remediation:
             'Add alt="…" to every <img>. Describe the image content; use alt="" only for purely decorative images.',
+          // Affected/checked ratio drives penalty scaling in the scorer.
+          ratio: snapshot.images.length > 0 ? missingAttr.length / snapshot.images.length : 1,
         },
       ),
     );
@@ -146,6 +148,8 @@ export function analyzeImages(snapshot: PageSnapshot): Finding[] {
               .join(', ') + (weak.length > 3 ? `, … (${weak.length} total)` : ''),
           remediation:
             'Replace filename-like or generic alt text with a short description of what the image shows.',
+          // Affected/checked ratio drives penalty scaling in the scorer.
+          ratio: presentAlt.length > 0 ? weak.length / presentAlt.length : 1,
         },
       ),
     );

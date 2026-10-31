@@ -115,6 +115,14 @@ export function App() {
               <span className="text-slate-400"> · </span>
               <span className="text-slate-500">preliminary score</span>
             </p>
+            {success.score.capReason ? (
+              <p
+                data-testid="score-cap-reason"
+                className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs leading-relaxed text-rose-800"
+              >
+                {success.score.capReason}
+              </p>
+            ) : null}
             <p className="truncate text-center text-xs text-slate-400" title={success.url}>
               {pageHost(success.url) ?? success.url} · {formatDate(success.analyzedAt)}
             </p>

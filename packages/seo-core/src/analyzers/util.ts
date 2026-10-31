@@ -7,7 +7,7 @@ export function finding(
   severity: Severity,
   title: string,
   detail: string,
-  options: { evidence?: string; remediation?: string } = {},
+  options: { evidence?: string; remediation?: string; ratio?: number } = {},
 ): Finding {
   return {
     ruleId,
@@ -17,5 +17,6 @@ export function finding(
     detail,
     ...(options.evidence !== undefined ? { evidence: options.evidence } : {}),
     ...(options.remediation !== undefined ? { remediation: options.remediation } : {}),
+    ...(options.ratio !== undefined ? { ratio: options.ratio } : {}),
   };
 }

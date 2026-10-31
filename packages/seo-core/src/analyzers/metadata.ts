@@ -561,7 +561,9 @@ function socialRules(snapshot: PageSnapshot): Finding[] {
       finding(
         'og-title-present',
         'social',
-        'info',
+        // Warn (score-affecting) since v0.4.0: social previews materially
+        // affect click-through; og:description/twitter:card stay informational.
+        'warn',
         'No Open Graph title',
         'og:title controls how the page appears when shared on social platforms. Optional for search rankings, valuable for click-through from social.',
         {
@@ -607,7 +609,8 @@ function socialRules(snapshot: PageSnapshot): Finding[] {
       finding(
         'og-image-present',
         'social',
-        'info',
+        // Warn (score-affecting) since v0.4.0 — see og:title note above.
+        'warn',
         'No Open Graph image',
         'og:image is the preview image for social shares. Pages without one render a blank or generic preview.',
         {

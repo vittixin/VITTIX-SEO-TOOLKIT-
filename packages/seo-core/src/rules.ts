@@ -5,7 +5,7 @@
  * a PageSnapshot: same snapshot in, same findings out. Each finding carries
  * a remediation hint ("how to fix").
  */
-export const RULE_SET_VERSION = '0.3.0';
+export const RULE_SET_VERSION = '0.4.0';
 
 /** Rule ids implemented by the Phase 2 analyzers. */
 export const RULE_IDS = [

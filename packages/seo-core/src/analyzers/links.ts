@@ -69,6 +69,10 @@ export function analyzeLinks(snapshot: PageSnapshot): Finding[] {
             (unnamed.length > 3 ? `, … (${unnamed.length} total)` : ''),
           remediation:
             'Give each link visible text, an aria-label, or an alt on its inner image. Note: names referenced only via aria-labelledby are not yet detected and may be reported here.',
+          // Affected/checked ratio drives penalty scaling in the scorer.
+          // Every <a href> counts — a nameless mailto link is as unusable
+          // for screen readers as a nameless http link.
+          ratio: snapshot.links.length > 0 ? unnamed.length / snapshot.links.length : 1,
         },
       ),
     );
@@ -152,6 +156,9 @@ export function analyzeLinks(snapshot: PageSnapshot): Finding[] {
             (genericAnchors.length > 3 ? `, … (${genericAnchors.length} total)` : ''),
           remediation:
             'Rewrite generic anchors to describe the destination, e.g. "read the pricing guide" instead of "read more".',
+          // Affected/checked ratio (generic anchors / internal links) drives
+          // penalty scaling in the scorer.
+          ratio: internal > 0 ? genericAnchors.length / internal : 1,
         },
       ),
     );

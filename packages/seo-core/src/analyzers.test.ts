@@ -195,21 +195,22 @@ describe('analyzeMetadata — technical rules', () => {
 });
 
 describe('analyzeMetadata — social rules', () => {
-  it('informs (never warns) about missing Open Graph and twitter:card', () => {
+  it('og:title/og:image missing warn (v0.4.0); og:description/twitter:card stay informational', () => {
     const findings = analyzeMetadata(
       buildSnapshot({
         meta: { ogTitle: null, ogDescription: null, ogImage: null, twitterCard: null },
       }),
     );
-    for (const ruleId of [
-      'og-title-present',
-      'og-description-present',
-      'og-image-present',
-      'twitter-card-present',
-    ]) {
+    const severities: Record<string, 'warn' | 'info'> = {
+      'og-title-present': 'warn',
+      'og-description-present': 'info',
+      'og-image-present': 'warn',
+      'twitter-card-present': 'info',
+    };
+    for (const [ruleId, severity] of Object.entries(severities)) {
       const finding = findByRuleId(findings, ruleId);
-      expect(finding.severity).toBe('info');
-      expect(finding.remediation).toBeTruthy();
+      expect(finding.severity, ruleId).toBe(severity);
+      expect(finding.remediation, ruleId).toBeTruthy();
     }
   });
 

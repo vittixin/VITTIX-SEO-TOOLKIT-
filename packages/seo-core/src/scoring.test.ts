@@ -99,9 +99,12 @@ describe('computeScore', () => {
     expect(a).toEqual(b);
   });
 
-  it('REGRESSION: known score stays stable for a representative mixed audit', () => {
+  it('REGRESSION: known score stays stable for a representative non-blocking audit', () => {
     // If this test fails after an intentional formula change, update the
     // expected value AND docs/SEO_RULES.md in the same commit.
+    // NOTE: errors here use NON-blocking ruleIds — blocking rules (title-
+    // present, h1-present, robots-directives, canonical-valid) cap the score
+    // (see the blocking-cap tests below).
     const findings: Finding[] = [
       { ruleId: 'title-length', category: 'metadata', severity: 'warn', title: 't', detail: 'd' },
       {
@@ -111,24 +114,32 @@ describe('computeScore', () => {
         title: 't',
         detail: 'd',
       },
-      { ruleId: 'h1-present', category: 'headings', severity: 'error', title: 't', detail: 'd' },
+      { ruleId: 'heading-order', category: 'headings', severity: 'warn', title: 't', detail: 'd' },
       {
         ruleId: 'image-alt-present',
         category: 'images',
         severity: 'error',
         title: 't',
         detail: 'd',
+        ratio: 1,
       },
-      { ruleId: 'link-anchor-text', category: 'links', severity: 'error', title: 't', detail: 'd' },
-      { ruleId: 'og-image-present', category: 'social', severity: 'info', title: 't', detail: 'd' },
+      {
+        ruleId: 'link-anchor-text',
+        category: 'links',
+        severity: 'error',
+        title: 't',
+        detail: 'd',
+        ratio: 1,
+      },
       { ruleId: 'page-https', category: 'technical', severity: 'warn', title: 't', detail: 'd' },
     ];
     const score = computeScore(findings);
-    // metadata 100-20=80 · headings 100-25=75 · images 75 · links 75
-    // social 100 (info) · technical 90
-    // (80*30 + 75*20 + 75*20 + 75*15 + 100*10 + 90*5)/100 = 80.25 → 80
-    expect(score.total).toBe(80);
+    // metadata 100-20=80 · headings 100-10=90 · images 75 · links 75
+    // social 100 · technical 90
+    // (80*30 + 90*20 + 75*20 + 75*15 + 100*10 + 90*5)/100 = 82.75 → 83
+    expect(score.total).toBe(83);
     expect(score.label).toBe('Good');
+    expect(score.capReason).toBeNull();
   });
 
   it('REGRESSION: an empty finding list always yields a perfect score', () => {
@@ -136,6 +147,7 @@ describe('computeScore', () => {
       total: 100,
       label: 'Excellent',
       preliminary: true,
+      capReason: null,
       categories: expect.any(Array),
     });
   });
@@ -171,5 +183,104 @@ describe('scoreLabel', () => {
     expect(scoreLabel(50)).toBe('Needs work');
     expect(scoreLabel(49)).toBe('Poor');
     expect(scoreLabel(0)).toBe('Poor');
+  });
+});
+
+// --- Phase 9 Issue 1: scoring rework (RED — cap/ratio not yet implemented) ---
+
+describe('Issue 1b — blocking-issue score cap', () => {
+  const blocking = (ruleId: string, category: Finding['category']): Finding => ({
+    ruleId,
+    category,
+    severity: 'error',
+    title: 'blocking',
+    detail: 'd',
+  });
+
+  it('caps a noindex page at 49 / Poor and exposes capReason', () => {
+    const score = computeScore([blocking('robots-directives', 'technical')]);
+    expect(score.total).toBeLessThanOrEqual(49);
+    expect(score.label).toBe('Poor');
+    expect(score.capReason ?? '').toContain('robots-directives');
+  });
+
+  it('caps missing-title, missing-h1 and invalid-canonical pages', () => {
+    for (const [ruleId, category] of [
+      ['title-present', 'metadata'],
+      ['h1-present', 'headings'],
+      ['canonical-valid', 'metadata'],
+    ] as const) {
+      const score = computeScore([blocking(ruleId, category)]);
+      expect(score.total, ruleId).toBeLessThanOrEqual(49);
+      expect(score.label, ruleId).toBe('Poor');
+      expect(score.capReason ?? '', ruleId).toContain(ruleId);
+    }
+  });
+
+  it('does not cap non-blocking errors', () => {
+    const score = computeScore([blocking('image-alt-present', 'images')]);
+    expect(score.capReason ?? '').toBe('');
+    expect(score.total).toBeGreaterThan(49);
+  });
+});
+
+describe('Issue 1c — ratio-scaled penalties', () => {
+  it('1/200 images missing alt scores higher than 200/200 missing', () => {
+    const few = computeScore([
+      {
+        ruleId: 'image-alt-present',
+        category: 'images',
+        severity: 'error',
+        title: 't',
+        detail: 'd',
+        ratio: 1 / 200,
+      },
+    ]);
+    const all = computeScore([
+      {
+        ruleId: 'image-alt-present',
+        category: 'images',
+        severity: 'error',
+        title: 't',
+        detail: 'd',
+        ratio: 1,
+      },
+    ]);
+    expect(few.total).toBeGreaterThan(all.total);
+  });
+
+  it('keeps ratio-less findings at the full flat penalty', () => {
+    expect(
+      computeScore([{ ruleId: 'x', category: 'links', severity: 'error', title: 't', detail: 'd' }])
+        .total,
+    ).toBe(
+      computeScore([
+        { ruleId: 'x', category: 'links', severity: 'error', title: 't', detail: 'd', ratio: 1 },
+      ]).total,
+    );
+  });
+
+  it('still deduplicates by ruleId after ratio scaling', () => {
+    const dup = (ratio?: number): Finding[] => [
+      { ruleId: 'same', category: 'links', severity: 'error', title: 't', detail: 'd', ratio },
+      { ruleId: 'same', category: 'links', severity: 'error', title: 't', detail: 'd', ratio },
+    ];
+    expect(computeScore(dup(1))).toEqual(computeScore(dup(1)));
+  });
+});
+
+describe('Issue 1a — social category', () => {
+  it('weights still sum to 100', () => {
+    const sum = CATEGORIES.reduce((acc, c) => acc + CATEGORY_WEIGHTS[c], 0);
+    expect(sum).toBe(100);
+  });
+
+  it('warn-level social findings reduce the score (no more free 10 points)', () => {
+    const clean = computeScore([]);
+    const socialWarns = computeScore([
+      { ruleId: 'og-title-present', category: 'social', severity: 'warn', title: 't', detail: 'd' },
+      { ruleId: 'og-image-present', category: 'social', severity: 'warn', title: 't', detail: 'd' },
+    ]);
+    expect(socialWarns.total).toBeLessThan(clean.total);
   });
 });

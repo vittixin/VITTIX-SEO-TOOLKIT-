@@ -28,7 +28,7 @@ describe('historyToCsv', () => {
     url: 'https://example.com/page',
     title: 'Example page = title',
     analyzedAt: '2026-10-31T00:00:00.000Z',
-    score: { total: 84, label: 'Good', preliminary: true, categories: [] },
+    score: { total: 84, label: 'Good', preliminary: true, capReason: null, categories: [] },
     counts: { error: 1, warn: 2, info: 3, pass: 4 },
   };
 

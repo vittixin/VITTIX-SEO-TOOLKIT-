@@ -139,7 +139,11 @@ async function analyzeActiveTab(): Promise<AnalyzeResponse> {
 
     return analyzeSuccess(
       { id: auditId, url: snapshot.url, title: snapshot.title, analyzedAt },
-      { total: result.score.total, label: result.score.label },
+      {
+        total: result.score.total,
+        label: result.score.label,
+        capReason: result.score.capReason,
+      },
       countSeverities(result.findings),
     );
   } catch (error) {

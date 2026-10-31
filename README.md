@@ -10,14 +10,16 @@ history lives in local IndexedDB until you delete or export it.
 > **Scores are preliminary.** The rule set is young and clearly labeled as a
 > work in progress. Scores describe on-page hygiene, not search rankings.
 
-## Features (Phase 0)
+## Features
 
-- **One-click audit** from the toolbar popup (user-triggered, `activeTab`)
-- **Metadata analyzer** — title, description, canonical, viewport, lang, HTTPS, Open Graph
+- **One-click audit** from the toolbar popup (user-triggered `activeTab`; keyboard command Ctrl+Shift+U with score badge)
+- **Metadata analyzer** — title (chars + estimated pixel width), description, canonical, viewport responsiveness, lang format, robots directives, hreflang, Open Graph/Twitter cards
 - **Heading analyzer** — single-h1 and outline-order checks
-- **Image analyzer** — alt-text coverage
-- **Link analyzer** — internal/external profile, empty anchors, nofollow
-- **Preliminary scoring engine** — deterministic, documented, explainable
+- **Image analyzer** — alt coverage incl. decorative detection and quality heuristics
+- **Link analyzer** — internal/external/other buckets (www-aware), accessible names incl. aria-labelledby, generic-anchor quality
+- **Content analyzer** — thin-content detection (300-word guidance, partial-sample aware)
+- **Structured data** — JSON-LD presence, syntax and @context/@type structure checks
+- **Preliminary scoring engine** — deterministic, documented, explainable; blocking issues cap the score and count-based penalties scale with affected ratio
 - **Local audit history** — IndexedDB via Dexie, with retention controls
 - **Export** — full audit as JSON, findings as RFC 4180 CSV
 - **Opt-in site audits** — multi-page audits of one user-approved origin

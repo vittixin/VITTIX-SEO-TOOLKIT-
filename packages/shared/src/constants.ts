@@ -10,15 +10,16 @@ export const DB_NAME = 'vittix-seo';
 /**
  * Current page-snapshot schema version. Bump on breaking changes.
  *
- * - v2 (Phase 1): titleCount, descriptions[], canonicals[],
- *   links[].accessibleName, twitter:* meta fields, structuredData[].
- * - v3 (Phase 2): hreflang[]/hreflangCount, robotsValues[],
- *   omitted{} (per-collection counts of capped-away elements),
- *   hidden{} (per-collection counts of hidden elements),
- *   svg{} (inline SVG accessibility counts).
+ * - v2: titleCount, descriptions[], canonicals[], links[].accessibleName,
+ *   twitter:* meta fields, structuredData[].
+ * - v3: hreflang[]/hreflangCount, robotsValues[], omitted{} (per-collection
+ *   counts of capped-away elements), hidden{} (per-collection counts of
+ *   hidden elements), svg{} (inline SVG accessibility stats),
+ *   textStats.textSampleTruncated.
  *
  * All v2/v3 fields carry defaults, so v1 and v2 records stored by earlier
- * phases remain readable (the schema accepts all three versions).
+ * versions remain readable (the schema accepts all three versions).
+ * See docs/ROADMAP.md for the changelog of when each version landed.
  */
 export const SNAPSHOT_SCHEMA_VERSION = 3;
 

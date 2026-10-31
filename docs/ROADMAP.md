@@ -96,6 +96,30 @@ behavior is implemented but not E2E-verified.
   explanations, distribution cards, DetailList subtitles clarifying
   verified/candidate/unchecked semantics
 
+## RC closure & hardening (DONE, 2026-11-01)
+
+Post–Phase 4 release-candidate work executed in multiple increments (the
+commit history is the authoritative record):
+
+- **Data integrity**: site counters derived from persisted records,
+  discovery-write failures fail the session (URLs never silently lost),
+  fault-injection tests for transaction aborts / quota errors /
+  cancellation, page-cap deadlock fix, stale-dashboard fix + regression
+- **Extraction accuracy**: aria-labelled accessible names, non-HTTP links
+  in an `other` bucket, `content-length` thin-content rule, pixel-width
+  estimation rules, `textSampleTruncated` completeness flag
+- **Scoring v0.4.0**: social warn severity, blocking-issue score cap
+  (`Score.capReason`), ratio-scaled penalties
+- **robots.txt per RFC 9309**: grouped user-agents, VittixBot token
+  selection, wildcards/anchors, percent-encoding normalization, Sitemap
+  collection (same-origin filtered by the crawler)
+- **Limits single-sourcing**: `SNAPSHOT_LIMITS` drives both extractors via
+  a shared `EXTRACTOR_LIMITS` constant with a parity test
+- **Release packaging**: THIRD_PARTY_NOTICES.md generation, privacy policy,
+  acceptance worksheet + GUI evidence, store checklist, ZIP packaging
+- **Hygiene**: AI session transcript removed from the repo, e2e version
+  assertion fixed, docs synced with reality
+
 ## Phase 5 — Power features (proposed)
 
 - Structured data depth: schema.org vocabulary validation, required-property

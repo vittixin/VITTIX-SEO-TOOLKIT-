@@ -56,7 +56,8 @@ export const TextStatsSchema = z.object({
   /**
    * True when the body-text sample hit the extraction cap (the word count
    * therefore covers only part of the page). Defaulted so v1–v3 stored
-   * records remain readable. (v3.1, Phase 7)
+   * records remain readable. Added during release-candidate hardening —
+   * see docs/ROADMAP.md "RC closure & hardening".
    */
   textSampleTruncated: z.boolean().default(false),
 });

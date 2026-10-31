@@ -46,6 +46,24 @@ export async function getLatestSiteSession(): Promise<SiteSession | null> {
   return parsed.success ? parsed.data : null;
 }
 
+/**
+ * The most recent completed session for the same origin, excluding the
+ * given session — used for the site-audit comparison view.
+ */
+export async function getPreviousSiteSession(
+  origin: string,
+  excludeId: number,
+): Promise<SiteSession | null> {
+  const sessions = await listSiteSessions();
+  for (const session of sessions) {
+    if (session.id === undefined || session.id === excludeId) continue;
+    if (session.origin !== origin) continue;
+    if (session.status !== 'completed') continue;
+    return session;
+  }
+  return null;
+}
+
 export async function listSiteSessions(
   limit = SITE_LIMITS.maxStoredSessions,
 ): Promise<SiteSession[]> {
@@ -126,8 +144,26 @@ export interface SiteSummary {
   totalWarnings: number;
   duplicateTitles: { title: string; urls: string[] }[];
   duplicateDescriptions: { description: string; urls: string[] }[];
+  missingTitle: string[];
+  missingDescription: string[];
   missingCanonical: string[];
   noindexPages: string[];
+  /**
+   * Pages that failed this crawl with an HTTP error status, plus the audited
+   * pages linking to them. VERIFIED crawl results only — a link to a URL
+   * that was never fetched is NOT a candidate.
+   */
+  brokenLinkCandidates: { url: string; httpStatus: number | null; linkedFrom: string[] }[];
+  /**
+   * Audited pages no other audited page links to internally. Only computed
+   * when discovery evidence is sufficient (≥3 audited pages); otherwise null
+   * (unchecked, not "none").
+   */
+  orphanPages: string[] | null;
+  /** Per-page preliminary score buckets: 0–49, 50–74, 75–89, 90–100. */
+  scoreDistribution: { poor: number; needsWork: number; good: number; excellent: number };
+  /** Per-page error counts: pages with 0 / 1–2 / 3+ errors. */
+  errorDistribution: { clean: number; some: number; many: number };
   internalLinks: number;
   externalLinks: number;
   incomplete: boolean;
@@ -142,8 +178,14 @@ export function buildSiteSummary(session: SiteSession, pages: SitePageRecord[]):
   const okPages = pages.filter((page) => page.status === 'ok' && page.snapshot && page.result);
   const titleMap = new Map<string, string[]>();
   const descriptionMap = new Map<string, string[]>();
+  const missingTitle: string[] = [];
+  const missingDescription: string[] = [];
   const missingCanonical: string[] = [];
   const noindexPages: string[] = [];
+  const scoreDistribution = { poor: 0, needsWork: 0, good: 0, excellent: 0 };
+  const errorDistribution = { clean: 0, some: 0, many: 0 };
+  /** normalized internal URL → audited pages linking to it */
+  const internalLinkSources = new Map<string, Set<string>>();
   let totalErrors = 0;
   let totalWarnings = 0;
   let internalLinks = 0;
@@ -164,18 +206,30 @@ export function buildSiteSummary(session: SiteSession, pages: SitePageRecord[]):
     if (snapshot.omitted && Object.values(snapshot.omitted).some((count) => count > 0)) {
       incomplete = true;
     }
-    totalErrors += result.findings.filter((finding) => finding.severity === 'error').length;
+    const pageErrors = result.findings.filter((finding) => finding.severity === 'error').length;
+    totalErrors += pageErrors;
     totalWarnings += result.findings.filter((finding) => finding.severity === 'warn').length;
+    if (pageErrors === 0) errorDistribution.clean += 1;
+    else if (pageErrors <= 2) errorDistribution.some += 1;
+    else errorDistribution.many += 1;
+
+    const score = result.score.total;
+    if (score >= 90) scoreDistribution.excellent += 1;
+    else if (score >= 75) scoreDistribution.good += 1;
+    else if (score >= 50) scoreDistribution.needsWork += 1;
+    else scoreDistribution.poor += 1;
 
     const title = snapshot.title.trim();
-    if (title !== '') {
+    if (title === '') missingTitle.push(page.url);
+    else {
       const urls = titleMap.get(title.toLowerCase()) ?? [];
       urls.push(page.url);
       titleMap.set(title.toLowerCase(), urls);
     }
 
     const description = (snapshot.meta.description ?? '').trim();
-    if (description !== '') {
+    if (description === '') missingDescription.push(page.url);
+    else {
       const urls = descriptionMap.get(description.toLowerCase()) ?? [];
       urls.push(page.url);
       descriptionMap.set(description.toLowerCase(), urls);
@@ -189,13 +243,50 @@ export function buildSiteSummary(session: SiteSession, pages: SitePageRecord[]):
     for (const link of snapshot.links) {
       try {
         const resolved = new URL(link.href, page.url);
-        if (origin !== null && resolved.origin === origin) internalLinks += 1;
-        else externalLinks += 1;
+        if (origin !== null && resolved.origin === origin) {
+          internalLinks += 1;
+          const normalizedTarget = normalizeDiscoveredLink(resolved.href);
+          if (normalizedTarget !== null) {
+            const sources = internalLinkSources.get(normalizedTarget) ?? new Set<string>();
+            sources.add(page.url);
+            internalLinkSources.set(normalizedTarget, sources);
+          }
+        } else {
+          externalLinks += 1;
+        }
       } catch {
         // unresolvable — not counted
       }
     }
   }
+
+  // Broken-link candidates: this crawl FAILED to fetch a URL with an HTTP
+  // error, and an audited page links to it. Verified evidence only.
+  const linkedFromFor = (url: string): string[] => {
+    const normalized = normalizeDiscoveredLink(url);
+    return normalized !== null
+      ? [...(internalLinkSources.get(normalized) ?? [])].filter((source) => source !== url)
+      : [];
+  };
+  const brokenLinkCandidates = pages
+    .filter((page) => page.status === 'failed' && page.httpStatus !== null)
+    .map((page) => ({
+      url: page.url,
+      httpStatus: page.httpStatus,
+      linkedFrom: linkedFromFor(page.url),
+    }))
+    .filter((candidate) => candidate.linkedFrom.length > 0);
+
+  // Orphan pages: audited pages nobody internally links to. Only meaningful
+  // with enough discovery evidence — otherwise null (UNCHECKED).
+  const auditedUrls = new Set(okPages.map((page) => page.url));
+  const orphanPages =
+    okPages.length >= 3
+      ? [...auditedUrls].filter((url) => {
+          const sources = linkedFromFor(url);
+          return sources.filter((source) => auditedUrls.has(source)).length === 0;
+        })
+      : null;
 
   const duplicatesFrom = (map: Map<string, string[]>): { value: string; urls: string[] }[] =>
     [...map.entries()]
@@ -217,8 +308,14 @@ export function buildSiteSummary(session: SiteSession, pages: SitePageRecord[]):
       description: entry.value,
       urls: entry.urls,
     })),
+    missingTitle,
+    missingDescription,
     missingCanonical,
     noindexPages,
+    brokenLinkCandidates,
+    orphanPages,
+    scoreDistribution,
+    errorDistribution,
     internalLinks,
     externalLinks,
     incomplete,
@@ -239,4 +336,16 @@ export function buildSiteSummary(session: SiteSession, pages: SitePageRecord[]):
       };
     }),
   };
+}
+
+/** Normalize an internal link target for link-graph matching. */
+function normalizeDiscoveredLink(href: string): string | null {
+  try {
+    const parsed = new URL(href);
+    parsed.hash = '';
+    if (parsed.pathname !== '/') parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '/';
+    return parsed.href;
+  } catch {
+    return null;
+  }
 }

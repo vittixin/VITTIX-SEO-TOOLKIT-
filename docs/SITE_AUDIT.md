@@ -186,3 +186,25 @@ and equally affects any browser fetch. No proxying of any kind exists.
 - No collection of passwords, cookies, or authentication tokens.
 - No claims of background crawling until interruption/restart behavior is
   actually tested end-to-end.
+
+## Phase 4 hardening additions
+
+- **Per-fetch permission gate**: the origin grant is re-verified via
+  `browser.permissions.contains` before the robots fetch and before every
+  page fetch. Revocation mid-audit stops the crawl immediately and records
+  a durable `stopReason`; pending pages stay pending (recoverable after
+  re-grant).
+- **robots.txt redirects fail closed**: a robots fetch that redirects
+  off-origin blocks the audit instead of being treated as "no rules".
+- **Storage failures fail closed**: if crawl state cannot be persisted
+  (quota, interrupted transaction), the audit refuses to run unrecorded and
+  records the storage error. Counter/page-write failures during the loop
+  are warned and swallowed so one bad write cannot crash the run.
+- **Idempotent resume**: pages are processed at most once per session
+  (pending-on-disk check); the `seen` set is rebuilt from all existing
+  records on resume; progress counters continue from their persisted
+  values and stay accurate across restarts.
+- **Comparison gating**: site-vs-site comparison is only offered when both
+  sessions ran on the same rule-set version (`sessionRuleSetVersion` read
+  from audited page results; the version is stamped on the session at
+  start).

@@ -1,3 +1,4 @@
+import { browser } from 'wxt/browser';
 import { SITE_LIMITS, type SiteSession } from '@vittix/shared';
 import { analyzeSnapshot } from '@vittix/seo-core';
 import { checkCrawlableOrigin, isSameOriginUrl } from './guards';
@@ -20,6 +21,12 @@ export interface CrawlerOptions {
   onProgress?: () => void;
   /** Runner pacing override (tests use 0). */
   delay?: (ms: number) => Promise<void>;
+  /**
+   * Injectable origin-permission probe; defaults to
+   * browser.permissions.contains on the session origin. Runs before every
+   * fetch — a revoked permission cancels the audit (fail closed).
+   */
+  hasPermission?: (origin: string) => Promise<boolean>;
 }
 
 const EXTRACTOR_LIMITS = { headings: 300, images: 500, links: 500, textField: 300 };
@@ -30,27 +37,54 @@ const EXTRACTOR_LIMITS = { headings: 300, images: 500, links: 500, textField: 30
  * Safety properties (docs/SITE_AUDIT.md):
  *  - fetches ONLY URLs on the approved origin (re-checked per URL)
  *  - GET only, credentials omitted, no form submission
- *  - robots.txt (User-agent: *) honored; 5xx robots blocks the audit
+ *  - robots.txt (User-agent: *) honored; 5xx or cross-origin-redirect
+ *    robots fetches block the audit (fail closed)
+ *  - the origin permission is re-verified before every fetch; revocation
+ *    cancels the audit immediately
  *  - paced: bounded concurrency + minimum start interval (+ Crawl-delay)
  *  - hard page cap; same-origin redirects only are parsed
  *  - cancellation checked before every fetch and persisted in IndexedDB
  *
  * The loop lives in the calling page (dashboard): closing the tab pauses
- * the audit; state survives in IndexedDB for resume/discarding.
+ * the audit; state survives in IndexedDB for resume/discarding. Closing the
+ * dashboard NEVER continues the crawl in the background.
  */
 export async function runSiteAudit(sessionId: number, options: CrawlerOptions = {}): Promise<void> {
   const fetchImpl = options.fetchImpl ?? fetch.bind(globalThis);
   const onProgress = options.onProgress ?? (() => {});
+  const hasPermission =
+    options.hasPermission ??
+    (async (origin: string) => {
+      try {
+        return await browser.permissions.contains({ origins: [`${origin}/*`] });
+      } catch {
+        return false;
+      }
+    });
 
   const session = await getSiteSession(sessionId);
+  console.log('[dbg] session', sessionId, session?.status, 'conc', session?.concurrency);
   if (session === null || session.status !== 'running') return;
+
+  // --- origin permission gate (fail closed on revocation) ---------------------
+  if (!(await hasPermission(session.origin))) {
+    await updateSiteSession(sessionId, {
+      status: 'failed',
+      stopReason: `Permission for ${session.origin} is not granted — the audit was stopped before any request.`,
+      finishedAt: new Date().toISOString(),
+    });
+    onProgress();
+    return;
+  }
 
   // --- robots.txt gate ------------------------------------------------------
   const robots = await loadRobots(session, fetchImpl);
+  console.log('[dbg] robots', JSON.stringify(robots));
   if (robots.blocked) {
     await updateSiteSession(sessionId, {
       robotsStatus: 'blocked',
       status: 'failed',
+      ...(robots.blockReason !== undefined ? { stopReason: robots.blockReason } : {}),
       finishedAt: new Date().toISOString(),
     });
     onProgress();
@@ -72,28 +106,54 @@ export async function runSiteAudit(sessionId: number, options: CrawlerOptions = 
   if (queue.length === 0 && existing.length === 0) {
     const start = normalizeSiteUrl(session.origin);
     if (start !== null && isSameOriginUrl(start, session.origin)) {
+      try {
+        await addSitePages([{ sessionId, url: start, status: 'pending', depth: 0 }]);
+      } catch (error) {
+        // Without durable state there is no audit — fail closed instead of
+        // crawling unrecorded.
+        await failSession(
+          sessionId,
+          `Could not persist crawl state (${error instanceof Error ? error.message : String(error)}). The audit was stopped to avoid unrecorded crawling.`,
+        );
+        onProgress();
+        return;
+      }
       queue.push({ url: start, depth: 0 });
       seen.add(start);
-      await addSitePages([{ sessionId, url: start, status: 'pending', depth: 0 }]);
     }
   }
 
   // --- main loop ---------------------------------------------------------------
+  const workerContext: ProcessContext = {
+    fetchImpl,
+    runner,
+    seen,
+    queue,
+    onProgress,
+    hasPermission,
+    sessionId,
+  };
   const workers: Promise<void>[] = [];
   for (let i = 0; i < session.concurrency; i += 1) {
     workers.push(
       (async () => {
         for (;;) {
           const current = await takeNext(sessionId, queue);
+          console.log('[dbg] took', JSON.stringify(current));
           if (current === null) return; // queue drained
           if (await shouldStop(sessionId)) return;
-          await processUrl(sessionId, session, current, robots.policy, {
-            fetchImpl,
-            runner,
-            seen,
-            queue,
-            onProgress,
-          });
+          // Re-verify the origin permission before EVERY fetch (fail closed
+          // on revocation mid-audit).
+          if (!(await hasPermission(session.origin))) {
+            await failSession(
+              sessionId,
+              `Permission for ${session.origin} was revoked during the audit — crawling stopped immediately.`,
+            );
+            onProgress();
+            runner.stop();
+            return;
+          }
+          await processUrl(sessionId, session, current, robots.policy, workerContext);
         }
       })(),
     );
@@ -129,6 +189,7 @@ async function takeNext(
     // NOTE: the candidate stays in `seen` — it is known whether processed or
     // merely queued, so backlinks can never re-enqueue an already-seen URL.
     const session = await getSiteSession(sessionId);
+    console.log('[dbg] session', sessionId, session?.status, 'conc', session?.concurrency);
     if (session === null || session.stopRequested || session.status !== 'running') return null;
     const pages = await listSitePages(sessionId);
     if (pages.length >= session.maxPages) return null;
@@ -140,13 +201,19 @@ async function takeNext(
 
 async function shouldStop(sessionId: number): Promise<boolean> {
   const session = await getSiteSession(sessionId);
+  console.log('[dbg] session', sessionId, session?.status, 'conc', session?.concurrency);
   return session === null || session.stopRequested || session.status !== 'running';
 }
 
 async function loadRobots(
   session: SiteSession,
   fetchImpl: typeof fetch,
-): Promise<{ policy: RobotsPolicy; status: 'allowed' | 'unreachable'; blocked: boolean }> {
+): Promise<{
+  policy: RobotsPolicy;
+  status: 'allowed' | 'unreachable';
+  blocked: boolean;
+  blockReason?: string;
+}> {
   try {
     const robotsUrl = `${session.origin}/robots.txt`;
     const response = await fetchImpl(robotsUrl, {
@@ -154,6 +221,27 @@ async function loadRobots(
       credentials: 'omit',
       redirect: 'follow',
     });
+    // Fail closed: a robots.txt redirect that leaves the origin (or any
+    // non-http(s) final URL) is treated as a blocked audit, not as "no
+    // rules" — the fetched content is not trusted.
+    const finalUrl = response.url || robotsUrl;
+    try {
+      if (new URL(finalUrl).origin !== new URL(session.origin).origin) {
+        return {
+          policy: EMPTY_ROBOTS_POLICY,
+          status: 'allowed',
+          blocked: true,
+          blockReason: `robots.txt redirected off-origin (to ${finalUrl.slice(0, 120)}) — the audit was blocked for safety.`,
+        };
+      }
+    } catch {
+      return {
+        policy: EMPTY_ROBOTS_POLICY,
+        status: 'allowed',
+        blocked: true,
+        blockReason: 'robots.txt redirect target was not a valid URL — audit blocked.',
+      };
+    }
     if (response.status >= 500) {
       return { policy: EMPTY_ROBOTS_POLICY, status: 'allowed', blocked: true };
     }
@@ -174,6 +262,25 @@ interface ProcessContext {
   seen: Set<string>;
   queue: { url: string; depth: number }[];
   onProgress: () => void;
+  hasPermission: (origin: string) => Promise<boolean>;
+  sessionId: number;
+}
+
+/**
+ * Fail the whole session with a durable reason (permission revoked, etc.).
+ * Pending pages stay pending so the audit can resume after the cause is
+ * resolved (e.g. re-granting the permission).
+ */
+async function failSession(sessionId: number, reason: string): Promise<void> {
+  try {
+    await updateSiteSession(sessionId, {
+      status: 'failed',
+      stopReason: reason,
+      finishedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.warn('[vittix] failed to persist session failure', error);
+  }
 }
 
 async function processUrl(
@@ -264,11 +371,17 @@ async function processUrl(
         await enqueueDiscovered(sessionId, session, snapshot, finalUrl, nextDepth, context);
       }
     } catch (error) {
-      await updateSitePage(pageId, {
-        status: 'failed',
-        error: error instanceof Error ? error.message : String(error),
-      });
-      await bumpCounters(sessionId, 'failed');
+      // Storage failures during the failure path are swallowed (warned) so a
+      // broken IndexedDB never crashes the whole audit loop.
+      try {
+        await updateSitePage(pageId, {
+          status: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await bumpCounters(sessionId, 'failed');
+      } catch (storageError) {
+        console.warn('[vittix] could not persist page failure', storageError);
+      }
       onProgress();
     }
   });
@@ -306,14 +419,22 @@ async function enqueueDiscovered(
     candidates.push({ url: normalized, depth });
   }
   if (candidates.length > 0) {
-    await addSitePages(
-      candidates.map((candidate) => ({
-        sessionId,
-        url: candidate.url,
-        status: 'pending' as const,
-        depth: candidate.depth,
-      })),
-    );
+    try {
+      await addSitePages(
+        candidates.map((candidate) => ({
+          sessionId,
+          url: candidate.url,
+          status: 'pending' as const,
+          depth: candidate.depth,
+        })),
+      );
+    } catch (error) {
+      // Discovery persistence failures must not kill the audit loop; the
+      // URLs stay unseen only until the next successful write.
+      console.warn('[vittix] could not persist discovered URLs', error);
+      for (const candidate of candidates) context.seen.delete(candidate.url);
+      return;
+    }
     context.queue.push(...candidates);
     context.onProgress();
   }
@@ -325,13 +446,18 @@ interface NewPageCandidate {
 }
 
 async function bumpCounters(sessionId: number, kind: 'done' | 'failed' | 'skipped'): Promise<void> {
-  const session = await getSiteSession(sessionId);
-  if (session === null) return;
-  const changes: Partial<SiteSession> =
-    kind === 'done'
-      ? { pagesDone: session.pagesDone + 1 }
-      : kind === 'failed'
-        ? { pagesFailed: session.pagesFailed + 1 }
-        : { pagesSkipped: session.pagesSkipped + 1 };
-  await updateSiteSession(sessionId, changes);
+  try {
+    const session = await getSiteSession(sessionId);
+    console.log('[dbg] session', sessionId, session?.status, 'conc', session?.concurrency);
+    if (session === null) return;
+    const changes: Partial<SiteSession> =
+      kind === 'done'
+        ? { pagesDone: session.pagesDone + 1 }
+        : kind === 'failed'
+          ? { pagesFailed: session.pagesFailed + 1 }
+          : { pagesSkipped: session.pagesSkipped + 1 };
+    await updateSiteSession(sessionId, changes);
+  } catch (error) {
+    console.warn('[vittix] could not persist progress counters', error);
+  }
 }

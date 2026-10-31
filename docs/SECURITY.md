@@ -52,3 +52,18 @@ extension makes no network requests of any kind.
 
 Security issues can be reported via GitHub security advisories in the
 repository. Please do not open public issues for vulnerabilities.
+
+## Phase 4 additions
+
+- **CSV formula injection**: spreadsheet exports (`findingsToCsv`,
+  `historyToCsv`, `sitePagesToCsv`) prefix a single quote before any field
+  whose first character could start a formula (`=`, `+`, `-`, `@`, tab,
+  CR) per OWASP guidance; RFC 4180 quoting is unchanged.
+- **URL credentials rejected**: audit targets containing `user:pass@host`
+  are refused (fail closed) so embedded credentials can never leak into
+  fetches, logs or exports.
+- **Site-mode permission re-verification**: the site-audit crawler re-checks
+  `browser.permissions.contains` before every request; revocation cancels
+  the audit immediately (see [SITE_AUDIT.md](SITE_AUDIT.md)).
+- **robots.txt redirects**: cross-origin robots redirects block the audit
+  (fail closed) instead of being trusted.

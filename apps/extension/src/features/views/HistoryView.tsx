@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Eye, History, Search, SearchX, Trash2 } from 'lucide-react';
+import { Eye, FileSpreadsheet, History, Search, SearchX, Trash2 } from 'lucide-react';
 import type { AuditSummary } from '@vittix/shared';
+import { historyToCsv } from '@vittix/seo-core';
 import { EmptyState } from '@/src/components/EmptyState';
 import { formatDate, scoreTone, truncateMiddle } from '@/src/lib/format';
 
@@ -50,20 +51,40 @@ export function HistoryView({
 
   return (
     <div className="space-y-3">
-      <div className="relative">
-        <Search
-          className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-slate-400"
-          aria-hidden
-        />
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search history by URL or page title…"
-          data-testid="history-search"
-          aria-label="Search audit history"
-          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 pl-8 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-        />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-56 flex-1">
+          <Search
+            className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-slate-400"
+            aria-hidden
+          />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search history by URL or page title…"
+            data-testid="history-search"
+            aria-label="Search audit history"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 pl-8 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          />
+        </div>
+        <button
+          type="button"
+          data-testid="history-export-csv"
+          onClick={() => {
+            const blob = new Blob([historyToCsv(summaries)], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = 'vittix-history-summary.csv';
+            document.body.append(anchor);
+            anchor.click();
+            anchor.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1_000);
+          }}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+        >
+          <FileSpreadsheet className="size-3.5" aria-hidden /> History CSV
+        </button>
       </div>
 
       {filtered.length === 0 ? (

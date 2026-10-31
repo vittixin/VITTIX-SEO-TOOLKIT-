@@ -78,7 +78,25 @@ tab is open (no background crawling claim); stylesheet-driven hiding not
 detected in fetched HTML; robots parsing covers the `*` group only; resume
 behavior is implemented but not E2E-verified.
 
-## Phase 4 — Power features (proposed)
+## Phase 4 — Hardening & reporting (DONE, 2026-10-31)
+
+- **Crawler reliability**: per-fetch origin-permission gate (revocation
+  cancels immediately, fail closed), robots.txt cross-origin redirects
+  block the audit, storage failures fail closed with durable stop reasons,
+  idempotent resume with accurate persisted counters
+- **Security**: embedded-credential URL rejection, OWASP CSV
+  formula-injection guard on all spreadsheet exports
+- **Site reporting**: missing title/description summaries, verified
+  broken-link candidates (crawl-failure × inbound-link intersection),
+  evidence-gated orphan analysis (null = unchecked, never "none"),
+  score/error distributions, completeness indicators
+- **Exports**: history-summary CSV, site pages CSV, site-summary JSON,
+  version-gated site-audit comparison
+- **Dashboard**: permission status display, stop-reason alerts, comparison
+  explanations, distribution cards, DetailList subtitles clarifying
+  verified/candidate/unchecked semantics
+
+## Phase 5 — Power features (proposed)
 
 - Structured data depth: schema.org vocabulary validation, required-property
   checks (clearly scoped — syntax/structure-only today)
@@ -86,8 +104,8 @@ behavior is implemented but not E2E-verified.
 - Stylesheet-aware hidden-content detection; image lazy-loading signals
 - Performance & accessibility basics (Core Web Vitals pass, contrast quick
   checks) — local computation only
-- Site mode: verified interruption/resume, sitemap discovery, per-agent
-  robots handling; single-page history CSV; audit diffing across URLs
+- Site mode: E2E-verified interruption/resume, sitemap discovery, per-agent
+  robots handling; audit diffing across URLs
 - i18n groundwork (extension localization)
 
 ## `ai-core` — deferred, entry criteria

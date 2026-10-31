@@ -17,6 +17,7 @@ vi.mock('@/src/storage/site', (): unknown => {
   const sessions = new Map<number, SiteSession>();
   const pages = new Map<number, Record<string, unknown>>();
   let pageId = 1;
+  let failPageWrites = false;
   return {
     createSiteSession: async (session: Record<string, unknown>) => {
       const id = sessions.size + 1;
@@ -29,12 +30,14 @@ vi.mock('@/src/storage/site', (): unknown => {
     listSitePages: async (sessionId: number) =>
       [...pages.values()].filter((page) => page.sessionId === sessionId),
     addSitePages: async (records: Record<string, unknown>[]) => {
+      if (failPageWrites) throw new Error('QuotaExceededError');
       for (const record of records) {
         const id = pageId++;
         pages.set(id, { id, ...record });
       }
     },
     updateSitePage: async (id: number, changes: Record<string, unknown>) => {
+      if (failPageWrites) throw new Error('QuotaExceededError');
       pages.set(id, { ...pages.get(id), ...changes });
     },
     updateSiteSession: async (id: number, changes: Record<string, unknown>) => {
@@ -45,6 +48,9 @@ vi.mock('@/src/storage/site', (): unknown => {
     // test accessors
     __pages: pages,
     __sessions: sessions,
+    __setFailPageWrites: (value: boolean) => {
+      failPageWrites = value;
+    },
   };
 });
 
@@ -124,6 +130,10 @@ function htmlResponse(body: string, finalUrl?: string, status = 200): Response {
   } as unknown as Response;
 }
 
+function okRobots(): Response {
+  return new Response('User-agent: *\n', { status: 200 }) as unknown as Response;
+}
+
 function jsonResponse(status: number): Response {
   return {
     ok: status >= 200 && status < 300,
@@ -172,6 +182,7 @@ describe('runSiteAudit', () => {
     await runSiteAudit(sessionId, {
       fetchImpl: fetchImpl as unknown as typeof fetch,
       delay: async () => {},
+      hasPermission: async () => true,
     });
 
     const pages = await listSitePages(sessionId);
@@ -192,6 +203,7 @@ describe('runSiteAudit', () => {
     await runSiteAudit(sessionId, {
       fetchImpl: fetchImpl as unknown as typeof fetch,
       delay: async () => {},
+      hasPermission: async () => true,
     });
 
     const pages = await listSitePages(sessionId);
@@ -223,6 +235,7 @@ describe('runSiteAudit', () => {
     await runSiteAudit(sessionId, {
       fetchImpl: fetchImpl as unknown as typeof fetch,
       delay: async () => {},
+      hasPermission: async () => true,
     });
 
     const pages = await listSitePages(sessionId);
@@ -247,6 +260,7 @@ describe('runSiteAudit', () => {
     await runSiteAudit(sessionId, {
       fetchImpl: fetchImpl as unknown as typeof fetch,
       delay: async () => {},
+      hasPermission: async () => true,
     });
 
     const pages = await listSitePages(sessionId);
@@ -274,6 +288,7 @@ describe('runSiteAudit', () => {
     await runSiteAudit(sessionId, {
       fetchImpl: fetchImpl as unknown as typeof fetch,
       delay: async () => {},
+      hasPermission: async () => true,
     });
 
     const pages = await listSitePages(sessionId);
@@ -295,6 +310,7 @@ describe('runSiteAudit', () => {
     await runSiteAudit(sessionId, {
       fetchImpl: fetchImpl as unknown as typeof fetch,
       delay: async () => {},
+      hasPermission: async () => true,
     });
 
     const pages = await listSitePages(sessionId);
@@ -314,6 +330,7 @@ describe('runSiteAudit', () => {
     await runSiteAudit(sessionId, {
       fetchImpl: fetchImpl as unknown as typeof fetch,
       delay: async () => {},
+      hasPermission: async () => true,
     });
 
     const pages = await listSitePages(sessionId);
@@ -333,6 +350,7 @@ describe('runSiteAudit', () => {
     await runSiteAudit(sessionId, {
       fetchImpl: fetchImpl as unknown as typeof fetch,
       delay: async () => {},
+      hasPermission: async () => true,
     });
 
     expect(
@@ -353,6 +371,7 @@ describe('runSiteAudit', () => {
     await runSiteAudit(sessionId, {
       fetchImpl: fetchImpl as unknown as typeof fetch,
       delay: async () => {},
+      hasPermission: async () => true,
     });
 
     const pages = await listSitePages(sessionId);
@@ -364,5 +383,192 @@ describe('runSiteAudit', () => {
 
   it('respects SITE_LIMITS.maxPagesCap', () => {
     expect(SITE_LIMITS.maxPagesCap).toBe(50);
+  });
+});
+
+// --- Phase 4 hardening --------------------------------------------------------
+
+import { getSiteSession, __setFailPageWrites } from '@/src/storage/site';
+
+describe('Phase 4 — permission enforcement (fail closed)', () => {
+  it('fails the session before any request when the origin permission is missing', async () => {
+    const fetchImpl = vi.fn(() => Promise.resolve(htmlResponse('<p>x</p>')));
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl,
+      delay: async () => {},
+      hasPermission: async () => false,
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    const session = await getSiteSession(sessionId);
+    expect(session?.status).toBe('failed');
+    expect(session?.stopReason).toContain('not granted');
+    // Pending pages remain pending (recoverable after re-grant).
+    expect((await listSitePages(sessionId)).every((page) => page.status === 'pending')).toBe(true);
+  });
+
+  it('cancels immediately mid-audit when the permission is revoked', async () => {
+    let revoked = false;
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(okRobots());
+      if (url === `${ORIGIN}/`) {
+        revoked = true;
+        return Promise.resolve(htmlResponse('<a href="https://site.test/next">next</a>', url));
+      }
+      return Promise.resolve(htmlResponse('<p>should not be reached</p>', url));
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl,
+      delay: async () => {},
+      hasPermission: async () => !revoked,
+    });
+
+    const session = await getSiteSession(sessionId);
+    expect(session?.status).toBe('failed');
+    expect(session?.stopReason).toContain('revoked during the audit');
+    const fetchedUrls = fetchImpl.mock.calls.map(([input]) => String(input));
+    expect(fetchedUrls.some((url) => url === `${ORIGIN}/next`)).toBe(false);
+  });
+
+  it('probes the permission gate before robots and before every page', async () => {
+    let probes = 0;
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(okRobots());
+      if (url === `${ORIGIN}/`) {
+        return Promise.resolve(htmlResponse('<a href="https://site.test/a">a</a>', url));
+      }
+      return Promise.resolve(htmlResponse('<p>leaf</p>', url));
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl,
+      delay: async () => {},
+      hasPermission: async () => {
+        probes += 1;
+        return true;
+      },
+    });
+    // One gate before robots + one per processed page (root + /a).
+    expect(probes).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('Phase 4 — robots redirect fail-closed', () => {
+  it('blocks the audit when robots.txt redirects off-origin', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      if (String(input).endsWith('/robots.txt')) {
+        return Promise.resolve(htmlResponse('<p>evil</p>', 'https://evil.test/robots.txt', 200));
+      }
+      return Promise.resolve(htmlResponse('<p>x</p>'));
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+
+    const session = await getSiteSession(sessionId);
+    expect(session?.status).toBe('failed');
+    expect(session?.stopReason).toContain('off-origin');
+    const pageFetches = fetchImpl.mock.calls.filter(
+      ([input]) => !String(input).endsWith('/robots.txt'),
+    );
+    expect(pageFetches).toHaveLength(0);
+  });
+});
+
+describe('Phase 4 — storage failures', () => {
+  it('fails closed with a durable reason when crawl state cannot be persisted', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(okRobots());
+      return Promise.resolve(htmlResponse('<p>content</p>', url));
+    });
+    const sessionId = await seedSession();
+    __setFailPageWrites(true);
+    await runSiteAudit(sessionId, {
+      fetchImpl,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+    __setFailPageWrites(false);
+
+    const session = await getSiteSession(sessionId);
+    // A broken store means unrecorded crawling — the audit refuses to run
+    // and records why. Nothing was fetched.
+    expect(session?.status).toBe('failed');
+    expect(session?.stopReason).toContain('persist crawl state');
+    const pageFetches = fetchImpl.mock.calls.filter(
+      ([input]) => !String(input).endsWith('/robots.txt'),
+    );
+    expect(pageFetches).toHaveLength(0);
+  });
+});
+
+describe('Phase 4 — idempotent resume and accurate counters', () => {
+  it('does not refetch completed pages on resume and keeps counters accurate', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(okRobots());
+      if (url === `${ORIGIN}/done`) {
+        return Promise.resolve(htmlResponse('<a href="https://site.test/pending">p</a>', url));
+      }
+      return Promise.resolve(htmlResponse('<p>fresh</p>', url));
+    });
+    const sessionId = await seedSession();
+    // Simulate a paused audit: one page already analyzed, one still pending.
+    const { addSitePages } = await import('@/src/storage/site');
+    await addSitePages([
+      { sessionId, url: `${ORIGIN}/done`, status: 'ok', depth: 0 },
+      { sessionId, url: `${ORIGIN}/pending`, status: 'pending', depth: 1 },
+    ]);
+    await updateSiteSession(sessionId, { pagesDone: 1 });
+
+    await runSiteAudit(sessionId, {
+      fetchImpl,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+
+    // Only the pending page was fetched this run.
+    const fetchedPages = fetchImpl.mock.calls
+      .map(([input]) => String(input))
+      .filter((url) => !url.endsWith('/robots.txt'));
+    expect(fetchedPages).toEqual([`${ORIGIN}/pending`]);
+
+    const pages = await listSitePages(sessionId);
+    expect(pages).toHaveLength(2);
+    expect(pages.filter((page) => page.status === 'ok')).toHaveLength(2);
+
+    const session = await getSiteSession(sessionId);
+    // Counter continues from the pre-restart value — accurate after restart.
+    expect(session?.pagesDone).toBe(2);
+    expect(session?.status).toBe('completed');
+  });
+
+  it('stops issuing new fetches when cancellation lands mid-crawl', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(okRobots());
+      if (url === `${ORIGIN}/`) {
+        void updateSiteSession(sessionId, { stopRequested: true });
+        return Promise.resolve(htmlResponse('<a href="https://site.test/next">n</a>', url));
+      }
+      return Promise.resolve(htmlResponse('<p>never</p>', url));
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+
+    const fetchedUrls = fetchImpl.mock.calls.map(([input]) => String(input));
+    expect(fetchedUrls.some((url) => url === `${ORIGIN}/next`)).toBe(false);
+    expect((await getSiteSession(sessionId))?.status).toBe('cancelled');
   });
 });

@@ -10,7 +10,7 @@
 
 ## Unit tests (Vitest 5)
 
-186 tests covering:
+207 tests covering:
 
 - **shared**: snapshot schema v3 accept/reject paths (schema versions 1/2/3
   incl. legacy readability, caps, invalid tags, null-vs-empty alt, omitted/
@@ -24,17 +24,23 @@
   incl. invalid JSON, @graph, @context/@type structure), scoring math
   (penalties, floors, weights, labels, info-not-penalized, per-ruleId dedup,
   determinism, REGRESSION cases), truncation detection, CSV escaping
-  (RFC 4180) and JSON round-trip
+  (RFC 4180 + OWASP formula-injection guard), history-summary CSV, site
+  pages CSV and JSON round-trip
 - **extension**: URL guard accept/reject matrix (chrome://, extension pages,
-  file://, view-source, …), stored-record migration/compatibility tests
-  (v1/v2 records accept v3 defaults, future versions rejected, malformed
-  rows skipped, truncated rows flagged), AND the site-audit security suite:
-  SSRF/private-network origin boundary (loopback, link-local, private
-  ranges, IPv4/IPv6 literals, `.local`/`.internal`), URL normalization and
-  dedup, robots.txt parsing (longest-match, Allow-wins-ties, Crawl-delay,
-  comments), paced-runner concurrency/stop, and crawler behavior with
-  mocked fetch/storage (robots block/disallow, cross-origin redirects,
-  non-HTML, auth failures, page caps, cancellation, network errors)
+  file://, view-source, embedded user:pass credentials), stored-record
+  migration/compatibility tests (v1/v2 records accept v3 defaults, future
+  versions rejected, malformed rows skipped, truncated rows flagged), AND
+  the site-audit security suite: SSRF/private-network origin boundary
+  (loopback, link-local, private ranges, IPv4/IPv6 literals,
+  `.local`/`.internal`), URL normalization and dedup, robots.txt parsing
+  (longest-match, Allow-wins-ties, Crawl-delay, comments), paced-runner
+  concurrency/stop, and crawler behavior with mocked fetch/storage (robots
+  block/disallow/off-origin-redirect, cross-origin redirects, non-HTML,
+  auth failures, page caps, cancellation, network errors, permission
+  revocation before and mid-audit, storage-failure fail-closed, idempotent
+  resume with accurate counters) plus site-summary reporting tests
+  (missing fields, verified broken-link candidates, evidence-gated orphan
+  analysis, score/error distributions, incomplete markers)
 
 Run: `pnpm test` · Watch: `pnpm test:watch`
 

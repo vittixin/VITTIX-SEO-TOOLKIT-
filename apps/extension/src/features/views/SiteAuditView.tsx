@@ -169,6 +169,14 @@ export function SiteAuditView() {
                   {site.session.robotsStatus === 'blocked'
                     ? ' · blocked by robots.txt fetch failure'
                     : ''}
+                  {' · '}
+                  <span data-testid="site-permission-status">
+                    {site.permissionGranted === null
+                      ? 'permission unknown'
+                      : site.permissionGranted
+                        ? 'origin permission granted'
+                        : 'origin permission REVOKED'}
+                  </span>
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -234,6 +242,45 @@ export function SiteAuditView() {
                 </p>
               ) : null}
             </div>
+
+            {site.session.stopReason !== null ? (
+              <div
+                data-testid="site-stop-reason"
+                role="alert"
+                className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800"
+              >
+                <strong>Audit stopped:</strong> {site.session.stopReason}
+                {site.summary !== null && site.summary.pendingPages > 0
+                  ? ' Pending pages were left untouched and can be retried after the cause is resolved.'
+                  : ''}
+              </div>
+            ) : null}
+            {site.comparison !== null ? (
+              <div
+                data-testid="site-comparison"
+                className={`mt-3 rounded-lg border px-3 py-2 text-xs leading-relaxed ${
+                  site.comparison.comparable
+                    ? 'border-slate-200 bg-slate-50 text-slate-600'
+                    : 'border-amber-200 bg-amber-50 text-amber-800'
+                }`}
+              >
+                <strong>Compared with previous audit of this origin:</strong>{' '}
+                {site.comparison.reason}{' '}
+                {site.comparison.comparable ? (
+                  <span className="tabular-nums">
+                    Pages {site.comparison.before.auditedPages}→{site.comparison.after.auditedPages}{' '}
+                    ({site.comparison.deltas.auditedPages >= 0 ? '+' : ''}
+                    {site.comparison.deltas.auditedPages}) · Errors{' '}
+                    {site.comparison.before.totalErrors}→{site.comparison.after.totalErrors} (
+                    {site.comparison.deltas.totalErrors >= 0 ? '+' : ''}
+                    {site.comparison.deltas.totalErrors}) · Warnings{' '}
+                    {site.comparison.before.totalWarnings}→{site.comparison.after.totalWarnings} (
+                    {site.comparison.deltas.totalWarnings >= 0 ? '+' : ''}
+                    {site.comparison.deltas.totalWarnings})
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </section>
 
           {/* Site summary */}
@@ -391,16 +438,21 @@ function PageRow({ page }: { page: SitePageRecord }) {
 
 function SiteSummaryPanel({ summary }: { summary: ReturnType<typeof useSiteAudit>['summary'] }) {
   if (summary === null) return null;
+  const completeness =
+    summary.pendingPages > 0
+      ? 'Incomplete audit — pages are still pending; figures cover completed fetches only.'
+      : summary.incomplete
+        ? 'Incomplete audit — some pages were truncated at extraction caps. Figures may undercount.'
+        : null;
   return (
     <section
       className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
       data-testid="site-summary"
     >
       <h3 className="text-sm font-semibold text-slate-900">Site summary</h3>
-      {summary.incomplete ? (
+      {completeness !== null ? (
         <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Incomplete audit — some pages were truncated at extraction caps or are still pending.
-          Figures may undercount.
+          {completeness}
         </p>
       ) : null}
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -409,6 +461,40 @@ function SiteSummaryPanel({ summary }: { summary: ReturnType<typeof useSiteAudit
         <Stat label="Warnings" value={summary.totalWarnings} tone="amber" />
         <Stat label="Failed / skipped" value={`${summary.failedPages}/${summary.skippedPages}`} />
       </div>
+
+      {/* Distributions */}
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div className="rounded-lg border border-slate-200 p-3">
+          <p className="text-xs font-semibold text-slate-700">Score distribution (preliminary)</p>
+          <div className="mt-2 flex gap-2 text-center text-xs">
+            <DistributionCell label="Poor" value={summary.scoreDistribution.poor} tone="rose" />
+            <DistributionCell
+              label="Needs work"
+              value={summary.scoreDistribution.needsWork}
+              tone="amber"
+            />
+            <DistributionCell label="Good" value={summary.scoreDistribution.good} tone="sky" />
+            <DistributionCell
+              label="Excellent"
+              value={summary.scoreDistribution.excellent}
+              tone="emerald"
+            />
+          </div>
+        </div>
+        <div className="rounded-lg border border-slate-200 p-3">
+          <p className="text-xs font-semibold text-slate-700">Pages by error count</p>
+          <div className="mt-2 flex gap-2 text-center text-xs">
+            <DistributionCell
+              label="0 errors"
+              value={summary.errorDistribution.clean}
+              tone="emerald"
+            />
+            <DistributionCell label="1–2" value={summary.errorDistribution.some} tone="amber" />
+            <DistributionCell label="3+" value={summary.errorDistribution.many} tone="rose" />
+          </div>
+        </div>
+      </div>
+
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <DetailList
           title={`Duplicate titles (${summary.duplicateTitles.length})`}
@@ -427,6 +513,14 @@ function SiteSummaryPanel({ summary }: { summary: ReturnType<typeof useSiteAudit
           }))}
         />
         <DetailList
+          title={`Missing title (${summary.missingTitle.length})`}
+          entries={summary.missingTitle.map((url) => ({ key: url, label: url, detail: '' }))}
+        />
+        <DetailList
+          title={`Missing meta description (${summary.missingDescription.length})`}
+          entries={summary.missingDescription.map((url) => ({ key: url, label: url, detail: '' }))}
+        />
+        <DetailList
           title={`Missing canonical (${summary.missingCanonical.length})`}
           entries={summary.missingCanonical.map((url) => ({ key: url, label: url, detail: '' }))}
         />
@@ -434,13 +528,59 @@ function SiteSummaryPanel({ summary }: { summary: ReturnType<typeof useSiteAudit
           title={`Indexability warnings — noindex (${summary.noindexPages.length})`}
           entries={summary.noindexPages.map((url) => ({ key: url, label: url, detail: '' }))}
         />
+        <DetailList
+          title={`Broken-link candidates (${summary.brokenLinkCandidates.length})`}
+          subtitle="Verified: this crawl failed to fetch them with an HTTP error, and an audited page links there."
+          entries={summary.brokenLinkCandidates.map((candidate) => ({
+            key: candidate.url,
+            label: candidate.url,
+            detail: `HTTP ${candidate.httpStatus ?? '?'} · linked from ${candidate.linkedFrom.length} page${candidate.linkedFrom.length === 1 ? '' : 's'}`,
+          }))}
+        />
+        <DetailList
+          title={
+            summary.orphanPages === null
+              ? 'Orphan pages (not enough evidence)'
+              : `Orphan pages (${summary.orphanPages.length})`
+          }
+          subtitle={
+            summary.orphanPages === null
+              ? 'Orphan analysis needs at least 3 audited pages with link evidence — unchecked here, not "none".'
+              : 'Audited pages that no other audited page links to internally.'
+          }
+          entries={(summary.orphanPages ?? []).map((url) => ({ key: url, label: url, detail: '' }))}
+        />
       </div>
       <p className="mt-3 text-xs text-slate-400">
         Internal links: {summary.internalLinks} · External links: {summary.externalLinks} · Findings
         are grounded only in the {summary.auditedPages} page
-        {summary.auditedPages === 1 ? '' : 's'} actually inspected.
+        {summary.auditedPages === 1 ? '' : 's'} actually inspected; failed and skipped URLs are
+        listed but contribute no findings.
       </p>
     </section>
+  );
+}
+
+function DistributionCell({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: 'rose' | 'amber' | 'sky' | 'emerald';
+}) {
+  const tones: Record<string, string> = {
+    rose: 'bg-rose-50 text-rose-700',
+    amber: 'bg-amber-50 text-amber-700',
+    sky: 'bg-sky-50 text-sky-700',
+    emerald: 'bg-emerald-50 text-emerald-700',
+  };
+  return (
+    <div className={`flex-1 rounded-md px-2 py-1.5 ${tones[tone]}`}>
+      <div className="text-sm font-bold tabular-nums">{value}</div>
+      <div>{label}</div>
+    </div>
   );
 }
 
@@ -468,14 +608,19 @@ function Stat({
 
 function DetailList({
   title,
+  subtitle,
   entries,
 }: {
   title: string;
+  subtitle?: string;
   entries: { key: string; label: string; detail: string }[];
 }) {
   return (
     <div className="rounded-lg border border-slate-200 p-3">
       <p className="text-xs font-semibold text-slate-700">{title}</p>
+      {subtitle !== undefined ? (
+        <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">{subtitle}</p>
+      ) : null}
       {entries.length === 0 ? (
         <p className="mt-1 text-xs text-slate-400">None found.</p>
       ) : (

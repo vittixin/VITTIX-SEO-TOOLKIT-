@@ -39,6 +39,10 @@ export const SiteSessionSchema = z.object({
   pagesFailed: z.number().int().nonnegative().default(0),
   pagesSkipped: z.number().int().nonnegative().default(0),
   stopRequested: z.boolean().default(false),
+  /** Rule set in effect when the session started (comparison gate). */
+  ruleSetVersion: z.string().optional(),
+  /** Why the session stopped abnormally (permission revoked, robots blocked…). */
+  stopReason: z.string().nullable().default(null),
 });
 export type SiteSession = z.infer<typeof SiteSessionSchema>;
 /** Input shape: fields with schema defaults may be omitted on write. */

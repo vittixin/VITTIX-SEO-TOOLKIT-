@@ -67,6 +67,16 @@ export function checkCrawlableOrigin(input: string): OriginCheckResult {
     };
   }
 
+  // Fail closed on embedded credentials (https://user:pass@host/): they are
+  // never legitimate for an audit target and could smuggle secrets into
+  // logs or redirects.
+  if (parsed.username !== '' || parsed.password !== '') {
+    return {
+      allowed: false,
+      reason: 'URLs with embedded credentials (user:pass@host) cannot be audited.',
+    };
+  }
+
   const host = parsed.hostname;
   if (host === '') {
     return { allowed: false, reason: 'URL has no host.' };

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { browser } from 'wxt/browser';
 import { SITE_LIMITS, type SitePageRecord, type SiteSession } from '@vittix/shared';
+import { RULE_SET_VERSION, compareSiteSessions, type SiteComparison } from '@vittix/seo-core';
 import { checkCrawlableOrigin } from '@/src/site/guards';
 import { runSiteAudit } from '@/src/site/crawler';
 import {
@@ -8,6 +9,7 @@ import {
   clearAllSiteData,
   createSiteSession,
   getLatestSiteSession,
+  getPreviousSiteSession,
   listSitePages,
   type SiteSummary,
   updateSiteSession,
@@ -28,24 +30,64 @@ export function useSiteAudit() {
   const [originInput, setOriginInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [grantedOrigin, setGrantedOrigin] = useState<string | null>(null);
+  const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
   const [consented, setConsented] = useState(false);
   const [maxPages, setMaxPages] = useState<number>(SITE_LIMITS.maxPagesDefault);
   const [session, setSession] = useState<SiteSession | null>(null);
   const [pages, setPages] = useState<SitePageRecord[]>([]);
   const [summary, setSummary] = useState<SiteSummary | null>(null);
+  const [comparison, setComparison] = useState<SiteComparison | null>(null);
   const [urlFilter, setUrlFilter] = useState('');
   const runTokenRef = useRef(0);
+
+  const checkPermission = useCallback(async (origin: string | null): Promise<boolean | null> => {
+    if (origin === null) return null;
+    try {
+      return await browser.permissions.contains({ origins: [`${origin}/*`] });
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const applySession = useCallback(
+    async (loaded: SiteSession | null) => {
+      if (loaded === null || loaded.id === undefined) {
+        setSession(null);
+        setPages([]);
+        setSummary(null);
+        setComparison(null);
+        return;
+      }
+      const loadedPages = await listSitePages(loaded.id);
+      setSession(loaded);
+      setPages(loadedPages);
+      setSummary(buildSiteSummary(loaded, loadedPages));
+      setPermissionGranted(await checkPermission(loaded.origin));
+      // Comparison with the previous completed session of the same origin —
+      // only meaningful when both ran on the same rule-set version.
+      const previous = await getPreviousSiteSession(loaded.origin, loaded.id);
+      if (previous !== null && previous.id !== undefined) {
+        const previousPages = await listSitePages(previous.id);
+        setComparison(
+          compareSiteSessions(
+            { session: previous, pages: previousPages },
+            { session: loaded, pages: loadedPages },
+          ),
+        );
+      } else {
+        setComparison(null);
+      }
+    },
+    [checkPermission],
+  );
 
   // Load the latest session on mount (resume affordance).
   useEffect(() => {
     void (async () => {
       const latest = await getLatestSiteSession();
       if (latest !== null) {
-        setSession(latest);
         setGrantedOrigin(latest.origin);
-        const latestPages = await listSitePages(latest.id ?? -1);
-        setPages(latestPages);
-        setSummary(buildSiteSummary(latest, latestPages));
+        await applySession(latest);
         if (latest.status === 'running') {
           setPhase('finished'); // paused state — user can resume or discard
         } else {
@@ -55,7 +97,7 @@ export function useSiteAudit() {
       const settings = await loadSettings();
       setMaxPages(settings.siteAuditMaxPages);
     })();
-  }, []);
+  }, [applySession]);
 
   const refresh = useCallback(async (sessionId: number) => {
     const { getSiteSession } = await import('@/src/storage/site');
@@ -99,6 +141,7 @@ export function useSiteAudit() {
       return false;
     }
     setGrantedOrigin(normalized);
+    setPermissionGranted(true);
     setConsented(false);
     setPhase('setup');
     return true;
@@ -116,20 +159,24 @@ export function useSiteAudit() {
       maxDepth: SITE_LIMITS.maxDepth,
       concurrency: SITE_LIMITS.concurrencyDefault,
       delayMs: Math.max(settings.siteAuditDelayMs, SITE_LIMITS.delayMsFloor),
+      ruleSetVersion: RULE_SET_VERSION,
     });
     setPhase('running');
     setSession(await getLatestSiteSession());
     setPages([]);
     setSummary(null);
+    setComparison(null);
 
     const token = ++runTokenRef.current;
     void runSiteAudit(sessionId, {
       onProgress: () => {
         if (runTokenRef.current === token) void refresh(sessionId);
       },
-    }).then(() => {
+    }).then(async () => {
       if (runTokenRef.current === token) {
-        void refresh(sessionId).then(() => setPhase('finished'));
+        await refresh(sessionId);
+        await applySession((await getLatestSiteSession()) ?? null);
+        setPhase('finished');
       }
     });
   }
@@ -146,6 +193,7 @@ export function useSiteAudit() {
     setSession(null);
     setPages([]);
     setSummary(null);
+    setComparison(null);
     setPhase('setup');
   }
 
@@ -155,6 +203,8 @@ export function useSiteAudit() {
     setSession(null);
     setPages([]);
     setSummary(null);
+    setComparison(null);
+    setPermissionGranted(await checkPermission(grantedOrigin));
     setPhase('setup');
   }
 
@@ -169,6 +219,7 @@ export function useSiteAudit() {
     setOriginInput,
     error,
     grantedOrigin,
+    permissionGranted,
     consented,
     setConsented,
     maxPages,
@@ -177,6 +228,7 @@ export function useSiteAudit() {
     pages,
     filteredPages,
     summary,
+    comparison,
     urlFilter,
     setUrlFilter,
     validateInput,

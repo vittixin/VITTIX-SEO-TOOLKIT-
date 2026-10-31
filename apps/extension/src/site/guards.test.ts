@@ -82,3 +82,21 @@ describe('isSameOriginUrl', () => {
     expect(isSameOriginUrl('::bad::', 'https://example.com')).toBe(false);
   });
 });
+
+describe('checkCrawlableOrigin — URL credentials (Phase 4, fail closed)', () => {
+  it('rejects URLs with embedded user:pass credentials', () => {
+    for (const url of [
+      'https://user:pass@example.com/',
+      'https://admin@example.com/',
+      'https://user:pass@localhost/',
+    ]) {
+      const result = checkCrawlableOrigin(url);
+      expect(result.allowed, url).toBe(false);
+      if (!result.allowed) expect(result.reason).toContain('credentials');
+    }
+  });
+
+  it('still accepts ordinary https URLs after the credentials check', () => {
+    expect(checkCrawlableOrigin('https://example.com/').allowed).toBe(true);
+  });
+});

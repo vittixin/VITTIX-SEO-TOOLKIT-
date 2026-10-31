@@ -70,3 +70,27 @@ an export button. What you do with those files is entirely up to you.
 
 See [SECURITY.md](SECURITY.md) for the enforcement side (CI manifest checks,
 CSP, no remote code).
+
+## Release-candidate verification (Phase 6)
+
+Verified against the final production build (`pnpm build:chrome`, 2026-10-31):
+
+- **Stored page content** (site + single-page mode): title, head metadata,
+  headings, image src/alt, link href/text/rel, hreflang, JSON-LD blocks and
+  a body-text sample for word counting — bounded by the caps documented in
+  SEO_RULES.md, stored locally in IndexedDB, never transmitted.
+- **Single-page mode network scan**: the only network-capable API in the
+  bundle is inside React DOM's internal `<link rel="preload">` helper,
+  which the extension never renders — zero requests are made. (Strings
+  like `tinyurl.com`/`bit.ly` in the bundle are Dexie/React error-message
+  documentation links, never fetched.)
+- **Site-mode requests**: only `GET <approved-origin>/…` and
+  `GET <approved-origin>/robots.txt`, credentials omitted; enforced by the
+  per-fetch origin gate and verified by unit + E2E tests.
+- **Permissions**: install-time grants remain exactly `activeTab` +
+  `scripting` (CI-verified); `optional_host_permissions` is a grant
+  catalog — one exact origin per user approval, revocable, re-verified
+  before every site-mode request.
+- **Private-network & credential protections**: https-only public origins,
+  loopback/link-local/private ranges and IP literals rejected,
+  `user:pass@host` URLs rejected — see docs/SITE_AUDIT.md.

@@ -87,3 +87,81 @@ test('site audit: consent → crawl → summary → export', async () => {
     await context.close();
   }
 });
+
+/**
+ * RC robustness: the crawler must survive malformed HTML, oversized pages
+ * (bodies beyond the 2 MB parse cap) and non-HTML content types without
+ * crashing, and Clear site-audit data must leave the databases empty.
+ */
+test('site audit robustness: oversized, malformed and non-HTML pages + clear-data persistence', async () => {
+  test.setTimeout(120_000);
+  const { context, extensionId } = await loadExtension('e2e', [
+    '--use-fake-ui-for-permission-flow',
+  ]);
+  try {
+    const hugeBody = '<p>x</p>'.repeat(600_000); // ~3.6 MB, above the 2 MB cap
+    await context.route('https://fixture.test/**', (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/robots.txt') {
+        return route.fulfill({ contentType: 'text/plain', body: 'User-agent: *\n' });
+      }
+      if (url.pathname === '/huge') {
+        return route.fulfill({ contentType: 'text/html', body: hugeBody });
+      }
+      if (url.pathname === '/malformed') {
+        return route.fulfill({
+          contentType: 'text/html',
+          body: '<html><head><title>Broken <b>Unclosed</head><body><p>>>><a href=/x>partial',
+        });
+      }
+      if (url.pathname === '/binary') {
+        return route.fulfill({ contentType: 'application/octet-stream', body: 'MZZZ' });
+      }
+      return route.fulfill({
+        contentType: 'text/html',
+        body: '<!doctype html><html lang="en"><head><title>RC Home Fixture</title></head><body><h1>RC</h1><a href="https://fixture.test/huge">huge</a><a href="https://fixture.test/malformed">malformed</a><a href="https://fixture.test/binary">binary</a></body></html>',
+      });
+    });
+
+    const dashboard = await context.newPage();
+    await dashboard.goto(extensionPageUrl(extensionId, 'dashboard.html'));
+    await dashboard.getByTestId('nav-site').click();
+    await dashboard.getByTestId('site-origin-input').fill('https://fixture.test');
+    await dashboard.getByTestId('site-grant').click();
+    await expect(dashboard.getByTestId('site-consent')).toBeVisible({ timeout: 10_000 });
+    await dashboard.getByTestId('site-start').click();
+    await expect(dashboard.getByTestId('site-summary')).toBeVisible({ timeout: 60_000 });
+
+    // Every recorded page reached a terminal state; nothing crashed.
+    await expect(dashboard.locator('text=skipped-non-html').first()).toBeVisible();
+    await dashboard.getByTestId('site-url-filter').fill('fixture.test/huge');
+    await expect(dashboard.locator('text=ok').first()).toBeVisible();
+    await dashboard.getByTestId('site-url-filter').fill('fixture.test/malformed');
+    await expect(dashboard.locator('text=ok').first()).toBeVisible();
+
+    // Clear site-audit data → the databases are verifiably empty.
+    await dashboard.getByTestId('site-clear').click();
+    await dashboard.getByTestId('site-clear-confirm').click();
+    await expect(dashboard.getByTestId('site-origin-input')).toBeVisible({ timeout: 15_000 });
+    const dump = await dashboard.evaluate(async () => {
+      const request = indexedDB.open('vittix-seo');
+      const database = await new Promise((resolve, onerror) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => onerror(request.error);
+      });
+      const out: Record<string, number> = {};
+      for (const name of ['siteAudits', 'sitePages'] as const) {
+        out[name] = await new Promise((resolve) => {
+          const read = database.transaction(name).objectStore(name).count();
+          read.onsuccess = () => resolve(read.result);
+        });
+      }
+      database.close();
+      return out;
+    });
+    expect(dump.siteAudits).toBe(0);
+    expect(dump.sitePages).toBe(0);
+  } finally {
+    await context.close();
+  }
+});

@@ -333,7 +333,7 @@ async function processUrl(
       const path = new URL(target.url).pathname + (new URL(target.url).search || '');
       if (!robots.allows(path)) {
         await updateSitePage(pageId, { status: 'skipped-robots' });
-        await bumpCounters(sessionId, 'skipped');
+        await syncCounters(sessionId);
         onProgress();
         return;
       }
@@ -351,7 +351,7 @@ async function processUrl(
           finalUrl,
           httpStatus: response.status,
         });
-        await bumpCounters(sessionId, 'skipped');
+        await syncCounters(sessionId);
         onProgress();
         return;
       }
@@ -363,7 +363,7 @@ async function processUrl(
           finalUrl,
           httpStatus: response.status,
         });
-        await bumpCounters(sessionId, 'skipped');
+        await syncCounters(sessionId);
         onProgress();
         return;
       }
@@ -376,7 +376,7 @@ async function processUrl(
           httpStatus: response.status,
           error: `HTTP ${response.status}`,
         });
-        await bumpCounters(sessionId, 'failed');
+        await syncCounters(sessionId);
         onProgress();
         return;
       }
@@ -393,7 +393,7 @@ async function processUrl(
         snapshot,
         result,
       });
-      await bumpCounters(sessionId, 'done');
+      await syncCounters(sessionId);
       onProgress();
 
       // --- discovery ---------------------------------------------------------
@@ -409,7 +409,7 @@ async function processUrl(
           status: 'failed',
           error: error instanceof Error ? error.message : String(error),
         });
-        await bumpCounters(sessionId, 'failed');
+        await syncCounters(sessionId);
       } catch (storageError) {
         console.warn('[vittix] could not persist page failure', storageError);
       }
@@ -460,11 +460,31 @@ async function enqueueDiscovered(
         })),
       );
     } catch (error) {
-      // Discovery persistence failures must not kill the audit loop; the
-      // URLs stay unseen only until the next successful write.
-      console.warn('[vittix] could not persist discovered URLs', error);
-      for (const candidate of candidates) context.seen.delete(candidate.url);
-      return;
+      // INVARIANT: failed discovery writes must not permanently lose URLs.
+      // The source page is already marked 'ok' and will never be re-crawled
+      // in this session, so silently dropping these candidates would lose
+      // them forever. Retry once; if persistence is still broken, fail the
+      // session with a durable reason so the operator knows the audit is
+      // incomplete and can resume/re-run after fixing storage.
+      console.warn('[vittix] could not persist discovered URLs — retrying once', error);
+      try {
+        await addSitePages(
+          candidates.map((candidate) => ({
+            sessionId,
+            url: candidate.url,
+            status: 'pending' as const,
+            depth: candidate.depth,
+          })),
+        );
+      } catch (retryError) {
+        await failSession(
+          sessionId,
+          `Could not persist discovered URLs (${retryError instanceof Error ? retryError.message : String(retryError)}) — the audit stopped so no pages are silently lost.`,
+        );
+        context.onProgress();
+        context.runner.stop();
+        return;
+      }
     }
     context.queue.push(...candidates);
     context.onProgress();
@@ -476,17 +496,27 @@ interface NewPageCandidate {
   depth: number;
 }
 
-async function bumpCounters(sessionId: number, kind: 'done' | 'failed' | 'skipped'): Promise<void> {
+/**
+ * INVARIANT: counter values must agree with persisted page records.
+ *
+ * Instead of independently incrementing counters (which drift the moment a
+ * counter write fails while a page write succeeds), counters are DERIVED
+ * from the page records and persisted in one write. If this write fails it
+ * is only advisory — the dashboard summary recomputes the same numbers from
+ * the records, so the UI never disagrees with durable state.
+ *
+ * Called after every terminal page-status write.
+ */
+async function syncCounters(sessionId: number): Promise<void> {
   try {
+    const pages = await listSitePages(sessionId);
     const session = await getSiteSession(sessionId);
     if (session === null) return;
-    const changes: Partial<SiteSession> =
-      kind === 'done'
-        ? { pagesDone: session.pagesDone + 1 }
-        : kind === 'failed'
-          ? { pagesFailed: session.pagesFailed + 1 }
-          : { pagesSkipped: session.pagesSkipped + 1 };
-    await updateSiteSession(sessionId, changes);
+    await updateSiteSession(sessionId, {
+      pagesDone: pages.filter((page) => page.status === 'ok').length,
+      pagesFailed: pages.filter((page) => page.status.startsWith('failed')).length,
+      pagesSkipped: pages.filter((page) => page.status.startsWith('skipped')).length,
+    });
   } catch (error) {
     console.warn('[vittix] could not persist progress counters', error);
   }

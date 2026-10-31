@@ -597,14 +597,15 @@ describe('Phase 4 — idempotent resume and accurate counters', () => {
 
 // --- Phase 5 fault injection ---------------------------------------------------
 
-describe('Phase 5 — fault injection', () => {
-  async function flags() {
-    return import('@/src/storage/site') as Promise<{
-      __failNextSessionWrites: (count: number) => void;
-      __failNextPageWrites: (count: number) => void;
-    }>;
-  }
+/** Access the storage-mock fault-injection flags. */
+function flags() {
+  return import('@/src/storage/site') as Promise<{
+    __failNextSessionWrites: (count: number) => void;
+    __failNextPageWrites: (count: number) => void;
+  }>;
+}
 
+describe('Phase 5 — fault injection', () => {
   it('treats a robots-status write failure as RECOVERABLE (crawl continues)', async () => {
     const fetchImpl = vi.fn((input: string | URL) => {
       const url = String(input);
@@ -613,6 +614,7 @@ describe('Phase 5 — fault injection', () => {
     });
     const sessionId = await seedSession();
     // Abort ONLY the robots-status write (the first session write).
+
     (await flags()).__failNextSessionWrites(1);
     await runSiteAudit(sessionId, {
       fetchImpl,
@@ -686,6 +688,7 @@ describe('Phase 5 — fault injection', () => {
     const sessionId = await seedSession({ pagesDone: 0 });
     // Abort only the FIRST session write (robotsStatus bookkeeping —
     // RECOVERABLE); the page write and the counter write succeed.
+
     (await flags()).__failNextSessionWrites(1);
     await runSiteAudit(sessionId, {
       fetchImpl,
@@ -696,5 +699,120 @@ describe('Phase 5 — fault injection', () => {
     expect(session?.status).toBe('completed');
     expect(session?.pagesDone).toBe(1);
     expect((await listSitePages(sessionId))[0]?.status).toBe('ok');
+  });
+});
+
+// --- Phase 6 data-integrity invariants -----------------------------------------
+
+describe('Phase 6 — data-integrity invariants', () => {
+  it('INVARIANT 1: counters always converge to record-derived values', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(okRobots());
+      if (url === `${ORIGIN}/`) {
+        return Promise.resolve(
+          htmlResponse(
+            '<a href="https://site.test/a">a</a><a href="https://site.test/b">b</a>',
+            url,
+          ),
+        );
+      }
+      return Promise.resolve(htmlResponse('<p>leaf</p>', url));
+    });
+    const sessionId = await seedSession();
+    // Abort several counter syncs mid-run — derived counters SELF-HEAL on
+    // every subsequent page's sync.
+    (await flags()).__failNextSessionWrites(2);
+    await runSiteAudit(sessionId, {
+      fetchImpl,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+
+    const { getSiteSession } = await import('@/src/storage/site');
+    const session = await getSiteSession(sessionId);
+    const pages = await listSitePages(sessionId);
+    const derived = {
+      done: pages.filter((page) => page.status === 'ok').length,
+      failed: pages.filter((page) => page.status.startsWith('failed')).length,
+      skipped: pages.filter((page) => page.status.startsWith('skipped')).length,
+    };
+    expect(session?.pagesDone).toBe(derived.done);
+    expect(session?.pagesFailed).toBe(derived.failed);
+    expect(session?.pagesSkipped).toBe(derived.skipped);
+    expect(derived.done).toBe(3);
+  });
+
+  it('INVARIANT 2: a session never claims completion while pending pages remain', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      if (String(input).endsWith('/robots.txt')) return Promise.resolve(okRobots());
+      return Promise.resolve(htmlResponse('<p>x</p>'));
+    });
+    const sessionId = await seedSession({ maxPages: 5 });
+    const { addSitePages } = await import('@/src/storage/site');
+    await addSitePages([
+      { sessionId, url: `${ORIGIN}/pending-1`, status: 'pending', depth: 0 },
+      { sessionId, url: `${ORIGIN}/pending-2`, status: 'pending', depth: 0 },
+    ]);
+    // Every page-record write aborts: the pending pages can never reach a
+    // terminal state and stay 'pending'.
+    __setFailPageWrites(true);
+    await runSiteAudit(sessionId, {
+      fetchImpl,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+    __setFailPageWrites(false);
+
+    const { getSiteSession } = await import('@/src/storage/site');
+    const session = await getSiteSession(sessionId);
+    const pages = await listSitePages(sessionId);
+    const pendingLeft = pages.filter((page) => page.status === 'pending').length;
+    expect(pendingLeft).toBeGreaterThan(0);
+    expect(session?.status).not.toBe('completed');
+    expect(session?.stopReason ?? '').toContain('incomplete');
+  });
+
+  it('INVARIANT 3: discovery write failures fail the session — URLs are never silently lost', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(okRobots());
+      if (url === `${ORIGIN}/`) {
+        return Promise.resolve(
+          htmlResponse(
+            '<a href="https://site.test/a">a</a><a href="https://site.test/b">b</a>',
+            url,
+          ),
+        );
+      }
+      return Promise.resolve(htmlResponse('<p>leaf</p>', url));
+    });
+    const sessionId = await seedSession();
+    // The seed (first addSitePages) succeeds; every DISCOVERY write fails —
+    // including the retry — so the discovered URLs cannot be persisted.
+    const mod = await import('@/src/storage/site');
+    const original = mod.addSitePages;
+    let addCalls = 0;
+    const spy = vi.spyOn(mod, 'addSitePages').mockImplementation(async (records) => {
+      addCalls += 1;
+      if (addCalls === 1) return original(records as never); // seed
+      throw new Error('QuotaExceededError'); // discovery + retry
+    });
+    await runSiteAudit(sessionId, {
+      fetchImpl,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+    spy.mockRestore();
+
+    const { getSiteSession } = await import('@/src/storage/site');
+    const session = await getSiteSession(sessionId);
+    // The root was processed, but its discovered links could not be
+    // persisted — the session must be 'failed' with a durable reason, NOT
+    // 'completed'.
+    expect(session?.status).toBe('failed');
+    expect(session?.stopReason ?? '').toContain('silently lost');
+    const pages = await listSitePages(sessionId);
+    expect(pages.filter((page) => page.status === 'ok').length).toBeGreaterThanOrEqual(1);
   });
 });

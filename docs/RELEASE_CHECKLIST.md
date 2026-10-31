@@ -74,3 +74,22 @@ pnpm verify:manifest && pnpm test:e2e && pnpm zip
 
 Plus: `pnpm audit` clean for production dependencies; manual acceptance
 checklist (docs/MANUAL_ACCEPTANCE.md) executed on installed Chrome.
+
+## 8. License compliance of bundled code (verified 2026-10-31)
+
+| Bundled package          | License        | Obligation                                                     |
+| ------------------------ | -------------- | -------------------------------------------------------------- |
+| react / react-dom 19.3.1 | MIT            | Keep notice                                                    |
+| zod 4.6.7                | MIT            | Keep notice                                                    |
+| dexie 4.4.7              | **Apache-2.0** | Include Apache-2.0 notice text in distributed source/reference |
+| lucide-react 1.65.0      | ISC            | Keep notice                                                    |
+
+All are permissive; the repository's MIT license file must be accompanied by
+the third-party notices above before public distribution. Action logged for
+the first public release: add a `THIRD_PARTY_NOTICES.md`.
+
+## 9. Package verification (Phase 6)
+
+- ZIP: `apps/extension/.output/vittix-seo-toolkit-0.1.0-chrome.zip`
+- SHA-256: `32ebda484aa67f78d4eab31de430f1d536be5928c6d1a3ac147190f403a32322`
+- 17 files; packaging script refuses source maps / dev files / wrong permissions

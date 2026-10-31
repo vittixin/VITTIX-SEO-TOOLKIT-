@@ -44,7 +44,6 @@ if (JSON.stringify(actual) !== JSON.stringify(approved)) {
 
 const mustBeEmpty = [
   'host_permissions',
-  'optional_host_permissions',
   'optional_permissions',
   'content_scripts',
   'web_accessible_resources',
@@ -54,6 +53,20 @@ for (const key of mustBeEmpty) {
   if (value !== undefined && value !== null && value.length !== 0) {
     errors.push(`${key} must be empty or absent, found ${JSON.stringify(value)}`);
   }
+}
+
+// optional_host_permissions: a CATALOG of grantable patterns for the opt-in
+// site audit, NOT a grant (nothing is accessible until the user approves a
+// single exact origin at runtime, and it is revocable). The catalog must
+// never grow beyond the https wildcard — no http, no file, no <all_urls>.
+const optionalHosts = manifest.optional_host_permissions ?? [];
+const allowedOptionalHosts = ['https://*/*'];
+if (JSON.stringify([...optionalHosts].sort()) !== JSON.stringify(allowedOptionalHosts)) {
+  errors.push(
+    `optional_host_permissions must be exactly ${JSON.stringify(
+      allowedOptionalHosts,
+    )} (grant catalog for the opt-in site audit), found ${JSON.stringify(optionalHosts)}`,
+  );
 }
 
 const csp = manifest.content_security_policy?.extension_pages ?? '';

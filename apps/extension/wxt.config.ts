@@ -21,6 +21,15 @@ export const BASE_MANIFEST = {
       description: 'Analyze the current page with Vittix SEO Toolkit',
     },
   },
+  /**
+   * Site-audit mode (opt-in): a CATALOG of grantable patterns, NOT a grant.
+   * No host access exists at install time; chrome.permissions.request asks
+   * for exactly one user-chosen origin at runtime and it can be revoked.
+   * docs/SITE_AUDIT.md documents the threat model; scripts/verify-manifest.mjs
+   * enforces that this list never grows beyond the https wildcard and that
+   * host_permissions stays absent.
+   */
+  optional_host_permissions: ['https://*/*'],
   icons: {
     '16': 'icon/16.png',
     '32': 'icon/32.png',

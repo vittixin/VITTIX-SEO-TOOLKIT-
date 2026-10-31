@@ -20,6 +20,9 @@ history lives in local IndexedDB until you delete or export it.
 - **Preliminary scoring engine** — deterministic, documented, explainable
 - **Local audit history** — IndexedDB via Dexie, with retention controls
 - **Export** — full audit as JSON, findings as RFC 4180 CSV
+- **Opt-in site audits** — multi-page audits of one user-approved origin
+  (per-origin runtime permission, robots.txt honored, GET-only, no
+  credentials; see [docs/SITE_AUDIT.md](docs/SITE_AUDIT.md))
 - **Dashboard & options pages** — React + Tailwind CSS 4, responsive
 
 ## Install (developer mode)

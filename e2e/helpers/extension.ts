@@ -30,7 +30,10 @@ const PROFILE_DIR = resolve(import.meta.dirname, '../../test-results/pw-profile'
  *   --load-extension since Chrome 137.
  * - Each call starts from a fresh profile, so tests get a clean database.
  */
-export async function loadExtension(build: ExtensionBuild = 'production'): Promise<{
+export async function loadExtension(
+  build: ExtensionBuild = 'production',
+  extraArgs: string[] = [],
+): Promise<{
   context: BrowserContext;
   page: Page;
   extensionId: string;
@@ -41,7 +44,11 @@ export async function loadExtension(build: ExtensionBuild = 'production'): Promi
   const context = await chromium.launchPersistentContext(PROFILE_DIR, {
     channel: process.env.PLAYWRIGHT_CHANNEL ?? 'chromium',
     headless: true,
-    args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`],
+    args: [
+      `--disable-extensions-except=${extensionDir}`,
+      `--load-extension=${extensionDir}`,
+      ...extraArgs,
+    ],
   });
 
   // The MV3 service worker registers at launch; it may stop again quickly,

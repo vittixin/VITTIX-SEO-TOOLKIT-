@@ -27,8 +27,16 @@ words. That is everything.
 
 ## Network activity
 
-None. The extension performs no fetch/XHR/WebSocket requests and loads no
-remote resources. You can verify this in DevTools or by inspecting the source.
+**Single-page mode (default): none.** The extension performs no
+fetch/XHR/WebSocket requests and loads no remote resources. You can verify
+this in DevTools or by inspecting the source.
+
+**Site-audit mode (explicit opt-in): limited, disclosed network activity.**
+Only after you approve one exact origin does the extension fetch pages and
+that origin's `/robots.txt` — GET requests with `credentials: "omit"` (no
+cookies, no tokens), never leaving the approved origin, with robots rules
+honored. Fetched page content is stored and analyzed locally; nothing is
+transmitted anywhere else. Details: [SITE_AUDIT.md](SITE_AUDIT.md).
 
 ## Retention & deletion
 

@@ -18,3 +18,9 @@ export {
 } from './rules.js';
 export { AUDIT_EXPORT_FORMAT, AUDIT_EXPORT_FORMAT_VERSION, auditToJson } from './export/json.js';
 export { csvEscape, findingsToCsv } from './export/csv.js';
+export {
+  SITE_AUDIT_EXPORT_FORMAT,
+  SITE_AUDIT_EXPORT_FORMAT_VERSION,
+  siteAuditToJson,
+  sitePagesToCsv,
+} from './export/site.js';

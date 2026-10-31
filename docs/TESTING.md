@@ -10,7 +10,7 @@
 
 ## Unit tests (Vitest 5)
 
-154 tests covering:
+186 tests covering:
 
 - **shared**: snapshot schema v3 accept/reject paths (schema versions 1/2/3
   incl. legacy readability, caps, invalid tags, null-vs-empty alt, omitted/
@@ -26,15 +26,21 @@
   determinism, REGRESSION cases), truncation detection, CSV escaping
   (RFC 4180) and JSON round-trip
 - **extension**: URL guard accept/reject matrix (chrome://, extension pages,
-  file://, view-source, …) AND stored-record migration/compatibility tests
+  file://, view-source, …), stored-record migration/compatibility tests
   (v1/v2 records accept v3 defaults, future versions rejected, malformed
-  rows skipped, truncated rows flagged)
+  rows skipped, truncated rows flagged), AND the site-audit security suite:
+  SSRF/private-network origin boundary (loopback, link-local, private
+  ranges, IPv4/IPv6 literals, `.local`/`.internal`), URL normalization and
+  dedup, robots.txt parsing (longest-match, Allow-wins-ties, Crawl-delay,
+  comments), paced-runner concurrency/stop, and crawler behavior with
+  mocked fetch/storage (robots block/disallow, cross-origin redirects,
+  non-HTML, auth failures, page caps, cancellation, network errors)
 
 Run: `pnpm test` · Watch: `pnpm test:watch`
 
 ## E2E tests (Playwright 1.64)
 
-Six tests, each with a fresh browser profile (clean IndexedDB):
+Seven tests, each with a fresh browser profile (clean IndexedDB):
 
 1. **Popup smoke** — popup renders; clicking Analyze on a chrome-extension://
    page produces the friendly unsupported-page error (guard + error UI)
@@ -55,6 +61,14 @@ Six tests, each with a fresh browser profile (clean IndexedDB):
    seo-core analysis → Dexie persistence → dashboard rendering → **real
    JSON/CSV file downloads** verified byte-for-byte
 6. **Keyboard command** — the `analyze-page` command is registered and bound
+7. **Site audit** — the REAL opt-in site-mode flow: consent prompt
+   (auto-accepted via Chromium's `--use-fake-ui-for-permission-flow` test
+   switch), real paced crawl of routed fixture pages, robots.txt honored
+   (`/b` skipped), cross-origin link never fetched, 403 recorded as
+   failed-auth, site summary rendered, filterable URL list, real site
+   JSON/CSV downloads. Cancellation, caps and rate limiting are covered by
+   the crawler unit tests (mocked fetch/storage); resume-after-tab-close is
+   implemented but only manually verifiable — NOT claimed as tested.
 
 ### The E2E build variant (test-only)
 

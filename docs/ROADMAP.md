@@ -51,17 +51,43 @@ configurable scoring profiles, history summary CSV, i18n groundwork.
 - **Release hardening**: dependency audit clean for production deps, bundle
   network-surface reviewed, truncation banner + compare explanations in UI
 
-## Phase 3 — Power features (proposed)
+## Phase 3 — Site audit foundation (DONE, 2026-10-31)
 
-- Site mode: opt-in, clearly scoped multi-page runs with
-  `optional_host_permissions` granted per site by the user
+Delivered (threat model: [SITE_AUDIT.md](SITE_AUDIT.md)):
+
+- **Opt-in site mode**: one user-approved origin per session via
+  `chrome.permissions.request` (revocable); `optional_host_permissions` is a
+  grant CATALOG only — install-time permissions unchanged
+  (`activeTab` + `scripting`), enforced by CI manifest audit
+- **Safe crawler MVP**: dashboard-run paced loop (concurrency ≤3, min
+  interval + Crawl-delay), same-origin only, GET-only with
+  `credentials: "omit"`, robots.txt `*`-group honored (4xx allow / 5xx
+  block, RFC 9309), cross-origin redirects recorded-not-parsed, hard page
+  cap (default 20, max 50), BFS depth ≤2, URL normalization + dedup
+- **Durable crawl state**: Dexie v2 (`siteAudits`/`sitePages` tables),
+  cancellation between requests, resume of pending pages after tab close
+- **Site reporting**: audited/failed/skipped counts, error/warning totals,
+  duplicate titles/descriptions, missing canonical, noindex warnings,
+  internal/external link summary, incomplete-audit indicators
+- **Dashboard**: Site Audits section (consent + scope confirmation, start/
+  cancel/resume/discard, progress, page table with filter, site JSON/CSV
+  export, clear site data)
+
+Known limitations (documented, not hidden): crawl runs while the dashboard
+tab is open (no background crawling claim); stylesheet-driven hiding not
+detected in fetched HTML; robots parsing covers the `*` group only; resume
+behavior is implemented but not E2E-verified.
+
+## Phase 4 — Power features (proposed)
+
 - Structured data depth: schema.org vocabulary validation, required-property
   checks (clearly scoped — syntax/structure-only today)
 - Configurable scoring profiles + rule weights per project
 - Stylesheet-aware hidden-content detection; image lazy-loading signals
 - Performance & accessibility basics (Core Web Vitals pass, contrast quick
   checks) — local computation only
-- History summary CSV export; audit diffing across different URLs
+- Site mode: verified interruption/resume, sitemap discovery, per-agent
+  robots handling; single-page history CSV; audit diffing across URLs
 - i18n groundwork (extension localization)
 
 ## `ai-core` — deferred, entry criteria

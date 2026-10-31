@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   Download,
   FileText,
+  Globe,
   Heading,
   History,
   Image,
@@ -25,6 +26,7 @@ import { LinksView } from '@/src/features/views/LinksView';
 import { MetadataView } from '@/src/features/views/MetadataView';
 import { OverviewView } from '@/src/features/views/OverviewView';
 import { SettingsView } from '@/src/features/views/SettingsView';
+import { SiteAuditView } from '@/src/features/views/SiteAuditView';
 
 type Section =
   | 'overview'
@@ -34,6 +36,7 @@ type Section =
   | 'links'
   | 'findings'
   | 'history'
+  | 'site'
   | 'export'
   | 'settings';
 
@@ -45,6 +48,7 @@ const NAV: { id: Section; label: string; icon: LucideIcon }[] = [
   { id: 'links', label: 'Links', icon: Link2 },
   { id: 'findings', label: 'Findings', icon: ListChecks },
   { id: 'history', label: 'Audit History', icon: History },
+  { id: 'site', label: 'Site Audits', icon: Globe },
   { id: 'export', label: 'Export', icon: Download },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
@@ -57,6 +61,7 @@ const SECTION_TITLES: Record<Section, { title: string; subtitle: string }> = {
   links: { title: 'Links', subtitle: 'Internal/external profile and anchors' },
   findings: { title: 'Findings', subtitle: 'Every rule result for this audit' },
   history: { title: 'Audit History', subtitle: 'Locally stored audits' },
+  site: { title: 'Site Audits', subtitle: 'Opt-in multi-page audits of one approved origin' },
   export: { title: 'Export', subtitle: 'JSON and CSV downloads' },
   settings: { title: 'Settings', subtitle: 'Retention and local data controls' },
 };
@@ -183,6 +188,7 @@ export function App() {
                 onDelete={(id) => void audits.remove(id)}
               />
             ) : null}
+            {section === 'site' ? <SiteAuditView /> : null}
             {section === 'export' ? <ExportView audit={audits.current} /> : null}
             {section === 'settings' ? <SettingsView /> : null}
           </div>

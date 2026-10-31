@@ -1,0 +1,368 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment -- intentional: mock-heavy behavioral test */
+// @ts-nocheck -- vi.mock factory typing against the real module signatures
+// fights the in-memory doubles here; runtime behavior is what this file
+// verifies (and typecheck of the crawler itself happens in crawler.ts).
+import { describe, expect, it, vi } from 'vitest';
+import type { PageSnapshot, SiteSession, SiteSessionInput } from '@vittix/shared';
+import { SITE_LIMITS } from '@vittix/shared';
+
+/**
+ * Crawler behavior tests with an in-memory storage mock and an injectable
+ * fetch. Covers the security-critical paths: robots blocking/disallow,
+ * cross-origin redirects, non-HTML, auth failures, duplicate suppression,
+ * page caps and cancellation.
+ */
+
+vi.mock('@/src/storage/site', (): unknown => {
+  const sessions = new Map<number, SiteSession>();
+  const pages = new Map<number, Record<string, unknown>>();
+  let pageId = 1;
+  return {
+    createSiteSession: async (session: Record<string, unknown>) => {
+      const id = sessions.size + 1;
+      sessions.set(id, { id, ...session } as SiteSession);
+      return id;
+    },
+    getSiteSession: async (id: number) => sessions.get(id) ?? null,
+    getLatestSiteSession: async () => [...sessions.values()].at(-1) ?? null,
+    listSiteSessions: async () => [...sessions.values()],
+    listSitePages: async (sessionId: number) =>
+      [...pages.values()].filter((page) => page.sessionId === sessionId),
+    addSitePages: async (records: Record<string, unknown>[]) => {
+      for (const record of records) {
+        const id = pageId++;
+        pages.set(id, { id, ...record });
+      }
+    },
+    updateSitePage: async (id: number, changes: Record<string, unknown>) => {
+      pages.set(id, { ...pages.get(id), ...changes });
+    },
+    updateSiteSession: async (id: number, changes: Record<string, unknown>) => {
+      sessions.set(id, { ...sessions.get(id), ...changes });
+    },
+    deleteSiteSession: async () => {},
+    clearAllSiteData: async () => {},
+    // test accessors
+    __pages: pages,
+    __sessions: sessions,
+  };
+});
+
+vi.mock('@/src/site/extract-html', () => ({
+  parsePageSnapshot: (html: string, url: string): PageSnapshot => ({
+    schemaVersion: 3,
+    url,
+    title: `Page: ${url}`,
+    titleCount: 1,
+    meta: {
+      description: 'A page description long enough to be healthy for the analyzer checks.',
+      canonical: null,
+      robots: null,
+      viewport: 'width=device-width, initial-scale=1',
+      charset: 'UTF-8',
+      lang: 'en',
+      ogTitle: null,
+      ogDescription: null,
+      ogImage: null,
+      twitterCard: null,
+      twitterTitle: null,
+      twitterDescription: null,
+      twitterImage: null,
+    },
+    descriptions: ['A page description long enough to be healthy for the analyzer checks.'],
+    canonicals: [],
+    headings: [{ tag: 'h1', text: 'Heading' }],
+    headingCounts: { h1: 1, h2: 0, h3: 0, h4: 0, h5: 0, h6: 0 },
+    images: [],
+    imageCount: 0,
+    links: [...html.matchAll(/<a href="([^"]+)"/g)].map((match) => ({
+      href: match[1] ?? '',
+      text: 'link',
+      rel: null,
+      target: null,
+      accessibleName: 'link',
+    })),
+    linkCount: 0,
+    structuredData: [],
+    structuredDataCount: 0,
+    robotsValues: [],
+    hreflang: [],
+    hreflangCount: 0,
+    omitted: {
+      headings: 0,
+      images: 0,
+      links: 0,
+      descriptions: 0,
+      canonicals: 0,
+      structuredData: 0,
+      hreflang: 0,
+    },
+    hidden: { headings: 0, images: 0, links: 0 },
+    svg: { total: 0, unnamed: 0 },
+    textStats: { wordCount: 10 },
+    extractedAt: '2026-10-31T00:00:00.000Z',
+  }),
+}));
+
+import { runSiteAudit } from './crawler';
+import { createSiteSession, updateSiteSession, listSitePages } from '@/src/storage/site';
+
+// The storage mock keeps module-level state; every test seeds a fresh
+// session so interference is avoided by construction (unique origins would
+// also work). No shared beforeEach required.
+
+const ORIGIN = 'https://site.test';
+
+function htmlResponse(body: string, finalUrl?: string, status = 200): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    url: finalUrl ?? 'irrelevant-placeholder',
+    headers: new Headers({ 'content-type': 'text/html; charset=utf-8' }),
+    blob: async () => new Blob([body]),
+    text: async () => body,
+  } as unknown as Response;
+}
+
+function jsonResponse(status: number): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    url: 'https://site.test/robots.txt',
+    headers: new Headers(),
+    text: async () => '',
+  } as unknown as Response;
+}
+
+async function seedSession(overrides: Partial<SiteSessionInput> = {}): Promise<number> {
+  return createSiteSession({
+    origin: ORIGIN,
+    status: 'running',
+    startedAt: '2026-10-31T00:00:00.000Z',
+    maxPages: 10,
+    maxDepth: 2,
+    concurrency: 2,
+    delayMs: 100,
+    ...overrides,
+  });
+}
+
+// NOTE: the mock module state persists across tests; each test seeds a fresh
+// session with a unique origin to avoid interference.
+
+describe('runSiteAudit', () => {
+  it('crawls same-origin pages, skips cross-origin links and duplicates', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) {
+        return Promise.resolve(new Response('', { status: 404 }) as unknown as Response);
+      }
+      if (url === `${ORIGIN}/`) {
+        return Promise.resolve(
+          htmlResponse(
+            `<a href="https://site.test/a">a</a><a href="https://site.test/a">a again</a><a href="https://other.test/x">ext</a>`,
+            url,
+          ),
+        );
+      }
+      return Promise.resolve(htmlResponse('<a href="https://site.test/">back</a>', url));
+    });
+
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+    });
+
+    const pages = await listSitePages(sessionId);
+    const urls = pages.map((page) => page.url).sort();
+    expect(urls).toEqual([`${ORIGIN}/`, `${ORIGIN}/a`]); // no other.test, no dup
+    const fetched = fetchImpl.mock.calls.filter(
+      ([input]) => !String(input).endsWith('/robots.txt'),
+    );
+    expect(fetched).toHaveLength(2);
+  });
+
+  it('blocks the whole audit when robots.txt returns a server error', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      if (String(input).endsWith('/robots.txt')) return Promise.resolve(jsonResponse(500));
+      return Promise.resolve(htmlResponse('<p>never parsed</p>'));
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+    });
+
+    const pages = await listSitePages(sessionId);
+    expect(pages.filter((page) => page.status === 'ok')).toHaveLength(0);
+    const { getSiteSession } = await import('@/src/storage/site');
+    const session = await getSiteSession(sessionId);
+    expect(session?.status).toBe('failed');
+    expect(session?.robotsStatus).toBe('blocked');
+  });
+
+  it('skips Disallowed paths without fetching them', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) {
+        return Promise.resolve(
+          new Response('User-agent: *\nDisallow: /private\n', {
+            status: 200,
+          }) as unknown as Response,
+        );
+      }
+      return Promise.resolve(
+        htmlResponse(
+          '<a href="https://site.test/private/x">p</a><a href="https://site.test/open">o</a>',
+          url,
+        ),
+      );
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+    });
+
+    const pages = await listSitePages(sessionId);
+    const privatePage = pages.find((page) => page.url === `${ORIGIN}/private/x`);
+    expect(privatePage?.status).toBe('skipped-robots');
+    const fetchedPaths = fetchImpl.mock.calls
+      .map(([input]) => String(input))
+      .filter((url) => !url.endsWith('/robots.txt'));
+    expect(fetchedPaths.some((url) => url.includes('/private'))).toBe(false);
+  });
+
+  it('records cross-origin redirects without parsing them', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(jsonResponse(404));
+      if (url === `${ORIGIN}/redirect`) {
+        return Promise.resolve(htmlResponse('<p>other origin</p>', 'https://elsewhere.test/final'));
+      }
+      return Promise.resolve(htmlResponse('<a href="https://site.test/redirect">r</a>', url));
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+    });
+
+    const pages = await listSitePages(sessionId);
+    const redirected = pages.find((page) => page.url === `${ORIGIN}/redirect`);
+    expect(redirected?.status).toBe('skipped-external-redirect');
+    expect(redirected?.finalUrl).toBe('https://elsewhere.test/final');
+  });
+
+  it('records non-HTML responses as skipped', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(jsonResponse(404));
+      if (url === `${ORIGIN}/file.pdf`) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          url,
+          headers: new Headers({ 'content-type': 'application/pdf' }),
+          blob: async () => new Blob(['%PDF']),
+        } as unknown as Response);
+      }
+      return Promise.resolve(htmlResponse('<a href="https://site.test/file.pdf">pdf</a>', url));
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+    });
+
+    const pages = await listSitePages(sessionId);
+    expect(pages.find((page) => page.url === `${ORIGIN}/file.pdf`)?.status).toBe(
+      'skipped-non-html',
+    );
+  });
+
+  it('records 403 as failed-auth and keeps crawling', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(jsonResponse(404));
+      if (url === `${ORIGIN}/locked`) {
+        return Promise.resolve(htmlResponse('<p>forbidden</p>', url, 403));
+      }
+      return Promise.resolve(htmlResponse('<a href="https://site.test/locked">l</a>', url));
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+    });
+
+    const pages = await listSitePages(sessionId);
+    expect(pages.find((page) => page.url === `${ORIGIN}/locked`)?.status).toBe('failed-auth');
+  });
+
+  it('enforces the hard page cap', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(jsonResponse(404));
+      const links = [1, 2, 3, 4, 5, 6]
+        .map((n) => `<a href="https://site.test/p${n}">p${n}</a>`)
+        .join('');
+      return Promise.resolve(htmlResponse(links, url));
+    });
+    const sessionId = await seedSession({ maxPages: 3 });
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+    });
+
+    const pages = await listSitePages(sessionId);
+    expect(pages.length).toBeLessThanOrEqual(3);
+    const { getSiteSession } = await import('@/src/storage/site');
+    const session = await getSiteSession(sessionId);
+    expect(session?.status).toBe('completed');
+  });
+
+  it('stops without fetching when the session was cancelled beforehand', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      if (String(input).endsWith('/robots.txt')) return Promise.resolve(jsonResponse(404));
+      return Promise.resolve(htmlResponse('<p>x</p>'));
+    });
+    const sessionId = await seedSession();
+    await updateSiteSession(sessionId, { stopRequested: true });
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+    });
+
+    expect(
+      fetchImpl.mock.calls.filter(([input]) => !String(input).endsWith('/robots.txt')),
+    ).toHaveLength(0);
+    const { getSiteSession } = await import('@/src/storage/site');
+    const session = await getSiteSession(sessionId);
+    expect(session?.status).toBe('cancelled');
+  });
+
+  it('marks pages failed on network errors and completes the session', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(jsonResponse(404));
+      return Promise.reject(new Error('ECONNREFUSED'));
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+    });
+
+    const pages = await listSitePages(sessionId);
+    expect(pages[0]?.status).toBe('failed');
+    expect(pages[0]?.error).toContain('ECONNREFUSED');
+    const { getSiteSession } = await import('@/src/storage/site');
+    expect((await getSiteSession(sessionId))?.status).toBe('completed');
+  });
+
+  it('respects SITE_LIMITS.maxPagesCap', () => {
+    expect(SITE_LIMITS.maxPagesCap).toBe(50);
+  });
+});

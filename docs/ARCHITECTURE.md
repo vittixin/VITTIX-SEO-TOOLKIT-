@@ -125,3 +125,27 @@ error code and a friendly message in `FRIENDLY_ERROR_MESSAGES`.
 `pnpm verify:manifest` assert the production manifest keeps the approved
 privacy posture: exactly `["activeTab","scripting"]`, no host permissions, no
 content scripts, no web-accessible resources, MV3-default CSP.
+
+## Site-audit mode (opt-in, Phase 3)
+
+Site mode adds a second, explicitly opt-in pipeline documented in
+[SITE_AUDIT.md](SITE_AUDIT.md). Key decisions:
+
+- **Orchestration lives in the dashboard page** (DOMParser is unavailable in
+  service workers; the offscreen API is avoided). The crawl is a paced loop
+  that stops when the tab closes — durable state in IndexedDB (Dexie v2
+  tables `siteAudits`/`sitePages`) enables resume; no background crawling
+  is claimed.
+- **Permission model**: `optional_host_permissions: ["https://*/*"]` is a
+  grant _catalog_ — one exact origin is requested at runtime via
+  `chrome.permissions.request` and is revocable. `host_permissions` stays
+  absent and `permissions` stays exactly `["activeTab","scripting"]`; CI
+  enforces the catalog never grows.
+- **Safety**: https-only public origins (SSRF boundary in
+  `src/site/guards.ts`), same-origin discovery with normalization/dedup,
+  robots.txt `*`-group honored (5xx blocks the audit per RFC 9309), GET
+  only with `credentials: "omit"`, cross-origin redirects recorded but not
+  parsed, hard page cap and paced concurrency.
+- **Extraction** for fetched HTML uses `src/site/extract-html.ts`
+  (DOMParser-based mirror of the live injector; textContent-based word
+  count is the one documented difference).

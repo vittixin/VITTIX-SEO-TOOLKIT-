@@ -1,5 +1,15 @@
-import type { Finding, PageSnapshot } from '@vittix/shared';
-import { DESCRIPTION_LENGTH_BOUNDS, LANG_TAG_PATTERN, TITLE_LENGTH_BOUNDS } from '../rules.js';
+import type { Finding, PageSnapshot, Severity } from '@vittix/shared';
+import {
+  DESCRIPTION_FONT_SIZE_PX,
+  DESCRIPTION_LENGTH_BOUNDS,
+  DESCRIPTION_PIXEL_LIMIT_DESKTOP_PX,
+  DESCRIPTION_PIXEL_LIMIT_MOBILE_PX,
+  LANG_TAG_PATTERN,
+  TITLE_FONT_SIZE_PX,
+  TITLE_LENGTH_BOUNDS,
+  TITLE_PIXEL_LIMIT_PX,
+  estimateTextWidth,
+} from '../rules.js';
 import { finding } from './util.js';
 
 /**
@@ -107,7 +117,48 @@ function titleRules(snapshot: PageSnapshot): Finding[] {
     }
   }
 
+  // --- pixel width (v0.4.0) ----------------------------------------------------
+  // Approximate rendered width; the info/warn split avoids double-penalizing
+  // the same underlying issue the character rule already flagged.
+  if (title.length > 0) {
+    const pixelWidth = estimateTextWidth(title, TITLE_FONT_SIZE_PX);
+    const charWarned = findBySeverity(findings, 'title-length', 'warn');
+    if (pixelWidth > TITLE_PIXEL_LIMIT_PX) {
+      findings.push(
+        finding(
+          'title-pixel-width',
+          'metadata',
+          charWarned ? 'info' : 'warn',
+          charWarned
+            ? 'Title is likely too wide in search results'
+            : 'Title will be truncated in search results (pixel width)',
+          `The rendered width is approximately ${pixelWidth}px (budget ≈${TITLE_PIXEL_LIMIT_PX}px at ${TITLE_FONT_SIZE_PX}px in an Arial/Roboto-like font). Search engines truncate titles by PIXELS, not characters — a title within the character guidance can still be cut off. This is an estimate (±10–15%).`,
+          {
+            evidence: title,
+            remediation:
+              'Shorten the title, favoring narrower characters and front-loading the important words.',
+          },
+        ),
+      );
+    } else {
+      findings.push(
+        finding(
+          'title-pixel-width',
+          'metadata',
+          'pass',
+          'Title pixel width is healthy',
+          `Approximately ${pixelWidth}px (budget ≈${TITLE_PIXEL_LIMIT_PX}px).`,
+        ),
+      );
+    }
+  }
+
   return findings;
+}
+
+/** True when a rule with this id was emitted at this severity. */
+function findBySeverity(findings: Finding[], ruleId: string, severity: Severity): boolean {
+  return findings.some((f) => f.ruleId === ruleId && f.severity === severity);
 }
 
 function descriptionRules(snapshot: PageSnapshot): Finding[] {
@@ -196,6 +247,48 @@ function descriptionRules(snapshot: PageSnapshot): Finding[] {
           'pass',
           'Meta description length is healthy',
           `The description is ${description.length} characters (target ${DESCRIPTION_LENGTH_BOUNDS.min}–${DESCRIPTION_LENGTH_BOUNDS.max}).`,
+        ),
+      );
+    }
+  }
+
+  // --- pixel width (v0.4.0) ------------------------------------------------------
+  // Desktop budget warns (if the character rule did not already warn);
+  // exceeding the mobile budget is always at least informational.
+  if (description.length > 0) {
+    const pixelWidth = estimateTextWidth(description, DESCRIPTION_FONT_SIZE_PX);
+    const charWarned = findings.some(
+      (f) => f.ruleId === 'meta-description-length' && f.severity === 'warn',
+    );
+    const desktopExceeded = pixelWidth > DESCRIPTION_PIXEL_LIMIT_DESKTOP_PX;
+    const mobileExceeded = pixelWidth > DESCRIPTION_PIXEL_LIMIT_MOBILE_PX;
+    if (desktopExceeded || mobileExceeded) {
+      findings.push(
+        finding(
+          'description-pixel-width',
+          'metadata',
+          desktopExceeded && !charWarned ? 'warn' : 'info',
+          desktopExceeded
+            ? charWarned
+              ? 'Description is likely too wide in search results'
+              : 'Description will be truncated in search results (pixel width)'
+            : 'Description may be truncated on mobile (pixel width)',
+          `The rendered width is approximately ${pixelWidth}px (desktop budget ≈${DESCRIPTION_PIXEL_LIMIT_DESKTOP_PX}px, mobile ≈${DESCRIPTION_PIXEL_LIMIT_MOBILE_PX}px at ${DESCRIPTION_FONT_SIZE_PX}px in an Arial/Roboto-like font). Search engines truncate descriptions by PIXELS, not characters. This is an estimate (±10–15%).`,
+          {
+            evidence: description.slice(0, 160),
+            remediation:
+              'Shorten the description, front-loading the value proposition so the truncation point lands on the key message.',
+          },
+        ),
+      );
+    } else {
+      findings.push(
+        finding(
+          'description-pixel-width',
+          'metadata',
+          'pass',
+          'Description pixel width is healthy',
+          `Approximately ${pixelWidth}px (desktop budget ≈${DESCRIPTION_PIXEL_LIMIT_DESKTOP_PX}px).`,
         ),
       );
     }

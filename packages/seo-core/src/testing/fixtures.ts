@@ -35,7 +35,7 @@ export function buildSnapshot(
 ): PageSnapshot {
   const canonicals = overrides.canonicals ?? ['https://example.com/page'];
   const descriptions = overrides.descriptions ?? [
-    'A sufficiently long example meta description that comfortably sits inside the healthy seventy to one hundred sixty character target range.',
+    'A healthy example meta description that fits comfortably inside the seventy to one hundred sixty character target window.',
   ];
   const robotsValues = overrides.robotsValues ?? ['index, follow'];
   const meta: PageMeta = {

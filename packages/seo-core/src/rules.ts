@@ -13,6 +13,8 @@ export const RULE_IDS = [
   'title-present',
   'title-duplicate',
   'title-length',
+  'title-pixel-width',
+  'description-pixel-width',
   'meta-description-present',
   'meta-description-multiple',
   'meta-description-length',
@@ -93,3 +95,13 @@ export const HREFLANG_SPECIAL_VALUES = ['x-default'] as const;
 
 /** Pages with fewer words are flagged as thin content (indexable pages only). */
 export const CONTENT_LENGTH_MIN_WORDS = 300;
+
+// --- Pixel-width estimation (v0.4.0) — see src/text-width.ts for the
+// approximation disclaimer. These are the search-engine truncation budgets
+// commonly quoted for an Arial/Roboto-like sans-serif.
+export const TITLE_FONT_SIZE_PX = 20;
+export const DESCRIPTION_FONT_SIZE_PX = 14;
+export const TITLE_PIXEL_LIMIT_PX = 580;
+export const DESCRIPTION_PIXEL_LIMIT_DESKTOP_PX = 920;
+export const DESCRIPTION_PIXEL_LIMIT_MOBILE_PX = 680;
+export { estimateTextWidth } from './text-width.js';

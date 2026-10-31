@@ -867,3 +867,52 @@ describe('Issue 4 — content-length rule', () => {
     expect(findByRuleId(findings, 'content-length').severity).not.toBe('error');
   });
 });
+
+// --- Issue 6: pixel-width rules -------------------------------------------------
+
+describe('Issue 6 — title-pixel-width rule', () => {
+  it('warns when a within-bounds title exceeds the pixel budget', () => {
+    // 40 wide chars * 0.88em * 20px ≈ 704px > 580px, but 40 chars is in the
+    // 30–60 char window, so title-length passes and the pixel rule warns.
+    const findings = analyzeMetadata(buildSnapshot({ title: 'M'.repeat(40) }));
+    const length = findByRuleId(findings, 'title-length');
+    const pixel = findByRuleId(findings, 'title-pixel-width');
+    expect(length.severity).toBe('pass');
+    expect(pixel.severity).toBe('warn');
+  });
+
+  it('stays info when the character rule already warned', () => {
+    // 70 narrow chars: char count 70 > 60 → title-length warns; pixel width
+    // 70 * 0.26em * 20px = 364px < 580px → pixel rule is info/pass but must
+    // NOT warn (no double penalty for the same underlying issue).
+    const findings = analyzeMetadata(buildSnapshot({ title: 'i'.repeat(70) }));
+    expect(findByRuleId(findings, 'title-length').severity).toBe('warn');
+    expect(findByRuleId(findings, 'title-pixel-width').severity).not.toBe('warn');
+  });
+
+  it('never errors', () => {
+    const findings = analyzeMetadata(buildSnapshot({ title: 'M'.repeat(200) }));
+    expect(findByRuleId(findings, 'title-pixel-width').severity).not.toBe('error');
+  });
+});
+
+describe('Issue 6 — description-pixel-width rule', () => {
+  it('warns when a within-bounds description exceeds the desktop pixel budget', () => {
+    // 120 wide-ish chars at 14px: 'M' * 120 → 120 * 0.88 * 14 ≈ 1478px > 920px,
+    // but 120 chars is within the 70–160 window so meta-description-length passes.
+    const findings = analyzeMetadata(
+      buildSnapshot({ descriptions: ['M'.repeat(120)], meta: { description: 'M'.repeat(120) } }),
+    );
+    expect(findByRuleId(findings, 'meta-description-length').severity).toBe('pass');
+    expect(findByRuleId(findings, 'description-pixel-width').severity).toBe('warn');
+  });
+
+  it('stays info when the character rule already warned', () => {
+    // 20 chars → meta-description-length warns (too short); pixel width is small.
+    const findings = analyzeMetadata(
+      buildSnapshot({ descriptions: ['M'.repeat(20)], meta: { description: 'M'.repeat(20) } }),
+    );
+    expect(findByRuleId(findings, 'meta-description-length').severity).toBe('warn');
+    expect(findByRuleId(findings, 'description-pixel-width').severity).not.toBe('warn');
+  });
+});

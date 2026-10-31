@@ -27,42 +27,65 @@ Severities:
 
 ## Technical rules
 
-| Rule                   | Severity when triggered                                                                                                 | Condition                                                                                                              |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `viewport-present`     | **warn** if missing                                                                                                     | `meta[name=viewport]` declared                                                                                         |
-| `viewport-responsive`  | **warn** on fixed width (no `width=device-width`) or disabled pinch zoom (`user-scalable=no` / `maximum-scale=1`)       | Viewport content inspection (v0.3.0)                                                                                   |
-| `lang-present`         | **warn** if missing                                                                                                     | `<html lang>` declared                                                                                                 |
-| `lang-format`          | **warn** if the tag does not match the BCP-47 shape (e.g. `english`, `en_US`)                                           | Language-tag format check — registry validation NOT performed (v0.3.0)                                                 |
-| `page-https`           | **warn** if not https                                                                                                   | Page URL uses the https scheme                                                                                         |
-| `robots-directives`    | **error** on `noindex` (or `none`); **warn** on `nofollow`-only or on conflicting duplicate robots tags; pass otherwise | All `meta[name=robots]` values are reconciled (v0.3.0); indexable by default when absent                               |
-| `hreflang-syntax`      | **error** on a missing href; **warn** on malformed language codes (`en_US`); pass when absent or well-formed            | `<link rel="alternate" hreflang>` entries (v0.3.0)                                                                     |
-| `hreflang-duplicates`  | **warn** when a language code is declared more than once                                                                | Duplicate detection across the cluster (v0.3.0)                                                                        |
-| `hreflang-consistency` | **info** without a self-reference; **warn** when the canonical contradicts a self-referencing cluster; pass otherwise   | Evaluated within available page evidence only — cross-page return links are NOT fetched (zero-network policy) (v0.3.0) |
+| Rule                       | Severity when triggered                                                                                                 | Condition                                                                                                              |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `viewport-present`         | **warn** if missing                                                                                                     | `meta[name=viewport]` declared                                                                                         |
+| `viewport-responsive`      | **warn** on fixed width (no `width=device-width`) or disabled pinch zoom (`user-scalable=no` / `maximum-scale=1`)       | Viewport content inspection (v0.3.0)                                                                                   |
+| `lang-present`             | **warn** if missing                                                                                                     | `<html lang>` declared                                                                                                 |
+| `lang-format`              | **warn** if the tag does not match the BCP-47 shape (e.g. `english`, `en_US`)                                           | Language-tag format check — registry validation NOT performed (v0.3.0)                                                 |
+| `page-https`               | **warn** if not https                                                                                                   | Page URL uses the https scheme                                                                                         |
+| `robots-directives`        | **error** on `noindex` (or `none`); **warn** on `nofollow`-only or on conflicting duplicate robots tags; pass otherwise | All `meta[name=robots]` values are reconciled (v0.3.0); indexable by default when absent                               |
+| `hreflang-syntax`          | **error** on a missing href; **warn** on malformed language codes (`en_US`); pass when absent or well-formed            | `<link rel="alternate" hreflang>` entries (v0.3.0)                                                                     |
+| `hreflang-duplicates`      | **warn** when a language code is declared more than once                                                                | Duplicate detection across the cluster (v0.3.0)                                                                        |
+| `hreflang-consistency`     | **info** without a self-reference; **warn** when the canonical contradicts a self-referencing cluster; pass otherwise   | Evaluated within available page evidence only — cross-page return links are NOT fetched (zero-network policy) (v0.3.0) |
+| `canonical-self-reference` | **warn** on cross-host canonical without hreflang; **info** for same-host variants; pass on self-reference              | Cross-host canonicals without hreflang tell engines to ignore the page (v0.5.0)                                        |
+| `mixed-content`            | **warn** on http:// subresources on an https page (img/script/link/iframe, bounded sample)                              | Mixed content undermines TLS; browsers block or downgrade it (v0.5.0)                                                  |
+| `favicon-present`          | **info** when absent                                                                                                    | `<link rel="icon">` declaration; browsers fall back to /favicon.ico (v0.5.0)                                           |
+| `pagination-rel`           | **info** when rel=prev/next detected                                                                                    | Google no longer uses rel=prev/next for indexing — observation only (v0.5.0)                                           |
+| `url-hygiene`              | **info** listing observations (uppercase path, underscores, >115 chars, >3 params, session-style params)                | Minor ranking aid; observations, never blocking (v0.5.0)                                                               |
 
-## Social rules (all informational when absent)
+## Social rules
 
-| Rule                     | Severity when triggered                         | Condition                       |
-| ------------------------ | ----------------------------------------------- | ------------------------------- |
-| `og-title-present`       | **warn** when absent (v0.4.0 — score-affecting) | `meta[property=og:title]`       |
-| `og-description-present` | **info** when absent                            | `meta[property=og:description]` |
-| `og-image-present`       | **warn** when absent (v0.4.0 — score-affecting) | `meta[property=og:image]`       |
-| `twitter-card-present`   | **info** when absent                            | `meta[name=twitter:card]`       |
+| Rule                       | Severity when triggered                                  | Condition                                                           |
+| -------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------- |
+| `og-title-present`         | **warn** when absent (v0.4.0 — score-affecting)          | `meta[property=og:title]`                                           |
+| `og-description-present`   | **info** when absent                                     | `meta[property=og:description]`                                     |
+| `og-image-present`         | **warn** when absent (v0.4.0 — score-affecting)          | `meta[property=og:image]`                                           |
+| `og-image-absolute-url`    | **error** when og:image is present but relative          | Some scrapers don't resolve relative og:image URLs against the page |
+| `og-url-matches-canonical` | **info** when og:url absent or mismatched with canonical | og:url is the preferred URL for social scrapers                     |
+| `twitter-card-present`     | **info** when absent                                     | `meta[name=twitter:card]`                                           |
+| `twitter-card-valid-type`  | **warn** on unknown twitter:card value                   | Known values: summary, summary_large_image, app, player             |
 
 ## Heading rules
 
-| Rule            | Severity when triggered                      | Condition                                            |
-| --------------- | -------------------------------------------- | ---------------------------------------------------- |
-| `h1-present`    | **error** if none                            | Zero h1 elements                                     |
-| `h1-unique`     | **error** if more than 1                     | Multiple h1 elements                                 |
-| `heading-order` | **warn** on skips or a page with no headings | Levels increase one step at a time (h1→h3 is a skip) |
+| Rule                 | Severity when triggered                                                                    | Condition                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `h1-present`         | **error** if none                                                                          | Zero h1 elements                                                       |
+| `h1-unique`          | **error** if more than 1                                                                   | Multiple h1 elements                                                   |
+| `heading-order`      | **warn** on skips or a page with no headings                                               | Levels increase one step at a time (h1→h3 is a skip)                   |
+| `heading-empty`      | **warn** on empty heading elements                                                         | Headings with no text confuse the outline (v0.5.0)                     |
+| `heading-duplicate`  | **info** on duplicate heading text                                                         | Common/acceptable in card grids; weak signal on content pages (v0.5.0) |
+| `title-h1-alignment` | **info** when title and h1 share no meaningful content words (len > 3, stop-words removed) | Alignment reinforces topic; divergence is not wrong (v0.5.0)           |
+
+## Content rules
+
+| Rule               | Severity when triggered                                                                             | Condition                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `content-length`   | **warn** < 300 words on indexable pages; **info** when the text sample is truncated; never error    | Body word count — sparse page types (legal, contact) need judgment (v0.4.0) |
+| `keyword-in-title` | **info** when the target keyword is missing; **pass** when present; silent without a target keyword | User-supplied target keyword, stored locally per URL (v0.5.0)               |
+| `keyword-in-h1`    | **info** when the target keyword is missing from every h1; silent without a target keyword          | As above (v0.5.0)                                                           |
 
 ## Image rules (three separate concerns — an image is never penalized twice)
 
-| Rule                | Severity when triggered                       | Condition                                                                                                                                                                                                                |
-| ------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `image-alt-present` | **error** if any `<img>` has NO alt attribute | The attribute itself is missing (screen readers fall back to the filename)                                                                                                                                               |
-| `image-alt-empty`   | **info** when present                         | Explicitly empty `alt=""` is the CORRECT pattern for decorative images — observation only, never a fault                                                                                                                 |
-| `image-alt-quality` | **warn** on suspicious patterns               | Non-empty alt that looks like a filename (`photo1.png`), a generic label (`image`, `logo`, `icon`, …), or is < 4 characters. Hedged on purpose: Vittix classifies text patterns and **does not understand image intent** |
+| Rule                       | Severity when triggered                                                                | Condition                                                                                                                                                                                                                |
+| -------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `image-alt-present`        | **error** if any `<img>` has NO alt attribute                                          | The attribute itself is missing (screen readers fall back to the filename)                                                                                                                                               |
+| `image-alt-empty`          | **info** when present                                                                  | Explicitly empty `alt=""` is the CORRECT pattern for decorative images — observation only, never a fault                                                                                                                 |
+| `image-alt-quality`        | **warn** on suspicious patterns                                                        | Non-empty alt that looks like a filename (`photo1.png`), a generic label (`image`, `logo`, `icon`, …), or is < 4 characters. Hedged on purpose: Vittix classifies text patterns and **does not understand image intent** |
+| `image-dimensions-missing` | **warn**, ratio-scaled                                                                 | Content `<img>` without width/height attributes — layout-shift (CLS) risk. Markup heuristic, not a measured performance result                                                                                           |
+| `image-lazy-loading`       | **warn** on lazy above-fold candidate; **info** for below-fold candidates without lazy | Above-fold detection is a bounded viewport heuristic (first 20 images at extraction), not a lab measurement                                                                                                              |
+| `image-modern-format`      | **info** on legacy jpg/png/gif/bmp without `<picture>`/srcset                          | Source-extension heuristic — servers can serve modern formats from .jpg URLs; a lead, not a verdict                                                                                                                      |
+| `image-srcset-missing`     | **info** for images declared ≥ 400px wide without srcset                               | Only images with an explicit width attribute are assessed                                                                                                                                                                |
 
 ## Link rules
 
@@ -86,17 +109,22 @@ Severities:
 | `internal-link-quality`  | **warn** on generic internal anchors         | Internal http(s) links whose accessible name is "click here", "read more", "learn more", "here", "this page", "this link", "details", "continue" or "more" (external and `other` links exempt)        |
 | `link-profile`           | always `info`                                | Bucketed counts: `N internal · M external · K mailto/tel/other`, nofollow count (http(s) only), truncation note                                                                                       |
 
-## Structured data rules (JSON-LD)
+## Structured data rules (JSON-LD + Microdata/RDFa detection)
 
-| Rule                      | Severity when triggered                                        | Condition                                                                                                                    |
-| ------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `structured-data-present` | **info** when absent; pass with detected `@type`s when present | `<script type="application/ld+json">` blocks (up to 5 retained)                                                              |
-| `structured-data-valid`   | **error** if any block fails `JSON.parse`                      | SYNTAX check only. Blocks that parse are NOT claimed to be schema.org-valid — vocabulary validity is explicitly out of scope |
-| `structured-data-context` | **warn** on parsed blocks missing `@context` or `@type`        | Basic structural check incl. `@graph` containers — NOT schema.org or rich-result validation (v0.3.0)                         |
+| Rule                                | Severity when triggered                                                               | Condition                                                                                                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `structured-data-present`           | **info** when absent; pass with detected `@type`s when present                        | `<script type="application/ld+json">` blocks (up to 5 retained)                                                                                                     |
+| `structured-data-valid`             | **error** if any block fails `JSON.parse`                                             | SYNTAX check only. Blocks that parse are NOT claimed to be schema.org-valid — vocabulary validity is explicitly out of scope                                        |
+| `structured-data-context`           | **warn** on parsed blocks missing `@context` or `@type`                               | Basic structural check incl. `@graph` containers — NOT schema.org or rich-result validation (v0.3.0)                                                                |
+| `structured-data-type-detected`     | **pass** listing recognized types; **info** when none recognized                      | Recognized registry: Article, NewsArticle, BlogPosting, Product, FAQPage, BreadcrumbList, Organization, LocalBusiness, WebSite, Recipe, Event, VideoObject (v0.5.0) |
+| `structured-data-required-props`    | **warn** when a recognized type is missing required properties (one finding per type) | Static in-repo registry based on Google's documented requirements as of 2026-11 — may change; passing does NOT guarantee rich results (v0.5.0)                      |
+| `structured-data-recommended-props` | **info** when recommended properties are missing                                      | Same registry; enrich results but not disqualifying (v0.5.0)                                                                                                        |
+
+Also **detected-types only** (no validation) for Microdata (`itemscope`/`itemtype`) and RDFa (`typeof`), reported in the snapshot's `microdataRdfaTypes` (bounded to 10).
 
 ## Scoring
 
-Formula (rule set v0.4.0):
+Formula (rule set v0.5.0):
 
 1. Each category starts at **100**.
 2. Only `error` (−25) and `warn` (−10) deduct. `info`/`pass` never do

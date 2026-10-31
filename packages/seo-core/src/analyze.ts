@@ -5,22 +5,38 @@ import { analyzeImages } from './analyzers/images.js';
 import { analyzeLinks } from './analyzers/links.js';
 import { analyzeMetadata } from './analyzers/metadata.js';
 import { analyzeContent } from './analyzers/content.js';
+import { analyzeKeywords } from './analyzers/keywords.js';
+import { analyzeTechnical } from './analyzers/technical.js';
 import { analyzeStructuredData } from './analyzers/structured-data.js';
 import { computeScore } from './scoring.js';
 import { RULE_SET_VERSION } from './rules.js';
 
+export interface AnalyzeOptions {
+  /**
+   * User-supplied target keyword for this URL (stored locally). When absent,
+   * keyword rules emit nothing.
+   */
+  targetKeyword?: string;
+}
+
 /**
  * Run the full rule set over a validated page snapshot.
- * Pure and deterministic: the same snapshot always yields the same result.
+ * Pure and deterministic: the same snapshot + options always yield the same
+ * result.
  */
-export function analyzeSnapshot(snapshot: PageSnapshot): AnalysisResult {
+export function analyzeSnapshot(
+  snapshot: PageSnapshot,
+  options: AnalyzeOptions = {},
+): AnalysisResult {
   const findings = [
     ...analyzeMetadata(snapshot),
     ...analyzeHreflang(snapshot),
     ...analyzeHeadings(snapshot),
     ...analyzeImages(snapshot),
+    ...analyzeTechnical(snapshot),
     ...analyzeLinks(snapshot),
     ...analyzeContent(snapshot),
+    ...analyzeKeywords(snapshot, options.targetKeyword),
     ...analyzeStructuredData(snapshot),
   ].sort(
     (a, b) =>

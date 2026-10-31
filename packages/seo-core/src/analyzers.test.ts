@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeMetadata } from './analyzers/metadata.js';
+import { analyzeKeywords } from './analyzers/keywords.js';
+import { analyzeTechnical } from './analyzers/technical.js';
+import { keywordProminence } from './text-summary.js';
 import { analyzeHeadings } from './analyzers/headings.js';
 import { analyzeImages } from './analyzers/images.js';
 import { analyzeLinks } from './analyzers/links.js';
@@ -922,5 +925,133 @@ describe('Issue 6 — description-pixel-width rule', () => {
     );
     expect(findByRuleId(findings, 'meta-description-length').severity).toBe('warn');
     expect(findByRuleId(findings, 'description-pixel-width').severity).not.toBe('warn');
+  });
+});
+
+// --- v0.5.0 rules: keywords, technical, social depth ----------------------------
+
+describe('v0.5.0 — keyword rules', () => {
+  it('emits nothing without a target keyword', () => {
+    const snapshot = buildSnapshot();
+    expect(analyzeKeywords(snapshot, undefined)).toEqual([]);
+    expect(analyzeKeywords(snapshot, '   ')).toEqual([]);
+  });
+
+  it('reports pass when the keyword is in title and h1', () => {
+    const snapshot = buildSnapshot({
+      title: 'Coffee Grinder Guide',
+      headings: [{ tag: 'h1', text: 'Coffee Grinder Guide' }],
+    });
+    const findings = analyzeKeywords(snapshot, 'coffee grinder');
+    const byRule = new Map(findings.map((f) => [f.ruleId, f]));
+    expect(byRule.get('keyword-in-title')?.severity).toBe('pass');
+    expect(byRule.get('keyword-in-h1')?.severity).toBe('pass');
+  });
+
+  it('reports info when the keyword is missing', () => {
+    const snapshot = buildSnapshot();
+    const findings = analyzeKeywords(snapshot, 'blender');
+    const byRule = new Map(findings.map((f) => [f.ruleId, f]));
+    expect(byRule.get('keyword-in-title')?.severity).toBe('info');
+    expect(byRule.get('keyword-in-h1')?.severity).toBe('info');
+    expect(findings.every((f) => f.severity !== 'error')).toBe(true);
+  });
+
+  it('matches keywords in hyphenated URLs via prominence helper', () => {
+    const result = keywordProminence('coffee grinder', {
+      title: '',
+      h1Texts: [],
+      description: '',
+      url: 'https://example.com/coffee-grinders',
+      first100Words: '',
+    });
+    expect(result.inUrl).toBe(true);
+  });
+});
+
+describe('v0.5.0 — technical rules', () => {
+  it('warns on mixed content and passes clean pages', () => {
+    const dirty = analyzeTechnical(
+      buildSnapshot({ mixedContentSamples: ['http://cdn.example.com/x.js'] }),
+    );
+    const mixed = dirty.find((f) => f.ruleId === 'mixed-content');
+    expect(mixed?.severity).toBe('warn');
+    const clean = analyzeTechnical(buildSnapshot());
+    expect(clean.find((f) => f.ruleId === 'mixed-content')).toBeUndefined();
+  });
+
+  it('info on pagination links; silent without them', () => {
+    const withPagination = analyzeTechnical(
+      buildSnapshot({ pagination: { prev: '/p1', next: '/p3' } }),
+    );
+    expect(withPagination.find((f) => f.ruleId === 'pagination-rel')?.severity).toBe('info');
+    const without = analyzeTechnical(buildSnapshot());
+    expect(without.find((f) => f.ruleId === 'pagination-rel')).toBeUndefined();
+  });
+
+  it('favicon info when absent, pass when present', () => {
+    expect(
+      analyzeTechnical(buildSnapshot({ faviconPresent: false })).find(
+        (f) => f.ruleId === 'favicon-present',
+      )?.severity,
+    ).toBe('info');
+    expect(
+      analyzeTechnical(buildSnapshot({ faviconPresent: true })).find(
+        (f) => f.ruleId === 'favicon-present',
+      )?.severity,
+    ).toBe('pass');
+  });
+
+  it('url-hygiene info lists issues; pass on clean URL', () => {
+    const messy = analyzeTechnical(
+      buildSnapshot({
+        url: 'https://example.com/Path_With_Underscores?sid=12345&utm_campaign=x&a=1&b=2&c=3&d=4',
+      }),
+    );
+    const hygiene = messy.find((f) => f.ruleId === 'url-hygiene');
+    expect(hygiene?.severity).toBe('info');
+    expect(hygiene?.detail).toContain('uppercase');
+    const clean = analyzeTechnical(buildSnapshot());
+    expect(clean.find((f) => f.ruleId === 'url-hygiene')?.severity).toBe('pass');
+  });
+
+  it('canonical-self-reference warns on cross-host without hreflang, info with, pass on self', () => {
+    const crossHost = analyzeTechnical(
+      buildSnapshot({
+        canonicals: ['https://other.com/page'],
+        meta: { canonical: 'https://other.com/page' },
+        hreflang: [],
+      }),
+    );
+    expect(crossHost.find((f) => f.ruleId === 'canonical-self-reference')?.severity).toBe('warn');
+    const justified = analyzeTechnical(
+      buildSnapshot({
+        canonicals: ['https://other.com/page'],
+        meta: { canonical: 'https://other.com/page' },
+        hreflang: [{ lang: 'en', href: 'https://other.com/page' }],
+      }),
+    );
+    expect(justified.find((f) => f.ruleId === 'canonical-self-reference')?.severity).toBe('info');
+  });
+});
+
+describe('v0.5.0 — social depth rules', () => {
+  it('og-image-absolute-url errors on relative og:image', () => {
+    const findings = analyzeMetadata(buildSnapshot({ meta: { ogImage: '/img/preview.png' } }));
+    expect(findings.find((f) => f.ruleId === 'og-image-absolute-url')?.severity).toBe('error');
+  });
+
+  it('twitter-card-valid-type warns on unknown card values', () => {
+    const findings = analyzeMetadata(buildSnapshot({ meta: { twitterCard: 'mega_card' } }));
+    expect(findings.find((f) => f.ruleId === 'twitter-card-valid-type')?.severity).toBe('warn');
+    const ok = analyzeMetadata(buildSnapshot());
+    expect(ok.find((f) => f.ruleId === 'twitter-card-valid-type')?.severity).toBe('pass');
+  });
+
+  it('og-url-matches-canonical info on mismatch', () => {
+    const findings = analyzeMetadata(
+      buildSnapshot({ meta: { ogUrl: 'https://example.com/other' } }),
+    );
+    expect(findings.find((f) => f.ruleId === 'og-url-matches-canonical')?.severity).toBe('info');
   });
 });

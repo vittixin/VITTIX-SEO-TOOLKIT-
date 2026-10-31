@@ -229,8 +229,16 @@ describe('analyzeMetadata — social rules', () => {
 });
 
 describe('analyzeHeadings', () => {
-  it('passes a clean outline', () => {
-    const findings = analyzeHeadings(buildSnapshot());
+  it('passes a clean outline (aligned title/h1, no empty or duplicate headings)', () => {
+    const findings = analyzeHeadings(
+      buildSnapshot({
+        title: 'Main Heading — Example',
+        headings: [
+          { tag: 'h1', text: 'Main Heading' },
+          { tag: 'h2', text: 'Section' },
+        ],
+      }),
+    );
     expect(findings.every((f) => f.severity === 'pass')).toBe(true);
   });
 

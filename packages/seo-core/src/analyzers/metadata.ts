@@ -9,6 +9,7 @@ import {
   TITLE_LENGTH_BOUNDS,
   TITLE_PIXEL_LIMIT_PX,
   estimateTextWidth,
+  TWITTER_CARD_KNOWN_TYPES,
 } from '../rules.js';
 import { finding } from './util.js';
 
@@ -736,6 +737,91 @@ function socialRules(snapshot: PageSnapshot): Finding[] {
   } else {
     findings.push(
       finding('twitter-card-present', 'social', 'pass', 'twitter:card declared', twitterCard),
+    );
+  }
+
+  // --- v0.5.0 additions ---------------------------------------------------------
+  if (ogImage !== '') {
+    // Absolute means scheme + host present; a relative URL would resolve via
+    // the URL constructor, so detect absoluteness on the raw string.
+    const ogImageAbsolute = /^[a-z][a-z0-9+.-]*:\/\//i.test(ogImage);
+    findings.push(
+      finding(
+        'og-image-absolute-url',
+        'social',
+        ogImageAbsolute ? 'pass' : 'error',
+        ogImageAbsolute ? 'og:image is an absolute URL' : 'og:image is not an absolute URL',
+        ogImageAbsolute
+          ? 'The og:image URL is fully-qualified, as social scrapers expect.'
+          : 'Some scrapers do not resolve relative og:image URLs against the page, which breaks the social preview image. Most crawlers expect a fully-qualified https:// URL.',
+        ogImageAbsolute
+          ? { evidence: ogImage }
+          : {
+              evidence: ogImage,
+              remediation: 'Use a fully-qualified https:// URL for <meta property="og:image">.',
+            },
+      ),
+    );
+  }
+
+  const twitterCardLower = twitterCard.toLowerCase();
+  if (
+    twitterCard !== '' &&
+    !(TWITTER_CARD_KNOWN_TYPES as readonly string[]).includes(twitterCardLower)
+  ) {
+    findings.push(
+      finding(
+        'twitter-card-valid-type',
+        'social',
+        'warn',
+        'Unknown twitter:card value',
+        `"${twitterCard}" is not a known X/Twitter card type (summary, summary_large_image, app, player). Unknown values are ignored and the platform falls back to a plain summary.`,
+        {
+          evidence: twitterCard,
+          remediation: 'Use one of: summary, summary_large_image, app, player.',
+        },
+      ),
+    );
+  } else if (twitterCard !== '') {
+    findings.push(
+      finding(
+        'twitter-card-valid-type',
+        'social',
+        'pass',
+        'twitter:card type is valid',
+        twitterCardLower,
+      ),
+    );
+  }
+
+  const ogUrl = snapshot.meta.ogUrl?.trim() ?? '';
+  const canonical = snapshot.meta.canonical?.trim() ?? '';
+  if (ogUrl === '') {
+    findings.push(
+      finding(
+        'og-url-matches-canonical',
+        'social',
+        'info',
+        'No og:url declared',
+        'og:url states the canonical URL for social scrapers. Without it, platforms use the shared URL including its parameters.',
+        {
+          remediation: 'Add <meta property="og:url" content="…"> matching the canonical URL.',
+        },
+      ),
+    );
+  } else if (canonical !== '') {
+    const matches = ogUrl.replace(/\/$/, '') === canonical.replace(/\/$/, '');
+    findings.push(
+      finding(
+        'og-url-matches-canonical',
+        'social',
+        matches ? 'pass' : 'info',
+        matches ? 'og:url matches the canonical' : 'og:url differs from the canonical',
+        matches
+          ? 'Social scrapers and search engines see the same preferred URL.'
+          : 'og:url and rel=canonical disagree. Social platforms will use og:url while search engines use the canonical — usually they should match to avoid split signals.',
+        { evidence: `og:url: ${ogUrl} · canonical: ${canonical}` },
+      ),
     );
   }
 

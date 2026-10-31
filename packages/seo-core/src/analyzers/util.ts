@@ -6,7 +6,7 @@ export function finding(
   category: Category,
   severity: Severity,
   title: string,
-  detail: string,
+  detail: string = '',
   options: { evidence?: string; remediation?: string; ratio?: number } = {},
 ): Finding {
   return {

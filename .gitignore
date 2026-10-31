@@ -26,3 +26,6 @@ Desktop.ini
 
 # Logs
 *.log
+
+# Codex/AI session transcripts (local working notes, not project files)
+codex-session-*.md

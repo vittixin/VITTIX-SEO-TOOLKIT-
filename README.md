@@ -75,6 +75,13 @@ everything locally. You can wipe all data from the options page at any time.
 See [docs/PRIVACY.md](docs/PRIVACY.md) and
 [docs/SECURITY.md](docs/SECURITY.md).
 
+## Documentation
+
+- [Release readiness & store checklist](docs/RELEASE_CHECKLIST.md)
+- [Store listing (prepared)](docs/STORE_LISTING.md)
+- [Site-audit threat model](docs/SITE_AUDIT.md)
+- [Manual GUI acceptance checklist](docs/MANUAL_ACCEPTANCE.md)
+
 ## License
 
 [MIT](LICENSE) © Vittix SEO Toolkit Contributors

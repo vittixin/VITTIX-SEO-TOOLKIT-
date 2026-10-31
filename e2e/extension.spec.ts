@@ -75,11 +75,13 @@ test.describe('Vittix SEO Toolkit smoke tests', () => {
       await expect(page.getByText('History retention')).toBeVisible();
       await expect(page.getByText('Maximum stored audits')).toBeVisible();
 
-      // Danger zone: two-step clear-all confirmation.
+      // Danger zone: two-step clear-all confirmation. The completion state
+      // waits on a real IndexedDB write, so give it a generous, still
+      // deterministic window (a state wait, not a sleep).
       await page.getByTestId('clear-all-button').click();
       await expect(page.getByTestId('clear-all-confirm')).toBeVisible();
       await page.getByTestId('clear-all-confirm').click();
-      await expect(page.getByText('All audit data deleted.')).toBeVisible();
+      await expect(page.getByTestId('clear-all-done')).toBeVisible({ timeout: 15_000 });
 
       // Privacy information is present.
       await expect(page.getByText('Nothing ever leaves your browser')).toBeVisible();

@@ -63,34 +63,41 @@ export async function runSiteAudit(sessionId: number, options: CrawlerOptions = 
     });
 
   const session = await getSiteSession(sessionId);
-  console.log('[dbg] session', sessionId, session?.status, 'conc', session?.concurrency);
   if (session === null || session.status !== 'running') return;
 
   // --- origin permission gate (fail closed on revocation) ---------------------
   if (!(await hasPermission(session.origin))) {
-    await updateSiteSession(sessionId, {
-      status: 'failed',
-      stopReason: `Permission for ${session.origin} is not granted — the audit was stopped before any request.`,
-      finishedAt: new Date().toISOString(),
-    });
+    await failSession(
+      sessionId,
+      `Permission for ${session.origin} is not granted — the audit was stopped before any request.`,
+    );
     onProgress();
     return;
   }
 
   // --- robots.txt gate ------------------------------------------------------
   const robots = await loadRobots(session, fetchImpl);
-  console.log('[dbg] robots', JSON.stringify(robots));
   if (robots.blocked) {
-    await updateSiteSession(sessionId, {
-      robotsStatus: 'blocked',
-      status: 'failed',
-      ...(robots.blockReason !== undefined ? { stopReason: robots.blockReason } : {}),
-      finishedAt: new Date().toISOString(),
-    });
+    // Bookkeeping first (best-effort), then the durable stop state.
+    try {
+      await updateSiteSession(sessionId, { robotsStatus: 'blocked' });
+    } catch (error) {
+      console.warn('[vittix] could not persist robots status', error);
+    }
+    await failSession(
+      sessionId,
+      robots.blockReason ?? 'robots.txt could not be fetched safely — the audit was blocked.',
+    );
     onProgress();
     return;
   }
-  await updateSiteSession(sessionId, { robotsStatus: robots.status });
+  // Robots status is bookkeeping: the in-memory policy already governs this
+  // run, so a failed write must not abort the crawl (RECOVERABLE).
+  try {
+    await updateSiteSession(sessionId, { robotsStatus: robots.status });
+  } catch (error) {
+    console.warn('[vittix] could not persist robots status', error);
+  }
   onProgress();
 
   const effectiveDelay = Math.max(session.delayMs, robots.policy.crawlDelayMs ?? 0);
@@ -139,7 +146,6 @@ export async function runSiteAudit(sessionId: number, options: CrawlerOptions = 
       (async () => {
         for (;;) {
           const current = await takeNext(sessionId, queue);
-          console.log('[dbg] took', JSON.stringify(current));
           if (current === null) return; // queue drained
           if (await shouldStop(sessionId)) return;
           // Re-verify the origin permission before EVERY fetch (fail closed
@@ -161,12 +167,37 @@ export async function runSiteAudit(sessionId: number, options: CrawlerOptions = 
   await Promise.all(workers);
 
   // --- finalize (unless the user cancelled/failed meanwhile) --------------------
-  const finalSession = await getSiteSession(sessionId);
-  if (finalSession?.status === 'running') {
-    await updateSiteSession(sessionId, {
-      status: finalSession.stopRequested ? 'cancelled' : 'completed',
-      finishedAt: new Date().toISOString(),
-    });
+  // CRITICAL-but-best-effort: a failed finalize write leaves the session
+  // 'running' — the dashboard still offers Resume/Discard, and the hook's
+  // error path surfaces it. runSiteAudit itself must never reject.
+  try {
+    const finalSession = await getSiteSession(sessionId);
+    if (finalSession?.status === 'running') {
+      if (finalSession.stopRequested) {
+        await updateSiteSession(sessionId, {
+          status: 'cancelled',
+          finishedAt: new Date().toISOString(),
+        });
+      } else {
+        const pages = await listSitePages(sessionId);
+        const pendingLeft = pages.filter((page) => page.status === 'pending').length;
+        // A session that drained its queue with pages still pending (page
+        // cap or drained failures) is NOT 'completed' — mark it explicitly
+        // so the UI shows the incomplete state instead of implying success.
+        await updateSiteSession(sessionId, {
+          status: pendingLeft > 0 ? 'failed' : 'completed',
+          ...(pendingLeft > 0
+            ? {
+                stopReason:
+                  'The crawl queue ended with pages still pending (page cap reached or discovery stopped) — the audit is incomplete.',
+              }
+            : {}),
+          finishedAt: new Date().toISOString(),
+        });
+      }
+    }
+  } catch (error) {
+    console.warn('[vittix] could not persist final session state', error);
   }
   onProgress();
 }
@@ -176,8 +207,11 @@ export async function runSiteAudit(sessionId: number, options: CrawlerOptions = 
 type Enqueued = { url: string; depth: number } | null;
 
 /**
- * Pop the next shallowest pending URL that is still 'pending' on disk,
- * enforcing the hard page cap on total page records for the session.
+ * Pop the next shallowest pending URL that is still 'pending' on disk.
+ *
+ * The hard page cap is enforced where RECORDS are created (seed + discovery
+ * enqueue) — already-recorded pending pages must always be processable,
+ * otherwise a tiny maxPages would deadlock the seeded start URL.
  */
 async function takeNext(
   sessionId: number,
@@ -189,10 +223,8 @@ async function takeNext(
     // NOTE: the candidate stays in `seen` — it is known whether processed or
     // merely queued, so backlinks can never re-enqueue an already-seen URL.
     const session = await getSiteSession(sessionId);
-    console.log('[dbg] session', sessionId, session?.status, 'conc', session?.concurrency);
     if (session === null || session.stopRequested || session.status !== 'running') return null;
     const pages = await listSitePages(sessionId);
-    if (pages.length >= session.maxPages) return null;
     const match = pages.find((page) => page.url === candidate.url && page.status === 'pending');
     if (match !== null) return { url: candidate.url, depth: candidate.depth };
     // Already processed (e.g. resume replay) — skip.
@@ -201,7 +233,6 @@ async function takeNext(
 
 async function shouldStop(sessionId: number): Promise<boolean> {
   const session = await getSiteSession(sessionId);
-  console.log('[dbg] session', sessionId, session?.status, 'conc', session?.concurrency);
   return session === null || session.stopRequested || session.status !== 'running';
 }
 
@@ -448,7 +479,6 @@ interface NewPageCandidate {
 async function bumpCounters(sessionId: number, kind: 'done' | 'failed' | 'skipped'): Promise<void> {
   try {
     const session = await getSiteSession(sessionId);
-    console.log('[dbg] session', sessionId, session?.status, 'conc', session?.concurrency);
     if (session === null) return;
     const changes: Partial<SiteSession> =
       kind === 'done'

@@ -150,40 +150,61 @@ export function useSiteAudit() {
   async function startAudit(): Promise<void> {
     if (grantedOrigin === null) return;
     setError(null);
-    const settings = await loadSettings();
-    const sessionId = await createSiteSession({
-      origin: grantedOrigin,
-      status: 'running',
-      startedAt: new Date().toISOString(),
-      maxPages: Math.min(maxPages, SITE_LIMITS.maxPagesCap),
-      maxDepth: SITE_LIMITS.maxDepth,
-      concurrency: SITE_LIMITS.concurrencyDefault,
-      delayMs: Math.max(settings.siteAuditDelayMs, SITE_LIMITS.delayMsFloor),
-      ruleSetVersion: RULE_SET_VERSION,
-    });
-    setPhase('running');
-    setSession(await getLatestSiteSession());
-    setPages([]);
-    setSummary(null);
-    setComparison(null);
+    try {
+      const settings = await loadSettings();
+      const sessionId = await createSiteSession({
+        origin: grantedOrigin,
+        status: 'running',
+        startedAt: new Date().toISOString(),
+        maxPages: Math.min(maxPages, SITE_LIMITS.maxPagesCap),
+        maxDepth: SITE_LIMITS.maxDepth,
+        concurrency: SITE_LIMITS.concurrencyDefault,
+        delayMs: Math.max(settings.siteAuditDelayMs, SITE_LIMITS.delayMsFloor),
+        ruleSetVersion: RULE_SET_VERSION,
+      });
+      setPhase('running');
+      setSession(await getLatestSiteSession());
+      setPages([]);
+      setSummary(null);
+      setComparison(null);
 
-    const token = ++runTokenRef.current;
-    void runSiteAudit(sessionId, {
-      onProgress: () => {
-        if (runTokenRef.current === token) void refresh(sessionId);
-      },
-    }).then(async () => {
-      if (runTokenRef.current === token) {
-        await refresh(sessionId);
-        await applySession((await getLatestSiteSession()) ?? null);
-        setPhase('finished');
-      }
-    });
+      const token = ++runTokenRef.current;
+      // runSiteAudit never rejects by contract; the catch below guards the
+      // UI refresh chain instead.
+      void runSiteAudit(sessionId, {
+        onProgress: () => {
+          if (runTokenRef.current === token) void refresh(sessionId);
+        },
+      }).then(async () => {
+        if (runTokenRef.current === token) {
+          await refresh(sessionId);
+          await applySession((await getLatestSiteSession()) ?? null);
+          setPhase('finished');
+        }
+      });
+    } catch (startError) {
+      // CRITICAL: the session row could not be created — nothing can run.
+      setPhase('finished');
+      setError(
+        `Could not start the audit: ${
+          startError instanceof Error ? startError.message : String(startError)
+        }`,
+      );
+    }
   }
 
   async function cancelAudit(): Promise<void> {
     if (session?.id === undefined) return;
-    await updateSiteSession(session.id, { stopRequested: true });
+    try {
+      await updateSiteSession(session.id, { stopRequested: true });
+    } catch (cancelError) {
+      // CRITICAL: without the persisted flag the crawl keeps running.
+      setError(
+        `Could not cancel the audit (storage error): ${
+          cancelError instanceof Error ? cancelError.message : String(cancelError)
+        }`,
+      );
+    }
     // The loop checks stopRequested between requests; UI updates via refresh.
   }
 

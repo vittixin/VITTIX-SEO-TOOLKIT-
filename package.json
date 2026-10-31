@@ -21,7 +21,8 @@
     "test:e2e": "pnpm build:chrome && pnpm --filter @vittix/extension build:e2e && playwright test",
     "clean": "pnpm -r clean",
     "icons": "node scripts/generate-icons.mjs",
-    "verify:manifest": "node scripts/verify-manifest.mjs"
+    "verify:manifest": "node scripts/verify-manifest.mjs",
+    "zip": "pnpm --filter @vittix/extension zip"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",

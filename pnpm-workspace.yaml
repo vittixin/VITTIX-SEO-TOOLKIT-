@@ -14,5 +14,13 @@ minimumReleaseAgeExclude:
 # @wxt-dev/module-react accepts @vitejs/plugin-react ^4||^5||^6, but 6.x targets
 # Vite 8 only (it imports "vite/internal", which does not exist in Vite 7).
 # Pin the 5.x line, which officially supports Vite ^7, to match our Vite 7 pin.
+#
+# GHSA-g3hv-75wg-m249: minimatch < 11.0.1 (ReDoS via glob-parts amplification)
+# arrives only through eslint's DEV dependency chain. The patched release is a
+# MAJOR bump over eslint's ^3/^10 ranges — applied here as an explicitly
+# documented, empirically verified dev-only transitive upgrade (the full lint
+# suite exercises eslint's minimatch usage; production bundles contain no
+# minimatch at all).
 overrides:
   '@vitejs/plugin-react': 5.1.4
+  minimatch: 11.0.1

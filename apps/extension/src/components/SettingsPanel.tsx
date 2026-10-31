@@ -21,6 +21,7 @@ export function SettingsPanel() {
   const [saved, setSaved] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [cleared, setCleared] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     void getSettings().then((next) => {
@@ -30,18 +31,28 @@ export function SettingsPanel() {
   }, []);
 
   async function handleSave() {
-    const next = await saveSettings(settings);
-    setSettings(next);
-    await pruneAudits(next);
-    setSaved(true);
-    setCleared(false);
+    setBusy(true);
+    try {
+      const next = await saveSettings(settings);
+      setSettings(next);
+      await pruneAudits(next);
+      setSaved(true);
+      setCleared(false);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleClearAll() {
-    await clearAllAudits();
-    setConfirmClear(false);
-    setCleared(true);
-    setSaved(false);
+    setBusy(true);
+    try {
+      await clearAllAudits();
+      setConfirmClear(false);
+      setCleared(true);
+      setSaved(false);
+    } finally {
+      setBusy(false);
+    }
   }
 
   const selectClasses =
@@ -123,7 +134,8 @@ export function SettingsPanel() {
                 type="button"
                 data-testid="clear-all-confirm"
                 onClick={() => void handleClearAll()}
-                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-500"
+                disabled={busy}
+                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Yes, delete everything
               </button>
@@ -146,7 +158,9 @@ export function SettingsPanel() {
             </button>
           )}
           {cleared ? (
-            <span className="text-sm font-medium text-emerald-600">All audit data deleted.</span>
+            <span className="text-sm font-medium text-emerald-600" data-testid="clear-all-done">
+              All audit data deleted.
+            </span>
           ) : null}
         </div>
       </section>

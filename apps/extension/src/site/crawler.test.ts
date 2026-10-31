@@ -18,6 +18,10 @@ vi.mock('@/src/storage/site', (): unknown => {
   const pages = new Map<number, Record<string, unknown>>();
   let pageId = 1;
   let failPageWrites = false;
+  // Fault injection: the next N writes of each kind abort (transaction/
+  // quota simulation).
+  let failNextPageWrites = 0;
+  let failNextSessionWrites = 0;
   return {
     createSiteSession: async (session: Record<string, unknown>) => {
       const id = sessions.size + 1;
@@ -38,9 +42,17 @@ vi.mock('@/src/storage/site', (): unknown => {
     },
     updateSitePage: async (id: number, changes: Record<string, unknown>) => {
       if (failPageWrites) throw new Error('QuotaExceededError');
+      if (failNextPageWrites > 0) {
+        failNextPageWrites -= 1;
+        throw new Error('Transaction aborted');
+      }
       pages.set(id, { ...pages.get(id), ...changes });
     },
     updateSiteSession: async (id: number, changes: Record<string, unknown>) => {
+      if (failNextSessionWrites > 0) {
+        failNextSessionWrites -= 1;
+        throw new Error('Transaction aborted');
+      }
       sessions.set(id, { ...sessions.get(id), ...changes });
     },
     deleteSiteSession: async () => {},
@@ -50,6 +62,12 @@ vi.mock('@/src/storage/site', (): unknown => {
     __sessions: sessions,
     __setFailPageWrites: (value: boolean) => {
       failPageWrites = value;
+    },
+    __failNextPageWrites: (count: number) => {
+      failNextPageWrites = count;
+    },
+    __failNextSessionWrites: (count: number) => {
+      failNextSessionWrites = count;
     },
   };
 });
@@ -337,6 +355,10 @@ describe('runSiteAudit', () => {
     expect(pages.length).toBeLessThanOrEqual(3);
     const { getSiteSession } = await import('@/src/storage/site');
     const session = await getSiteSession(sessionId);
+    // The cap limits DISCOVERY (records created), not processing: every
+    // recorded page was processed, so the audit completes within scope.
+    // (A session that ends with UNPROCESSED pending pages is the failure
+    // case — covered by the finalize safety net.)
     expect(session?.status).toBe('completed');
   });
 
@@ -570,5 +592,109 @@ describe('Phase 4 — idempotent resume and accurate counters', () => {
     const fetchedUrls = fetchImpl.mock.calls.map(([input]) => String(input));
     expect(fetchedUrls.some((url) => url === `${ORIGIN}/next`)).toBe(false);
     expect((await getSiteSession(sessionId))?.status).toBe('cancelled');
+  });
+});
+
+// --- Phase 5 fault injection ---------------------------------------------------
+
+describe('Phase 5 — fault injection', () => {
+  async function flags() {
+    return import('@/src/storage/site') as Promise<{
+      __failNextSessionWrites: (count: number) => void;
+      __failNextPageWrites: (count: number) => void;
+    }>;
+  }
+
+  it('treats a robots-status write failure as RECOVERABLE (crawl continues)', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(okRobots());
+      return Promise.resolve(htmlResponse('<p>fine</p>', url));
+    });
+    const sessionId = await seedSession();
+    // Abort ONLY the robots-status write (the first session write).
+    (await flags()).__failNextSessionWrites(1);
+    await runSiteAudit(sessionId, {
+      fetchImpl,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+
+    const session = await getSiteSession(sessionId);
+    expect(session?.status).toBe('completed'); // crawl was not aborted
+    expect((await listSitePages(sessionId)).filter((page) => page.status === 'ok')).toHaveLength(1);
+  });
+
+  it('survives a finalize-write failure without an unhandled rejection', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(okRobots());
+      return Promise.resolve(htmlResponse('<p>fine</p>', url));
+    });
+    const sessionId = await seedSession();
+    // Every terminal status write aborts (finalize path).
+    (await flags()).__failNextSessionWrites(99);
+    await expect(
+      runSiteAudit(sessionId, {
+        fetchImpl,
+        delay: async () => {},
+        hasPermission: async () => true,
+      }),
+    ).resolves.toBeUndefined();
+    (await flags()).__failNextSessionWrites(0);
+    // Session left 'running' — recoverable via Resume/Discard in the UI.
+    expect((await getSiteSession(sessionId))?.status).toBe('running');
+  });
+
+  it('marks a transient page-write abort as failed and stays idempotent on resume', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(okRobots());
+      return Promise.resolve(htmlResponse('<p>content</p>', url));
+    });
+    const sessionId = await seedSession({ maxPages: 1 });
+    (await flags()).__failNextPageWrites(1); // first page write aborts (partial transaction)
+    await runSiteAudit(sessionId, {
+      fetchImpl,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+
+    const pages = await listSitePages(sessionId);
+    expect(pages[0]?.status).toBe('failed');
+
+    // Resume cannot reprocess a failed page (idempotency boundary).
+    await runSiteAudit(sessionId, {
+      fetchImpl,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+    expect(await listSitePages(sessionId)).toHaveLength(1);
+    expect(
+      fetchImpl.mock.calls.filter(([input]) => !String(input).endsWith('/robots.txt')),
+    ).toHaveLength(1);
+  });
+
+  it('recovers accurate counters when a bookkeeping write fails first', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(okRobots());
+      return Promise.resolve(htmlResponse('<p>content</p>', url));
+    });
+    // Explicit pagesDone so the mock (raw storage, no Zod defaults) has the
+    // field; the pre-restart baseline is 0.
+    const sessionId = await seedSession({ pagesDone: 0 });
+    // Abort only the FIRST session write (robotsStatus bookkeeping —
+    // RECOVERABLE); the page write and the counter write succeed.
+    (await flags()).__failNextSessionWrites(1);
+    await runSiteAudit(sessionId, {
+      fetchImpl,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+    const session = await getSiteSession(sessionId);
+    expect(session?.status).toBe('completed');
+    expect(session?.pagesDone).toBe(1);
+    expect((await listSitePages(sessionId))[0]?.status).toBe('ok');
   });
 });

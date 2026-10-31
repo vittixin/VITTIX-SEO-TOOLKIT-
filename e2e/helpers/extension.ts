@@ -20,28 +20,28 @@ export type ExtensionBuild = keyof typeof EXTENSION_BUILD_DIRS;
 
 const PROFILE_DIR = resolve(import.meta.dirname, '../../test-results/pw-profile');
 
-/**
- * Launch Chromium with a built extension and return a ready page.
- *
- * Browser notes:
- * - Requires the FULL Chromium build with new headless (`channel:
- *   'chromium'`). Playwright's default headless shell has no extension
- *   support, and branded Chrome (channel 'chrome') ignores
- *   --load-extension since Chrome 137.
- * - Each call starts from a fresh profile, so tests get a clean database.
- */
-export async function loadExtension(
-  build: ExtensionBuild = 'production',
-  extraArgs: string[] = [],
-): Promise<{
-  context: BrowserContext;
-  page: Page;
-  extensionId: string;
-}> {
-  const extensionDir = EXTENSION_BUILD_DIRS[build];
-  rmSync(PROFILE_DIR, { recursive: true, force: true });
+export interface LaunchOptions {
+  /**
+   * Persistent profile directory. Pass the SAME directory twice to test a
+   * real browser restart (IndexedDB and the extension survive).
+   */
+  profileDir?: string;
+  /** Wipe the profile before launch (default: true for the shared default). */
+  freshProfile?: boolean;
+}
 
-  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
+export async function launchExtensionContext(
+  build: ExtensionBuild,
+  extraArgs: string[],
+  options: LaunchOptions = {},
+): Promise<{ context: BrowserContext; extensionId: string }> {
+  const extensionDir = EXTENSION_BUILD_DIRS[build];
+  const profileDir = options.profileDir ?? PROFILE_DIR;
+  if (options.freshProfile !== false) {
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+
+  const context = await chromium.launchPersistentContext(profileDir, {
     channel: process.env.PLAYWRIGHT_CHANNEL ?? 'chromium',
     headless: true,
     args: [
@@ -61,8 +61,30 @@ export async function loadExtension(
     await context.close();
     throw new Error('Extension service worker never registered (extension failed to load?)');
   }
+  return { context, extensionId: new URL(worker.url()).host };
+}
 
-  const extensionId = new URL(worker.url()).host;
+/**
+ * Launch Chromium with a built extension and return a ready page.
+ *
+ * Browser notes:
+ * - Requires the FULL Chromium build with new headless (`channel:
+ *   'chromium'`). Playwright's default headless shell has no extension
+ *   support, and branded Chrome (channel 'chrome') ignores
+ *   --load-extension since Chrome 137.
+ * - Each call starts from a fresh profile, so tests get a clean database.
+ *   For restart/recovery tests use `launchExtensionContext` with a shared
+ *   `profileDir` and `freshProfile: false` on the second launch.
+ */
+export async function loadExtension(
+  build: ExtensionBuild = 'production',
+  extraArgs: string[] = [],
+): Promise<{
+  context: BrowserContext;
+  page: Page;
+  extensionId: string;
+}> {
+  const { context, extensionId } = await launchExtensionContext(build, extraArgs);
   const page = await context.newPage();
   return { context, page, extensionId };
 }

@@ -9,3 +9,4 @@ test-results/
 pnpm-lock.yaml
 apps/extension/public/icon/
 codex-session-*.md
+apps/extension/public/THIRD_PARTY_NOTICES.md

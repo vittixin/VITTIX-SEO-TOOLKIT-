@@ -43,7 +43,10 @@ export async function launchExtensionContext(
 
   const context = await chromium.launchPersistentContext(profileDir, {
     channel: process.env.PLAYWRIGHT_CHANNEL ?? 'chromium',
-    headless: true,
+    // PLAYWRIGHT_HEADED=1 enables installed-Chrome (channel "chrome") runs:
+    // branded Chrome only loads extensions headfully, so acceptance runs on
+    // the installed browser use a visible window with a disposable profile.
+    headless: process.env.PLAYWRIGHT_HEADED !== '1',
     args: [
       `--disable-extensions-except=${extensionDir}`,
       `--load-extension=${extensionDir}`,

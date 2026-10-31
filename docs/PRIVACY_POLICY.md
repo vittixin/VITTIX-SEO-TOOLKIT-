@@ -91,3 +91,15 @@ browsing history. It does not read content inside iframes.
 
 This is an open-source project. Issues and questions can be raised through
 the project's repository issue tracker.
+
+## Deployment steps (maintainer notes — not part of the public policy)
+
+1. Host this document at a stable public URL (e.g. GitHub Pages:
+   repository Settings → Pages, or a `gh-pages` branch serving
+   `docs/PRIVACY_POLICY.md`). Suggested final URL shape:
+   `https://<org>.github.io/vittix-seo-toolkit/PRIVACY_POLICY.md` — do NOT
+   submit until the URL is live and verified reachable.
+2. Reference that URL in the Chrome Web Store listing's "Privacy policy"
+   field.
+3. Re-verify the policy after any permission or data-flow change (release
+   checklist §3).

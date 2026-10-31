@@ -4,6 +4,7 @@ import { analyzeHreflang } from './analyzers/hreflang.js';
 import { analyzeImages } from './analyzers/images.js';
 import { analyzeLinks } from './analyzers/links.js';
 import { analyzeMetadata } from './analyzers/metadata.js';
+import { analyzeContent } from './analyzers/content.js';
 import { analyzeStructuredData } from './analyzers/structured-data.js';
 import { computeScore } from './scoring.js';
 import { RULE_SET_VERSION } from './rules.js';
@@ -19,6 +20,7 @@ export function analyzeSnapshot(snapshot: PageSnapshot): AnalysisResult {
     ...analyzeHeadings(snapshot),
     ...analyzeImages(snapshot),
     ...analyzeLinks(snapshot),
+    ...analyzeContent(snapshot),
     ...analyzeStructuredData(snapshot),
   ].sort(
     (a, b) =>

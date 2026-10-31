@@ -34,10 +34,11 @@ describe('computeScore', () => {
     expect(score.preliminary).toBe(true);
   });
 
-  it('applies the documented penalty math (one metadata error → 93)', () => {
+  it('applies the documented penalty math (one metadata error → 94)', () => {
     const score = computeScore(synthetic('metadata', 'error'));
-    // metadata category: 100 - 25 = 75 → (75*30 + 100*70)/100 = 92.5 → 93
-    expect(score.total).toBe(93);
+    // metadata category: 100 - 25 = 75; weight 25 of 100 (7 categories)
+    // (75*25 + 100*75)/100 = 93.75 → 94
+    expect(score.total).toBe(94);
   });
 
   it('floors a category at 0 (errors can never push below)', () => {
@@ -136,8 +137,8 @@ describe('computeScore', () => {
     const score = computeScore(findings);
     // metadata 100-20=80 · headings 100-10=90 · images 75 · links 75
     // social 100 · technical 90
-    // (80*30 + 90*20 + 75*20 + 75*15 + 100*10 + 90*5)/100 = 82.75 → 83
-    expect(score.total).toBe(83);
+    // (80*25 + 90*20 + 75*15 + 75*15 + 100*10 + 90*5 + 100*10)/100 = 85
+    expect(score.total).toBe(85);
     expect(score.label).toBe('Good');
     expect(score.capReason).toBeNull();
   });

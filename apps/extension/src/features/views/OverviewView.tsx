@@ -12,6 +12,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   headings: 'Headings',
   images: 'Images',
   links: 'Links',
+  content: 'Content',
   social: 'Social',
   technical: 'Technical',
 };

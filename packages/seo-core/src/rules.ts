@@ -46,11 +46,14 @@ export const RULE_IDS = [
   'link-named-nonvisually',
   'internal-link-quality',
   'link-profile',
+  // content
+  'content-length',
   // structured data
   'structured-data-present',
   'structured-data-valid',
   'structured-data-context',
 ] as const;
+
 export type RuleId = (typeof RULE_IDS)[number];
 
 /** Bounds considered healthy for the <title> element (characters). */
@@ -87,3 +90,6 @@ export const LANG_TAG_PATTERN = /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/;
 
 /** Hreflang values that are valid besides language tags. */
 export const HREFLANG_SPECIAL_VALUES = ['x-default'] as const;
+
+/** Pages with fewer words are flagged as thin content (indexable pages only). */
+export const CONTENT_LENGTH_MIN_WORDS = 300;

@@ -16,7 +16,15 @@ export const ScoreSchema = z.object({
   capReason: z.string().nullable().default(null),
   categories: z.array(
     z.object({
-      category: z.enum(['metadata', 'headings', 'images', 'links', 'social', 'technical']),
+      category: z.enum([
+        'metadata',
+        'headings',
+        'images',
+        'links',
+        'content',
+        'social',
+        'technical',
+      ]),
       score: z.number().min(0).max(100),
     }),
   ),

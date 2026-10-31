@@ -11,6 +11,7 @@ export const CATEGORIES = [
   'headings',
   'images',
   'links',
+  'content',
   'social',
   'technical',
 ] as const;

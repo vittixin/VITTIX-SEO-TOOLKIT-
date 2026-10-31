@@ -37,10 +37,11 @@ import { CATEGORIES, type Category, type Finding, type Score, type Severity } fr
  * relationship to Google rankings.
  */
 export const CATEGORY_WEIGHTS: Record<Category, number> = {
-  metadata: 30,
+  metadata: 25,
   headings: 20,
-  images: 20,
+  images: 15,
   links: 15,
+  content: 10,
   social: 10,
   technical: 5,
 };

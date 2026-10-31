@@ -4,12 +4,14 @@ export { analyzeHreflang } from './analyzers/hreflang.js';
 export { analyzeHeadings } from './analyzers/headings.js';
 export { analyzeImages } from './analyzers/images.js';
 export { analyzeLinks } from './analyzers/links.js';
+export { analyzeContent } from './analyzers/content.js';
 export { analyzeStructuredData } from './analyzers/structured-data.js';
 export { CATEGORY_WEIGHTS, SEVERITY_PENALTIES, computeScore, scoreLabel } from './scoring.js';
 export {
   ALT_MIN_MEANINGFUL_LENGTH,
   DESCRIPTION_LENGTH_BOUNDS,
   GENERIC_ANCHOR_TEXTS,
+  CONTENT_LENGTH_MIN_WORDS,
   HREFLANG_SPECIAL_VALUES,
   LANG_TAG_PATTERN,
   RULE_IDS,

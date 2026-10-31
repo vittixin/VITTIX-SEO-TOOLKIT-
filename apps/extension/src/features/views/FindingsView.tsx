@@ -21,6 +21,7 @@ const CATEGORIES: { id: Category | 'all'; label: string }[] = [
   { id: 'headings', label: 'Headings' },
   { id: 'images', label: 'Images' },
   { id: 'links', label: 'Links' },
+  { id: 'content', label: 'Content' },
   { id: 'social', label: 'Social' },
   { id: 'technical', label: 'Technical' },
 ];
@@ -30,6 +31,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
   headings: 'Headings',
   images: 'Images',
   links: 'Links',
+  content: 'Content',
   social: 'Social',
   technical: 'Technical',
 };

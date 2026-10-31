@@ -5,6 +5,7 @@ import { analyzeImages } from './analyzers/images.js';
 import { analyzeLinks } from './analyzers/links.js';
 import { analyzeStructuredData } from './analyzers/structured-data.js';
 import { analyzeHreflang } from './analyzers/hreflang.js';
+import { analyzeContent } from './analyzers/content.js';
 import { buildSnapshot, findByRuleId } from './testing/fixtures.js';
 
 describe('analyzeMetadata — title rules', () => {
@@ -814,5 +815,55 @@ describe('Issue 2 — non-HTTP links classify into an other bucket', () => {
     );
     expect(findByRuleId(findings, 'link-anchor-text').severity).toBe('pass');
     expect(findByRuleId(findings, 'link-named-nonvisually').severity).toBe('info');
+  });
+});
+
+// --- Issue 4: content-length rule ----------------------------------------------
+
+describe('Issue 4 — content-length rule', () => {
+  it('warns on thin indexable pages', () => {
+    const findings = analyzeContent(
+      buildSnapshot({ textStats: { wordCount: 120, textSampleTruncated: false } }),
+    );
+    const f = findByRuleId(findings, 'content-length');
+    expect(f.severity).toBe('warn');
+    expect(f.detail).toContain('120 words');
+    expect(f.remediation).toBeTruthy();
+  });
+
+  it('passes on healthy content', () => {
+    const findings = analyzeContent(buildSnapshot());
+    expect(findByRuleId(findings, 'content-length').severity).toBe('pass');
+  });
+
+  it('reports info (not warn) when the text sample was truncated', () => {
+    const findings = analyzeContent(
+      buildSnapshot({ textStats: { wordCount: 120, textSampleTruncated: true } }),
+    );
+    const f = findByRuleId(findings, 'content-length');
+    expect(f.severity).toBe('info');
+    expect(f.detail).toContain('partial');
+  });
+
+  it('never flags non-indexable (noindex) pages', () => {
+    const findings = analyzeContent(
+      buildSnapshot({
+        textStats: { wordCount: 10, textSampleTruncated: false },
+        meta: { robots: 'noindex' },
+      }),
+    );
+    const f = findByRuleId(findings, 'content-length');
+    expect(f.severity).toBe('pass');
+    expect(f.title).toContain('not applied');
+  });
+
+  it('never errors, even for pathological inputs', () => {
+    const findings = analyzeContent(
+      buildSnapshot({
+        textStats: { wordCount: 0, textSampleTruncated: true },
+        meta: { robots: 'none' },
+      }),
+    );
+    expect(findByRuleId(findings, 'content-length').severity).not.toBe('error');
   });
 });

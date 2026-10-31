@@ -57,7 +57,10 @@ dependency or manifest change.
   test artifacts).
 - Production ZIP: `pnpm zip` →
   `apps/extension/.output/vittix-seo-toolkit-<version>-chrome.zip`
-  (~251 kB, 17 files — see release report for the exact listing).
+  (~257 kB, 18 files incl. THIRD_PARTY_NOTICES.md).
+- Acceptance screenshots (`docs/acceptance-evidence/`): kept in the repo for
+  now; if repo size becomes a concern, move them to GitHub release assets
+  for the corresponding release tag and reference the asset URLs here.
 
 ## 6. Versioning & release notes
 

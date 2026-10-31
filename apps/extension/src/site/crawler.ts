@@ -281,7 +281,12 @@ async function loadRobots(
       return { policy: EMPTY_ROBOTS_POLICY, status: 'unreachable', blocked: false };
     }
     const text = (await response.text()).slice(0, 500_000);
-    return { policy: parseRobotsTxt(text), status: 'allowed', blocked: false };
+    const policy = parseRobotsTxt(text);
+    // Caller-side enforcement: only same-origin Sitemap URLs are exposed
+    // (sitemap discovery is a future feature; the filter guarantees that
+    // whenever it lands, no off-origin URL can enter the crawl queue).
+    const sitemaps = policy.sitemaps.filter((url) => isSameOriginUrl(url, session.origin));
+    return { policy: { ...policy, sitemaps }, status: 'allowed', blocked: false };
   } catch {
     return { policy: EMPTY_ROBOTS_POLICY, status: 'allowed', blocked: true };
   }

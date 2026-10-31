@@ -75,6 +75,11 @@ export function App() {
   function navigate(next: Section) {
     setSection(next);
     setSidebarOpen(false);
+    // Audits can be saved while the dashboard is open (e.g. from the popup).
+    // Re-read durable state when entering the sections that show it so the
+    // UI never presents a stale empty state.
+    if (next === 'overview') void audits.loadLatest();
+    if (next === 'history') void audits.refresh();
   }
 
   function viewAudit(id: number) {

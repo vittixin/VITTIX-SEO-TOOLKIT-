@@ -1,0 +1,3 @@
+Acceptance evidence captured 2026-10-31T11:16:32.945Z
+Build: production (01-05) + e2e test-variant (06-09)
+Profile: disposable Chromium (Playwright), not the owner profile

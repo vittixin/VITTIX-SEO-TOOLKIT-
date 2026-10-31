@@ -125,3 +125,47 @@ test('analyze-page keyboard command is registered', async () => {
     await context.close();
   }
 });
+
+/**
+ * REGRESSION (Phase 8): a dashboard opened BEFORE an audit runs must show
+ * the new audit once the user navigates to Overview — never a stale empty
+ * state.
+ */
+test('dashboard shows audits saved while it was open (stale-state regression)', async () => {
+  const { context, extensionId } = await loadExtension('e2e');
+  try {
+    const fixtureHtml = `<!doctype html>
+<html lang="en"><head><title>Concurrent Audit Fixture</title></head>
+<body><h1>Concurrent heading</h1></body></html>`;
+    await context.route('https://fixture.test/concurrent', (route) =>
+      route.fulfill({ contentType: 'text/html', body: fixtureHtml }),
+    );
+    const fixtureTab = await context.newPage();
+    await fixtureTab.goto('https://fixture.test/concurrent');
+
+    // Open the dashboard FIRST (empty state).
+    const dashboard = await context.newPage();
+    await dashboard.goto(extensionPageUrl(extensionId, 'dashboard.html'));
+    await expect(dashboard.getByText('No audit yet')).toBeVisible();
+
+    // Run the audit while the dashboard is open (fixture tab focused —
+    // creating the trigger page makes IT active, so re-focus the fixture).
+    const trigger = await context.newPage();
+    await trigger.goto(extensionPageUrl(extensionId, 'options.html'));
+    await fixtureTab.bringToFront();
+    const response = await trigger.evaluate(() =>
+      chrome.runtime.sendMessage({ type: 'vittix/analyze-active-tab' }),
+    );
+    expect(response.ok).toBe(true);
+    await trigger.close();
+
+    // Navigating to Overview must re-read durable state.
+    await dashboard.bringToFront();
+    await dashboard.getByTestId('nav-overview').click();
+    await expect(dashboard.getByText('Concurrent Audit Fixture').first()).toBeVisible({
+      timeout: 15_000,
+    });
+  } finally {
+    await context.close();
+  }
+});

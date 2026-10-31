@@ -23,6 +23,9 @@ describe('EXTRACTOR_LIMITS — single source of truth', () => {
       robotsValues: SNAPSHOT_LIMITS.robotsValues,
       structuredData: SNAPSHOT_LIMITS.structuredData,
       hreflang: SNAPSHOT_LIMITS.hreflang,
+      keywords: SNAPSHOT_LIMITS.keywords,
+      mixedContentSamples: SNAPSHOT_LIMITS.mixedContentSamples,
+      foldCandidates: SNAPSHOT_LIMITS.foldCandidates,
     });
   });
 
@@ -38,6 +41,9 @@ describe('EXTRACTOR_LIMITS — single source of truth', () => {
       'robotsValues',
       'structuredData',
       'hreflang',
+      'keywords',
+      'mixedContentSamples',
+      'foldCandidates',
     ].sort();
     expect(Object.keys(EXTRACTOR_LIMITS).sort()).toEqual(expectedKeys);
   });

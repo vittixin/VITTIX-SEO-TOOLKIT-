@@ -5,6 +5,20 @@ export { analyzeHeadings } from './analyzers/headings.js';
 export { analyzeImages } from './analyzers/images.js';
 export { analyzeLinks } from './analyzers/links.js';
 export { analyzeContent } from './analyzers/content.js';
+export {
+  ENGLISH_STOP_WORDS,
+  countParagraphs,
+  countSentences,
+  estimateSyllables,
+  fleschReadingEase,
+  fnv1a64Hex,
+  keywordProminence,
+  readingTimeMinutes,
+  selectStopWords,
+  tokenizeWords,
+  topKeywords,
+  type KeywordProminence,
+} from './text-summary.js';
 export { analyzeStructuredData } from './analyzers/structured-data.js';
 export { CATEGORY_WEIGHTS, SEVERITY_PENALTIES, computeScore, scoreLabel } from './scoring.js';
 export {

@@ -16,15 +16,20 @@ export const DB_NAME = 'vittix-seo';
  *   counts of capped-away elements), hidden{} (per-collection counts of
  *   hidden elements), svg{} (inline SVG accessibility stats),
  *   textStats.textSampleTruncated.
+ * - v4: meta.ogSiteName/ogUrl, textSummary{} (sentence/paragraph counts,
+ *   top keyword frequencies, sample hash), extended image attributes
+ *   (dimensions, loading/decoding/srcset/sizes, picture, fetchpriority,
+ *   format, above-fold index), mixedContentSamples[], faviconPresent,
+ *   pagination{prev,next}.
  *
- * All v2/v3 fields carry defaults, so v1 and v2 records stored by earlier
- * versions remain readable (the schema accepts all three versions).
- * See docs/ROADMAP.md for the changelog of when each version landed.
+ * All v2/v3/v4 fields carry defaults, so records stored by earlier versions
+ * remain readable (the schema accepts all four versions). See
+ * docs/ROADMAP.md for the changelog of when each version landed.
  */
-export const SNAPSHOT_SCHEMA_VERSION = 3;
+export const SNAPSHOT_SCHEMA_VERSION = 4;
 
 /** Snapshot versions the schema can still read (legacy stored audits). */
-export const SNAPSHOT_SCHEMA_VERSIONS = [1, 2, 3] as const;
+export const SNAPSHOT_SCHEMA_VERSIONS = [1, 2, 3, 4] as const;
 
 /**
  * Hard bounds applied while extracting a page so that audits stay small and
@@ -51,4 +56,10 @@ export const SNAPSHOT_LIMITS = {
   robotsValues: 5,
   /** Maximum hreflang entries retained. */
   hreflang: 10,
+  /** Maximum keyword frequencies retained in the content summary. */
+  keywords: 20,
+  /** Maximum http:// resource samples retained on https pages. */
+  mixedContentSamples: 10,
+  /** Maximum images measured as above-the-fold candidates. */
+  foldCandidates: 20,
 } as const;

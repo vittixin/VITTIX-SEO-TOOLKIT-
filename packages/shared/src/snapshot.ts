@@ -21,6 +21,9 @@ export const PageMetaSchema = z.object({
   twitterTitle: z.string().nullable(),
   twitterDescription: z.string().nullable(),
   twitterImage: z.string().nullable(),
+  // v4: social-preview additions (field-level defaults keep v1–v3 rows valid).
+  ogSiteName: z.string().nullable().default(null),
+  ogUrl: z.string().nullable().default(null),
 });
 export type PageMeta = z.infer<typeof PageMetaSchema>;
 
@@ -34,6 +37,25 @@ export const ImageEntrySchema = z.object({
   src: z.string(),
   /** `null` = no alt attribute at all; `''` = explicitly empty (decorative). */
   alt: z.string().nullable(),
+  // v4 performance attributes (all defaulted so v1–v3 rows validate).
+  width: z.string().nullable().default(null),
+  height: z.string().nullable().default(null),
+  /** `loading` attribute: 'lazy' | 'eager' | null (unset). */
+  loading: z.string().nullable().default(null),
+  decoding: z.string().nullable().default(null),
+  /** Has a srcset attribute. */
+  srcset: z.boolean().default(false),
+  sizes: z.string().nullable().default(null),
+  /** Image is wrapped in a <picture> with at least one <source>. */
+  inPicture: z.boolean().default(false),
+  fetchpriority: z.string().nullable().default(null),
+  /** Format inferred from the src extension ('' when unknown). No fetching. */
+  format: z.string().default(''),
+  /**
+   * 0-based index among above-the-fold candidates (first 20 images measured
+   * with getBoundingClientRect at extraction); null when not measured.
+   */
+  foldIndex: nonNegativeInt.nullable().default(null),
 });
 export type ImageEntry = z.infer<typeof ImageEntrySchema>;
 
@@ -115,18 +137,41 @@ export const SvgStatsSchema = z.object({
 });
 export type SvgStats = z.infer<typeof SvgStatsSchema>;
 
+/** Bounded content summary computed at extraction time (v4). */
+export const TextSummarySchema = z.object({
+  sentenceCount: nonNegativeInt.default(0),
+  paragraphCount: nonNegativeInt.default(0),
+  /** Top keyword frequencies (unigrams/bigrams/trigrams mixed, stop-words removed). */
+  keywords: z
+    .array(z.object({ term: z.string().max(200), count: nonNegativeInt }))
+    .max(SNAPSHOT_LIMITS.keywords)
+    .default([]),
+  /** SHA-256 of the normalized text sample (duplicate detection later). */
+  sampleHash: z.string().default(''),
+});
+export type TextSummary = z.infer<typeof TextSummarySchema>;
+
+/** http:// resource samples found on an https page (v4, bounded). */
+export const PaginationSchema = z.object({
+  prev: z.string().nullable().default(null),
+  next: z.string().nullable().default(null),
+});
+export type Pagination = z.infer<typeof PaginationSchema>;
+
 /**
  * A bounded, serializable snapshot of a page. This is the ONLY data the
  * extractor takes out of a page — nothing else is collected or transmitted.
  *
- * v2/v3 fields carry defaults so stored v1/v2 audits (earlier phases) still
- * validate. Fresh extractions always use the current SNAPSHOT_SCHEMA_VERSION.
+ * v2/v3/v4 fields carry defaults so stored audits from earlier versions
+ * still validate. Fresh extractions always use the current
+ * SNAPSHOT_SCHEMA_VERSION.
  */
 export const PageSnapshotSchema = z.object({
   schemaVersion: z.union([
     z.literal(SNAPSHOT_SCHEMA_VERSIONS[0]),
     z.literal(SNAPSHOT_SCHEMA_VERSIONS[1]),
     z.literal(SNAPSHOT_SCHEMA_VERSIONS[2]),
+    z.literal(SNAPSHOT_SCHEMA_VERSIONS[3]),
   ]),
   url: z.string().min(1),
   title: z.string(),
@@ -162,20 +207,28 @@ export const PageSnapshotSchema = z.object({
   /** Total hreflang link count (may exceed retained entries). (v3) */
   hreflangCount: nonNegativeInt.default(0),
   /** Per-collection counts of elements omitted due to extraction caps. (v3) */
-  omitted: OmittedCountsSchema.default({
-    headings: 0,
-    images: 0,
-    links: 0,
-    descriptions: 0,
-    canonicals: 0,
-    structuredData: 0,
-    hreflang: 0,
-  }),
+  omitted: OmittedCountsSchema.prefault({}),
   /** Per-collection counts of hidden elements (excluded from analysis). (v3) */
-  hidden: HiddenCountsSchema.default({ headings: 0, images: 0, links: 0 }),
+  hidden: HiddenCountsSchema.prefault({}),
   /** Inline SVG accessibility stats. (v3) */
-  svg: SvgStatsSchema.default({ total: 0, unnamed: 0 }),
+  svg: SvgStatsSchema.prefault({ total: 0, unnamed: 0 }),
   textStats: TextStatsSchema,
+  /** Bounded content summary: counts, top keywords, sample hash. (v4) */
+  textSummary: TextSummarySchema.prefault({}),
+  /** http:// resource URLs found on https pages (bounded samples). (v4) */
+  mixedContentSamples: z
+    .array(z.string().max(2_000))
+    .max(SNAPSHOT_LIMITS.mixedContentSamples)
+    .default([]),
+  /** A favicon is declared (link rel~="icon" or /favicon.ico convention). (v4) */
+  faviconPresent: z.boolean().default(false),
+  /** rel=prev / rel=next pagination links. (v4) */
+  pagination: PaginationSchema.prefault({}),
+  /**
+   * Microdata (itemscope/itemtype) and RDFa (typeof) type values detected on
+   * the page — detected types only, no deep validation. Bounded. (v4)
+   */
+  microdataRdfaTypes: z.array(z.string().max(200)).max(10).default([]),
   extractedAt: z.string().min(1),
 });
 export type PageSnapshot = z.infer<typeof PageSnapshotSchema>;

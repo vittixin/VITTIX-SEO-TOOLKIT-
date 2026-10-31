@@ -1,11 +1,31 @@
-import type { PageMeta, PageSnapshot } from '@vittix/shared';
+import type { ImageEntry, PageMeta, PageSnapshot } from '@vittix/shared';
 import { SNAPSHOT_SCHEMA_VERSION } from '@vittix/shared';
 
 /**
- * Test-only snapshot builder for the v3 schema. Not exported from the
- * package index. New-in-v3 fields default to healthy values (no omissions,
- * no hidden content, no SVG) so tests only specify what a rule exercises.
+ * Test-only snapshot builder for the v4 schema. Not exported from the
+ * package index. New-in-v4 fields default to healthy values (no omissions,
+ * no hidden content, no SVG, healthy content summary) so tests only specify
+ * what a rule exercises.
  */
+
+/** Full v4 image entry with defaulted performance attributes. */
+export function defaultImage(src: string, alt: string | null): ImageEntry {
+  return {
+    src,
+    alt,
+    width: null,
+    height: null,
+    loading: null,
+    decoding: null,
+    srcset: false,
+    sizes: null,
+    inPicture: false,
+    fetchpriority: null,
+    format: '',
+    foldIndex: null,
+  };
+}
+
 export function buildSnapshot(
   overrides: {
     schemaVersion?: PageSnapshot['schemaVersion'];
@@ -18,7 +38,7 @@ export function buildSnapshot(
     robotsValues?: string[];
     headings?: PageSnapshot['headings'];
     headingCounts?: PageSnapshot['headingCounts'];
-    images?: PageSnapshot['images'];
+    images?: Array<Partial<ImageEntry> & Pick<ImageEntry, 'src' | 'alt'>>;
     imageCount?: number;
     links?: PageSnapshot['links'];
     linkCount?: number;
@@ -30,6 +50,11 @@ export function buildSnapshot(
     hidden?: Partial<PageSnapshot['hidden']>;
     svg?: Partial<PageSnapshot['svg']>;
     textStats?: PageSnapshot['textStats'];
+    textSummary?: PageSnapshot['textSummary'];
+    mixedContentSamples?: string[];
+    faviconPresent?: boolean;
+    pagination?: PageSnapshot['pagination'];
+    microdataRdfaTypes?: string[];
     extractedAt?: string;
   } = {},
 ): PageSnapshot {
@@ -52,6 +77,8 @@ export function buildSnapshot(
     twitterTitle: null,
     twitterDescription: null,
     twitterImage: null,
+    ogSiteName: 'Example Site',
+    ogUrl: 'https://example.com/page',
     ...overrides.meta,
   };
   const links = overrides.links ?? [
@@ -64,10 +91,12 @@ export function buildSnapshot(
       accessibleName: 'Other site',
     },
   ];
-  const images = overrides.images ?? [
-    { src: 'https://example.com/a.png', alt: 'A bar chart of quarterly sales' },
-    { src: 'https://example.com/b.png', alt: 'A photo of the workshop' },
-  ];
+  const images: ImageEntry[] = (
+    overrides.images ?? [
+      { src: 'https://example.com/a.png', alt: 'A bar chart of quarterly sales' },
+      { src: 'https://example.com/b.png', alt: 'A photo of the workshop' },
+    ]
+  ).map((image) => ({ ...defaultImage(image.src, image.alt ?? null), ...image }));
   const structuredData = overrides.structuredData ?? [
     {
       raw: '{ "@context": "https://schema.org", "@type": "WebPage" }',
@@ -109,6 +138,19 @@ export function buildSnapshot(
     hidden: { headings: 0, images: 0, links: 0, ...overrides.hidden },
     svg: { total: 0, unnamed: 0, ...overrides.svg },
     textStats: overrides.textStats ?? { wordCount: 350, textSampleTruncated: false },
+    textSummary: overrides.textSummary ?? {
+      sentenceCount: 24,
+      paragraphCount: 5,
+      keywords: [
+        { term: 'example', count: 8 },
+        { term: 'content', count: 4 },
+      ],
+      sampleHash: '0'.repeat(16),
+    },
+    mixedContentSamples: overrides.mixedContentSamples ?? [],
+    faviconPresent: overrides.faviconPresent ?? true,
+    pagination: overrides.pagination ?? { prev: null, next: null },
+    microdataRdfaTypes: overrides.microdataRdfaTypes ?? [],
     extractedAt: overrides.extractedAt ?? '2026-10-31T12:00:00.000Z',
   };
 }

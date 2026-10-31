@@ -19,4 +19,7 @@ export const EXTRACTOR_LIMITS: ExtractorLimits = {
   robotsValues: SNAPSHOT_LIMITS.robotsValues,
   structuredData: SNAPSHOT_LIMITS.structuredData,
   hreflang: SNAPSHOT_LIMITS.hreflang,
+  keywords: SNAPSHOT_LIMITS.keywords,
+  mixedContentSamples: SNAPSHOT_LIMITS.mixedContentSamples,
+  foldCandidates: SNAPSHOT_LIMITS.foldCandidates,
 };

@@ -1,7 +1,8 @@
 import type { ExtractorLimits } from '../extraction/snapshot-inject';
 import { EXTRACTOR_LIMITS } from '../extraction/limits';
 import type { PageMeta, PageSnapshot } from '@vittix/shared';
-import { SNAPSHOT_LIMITS, SNAPSHOT_SCHEMA_VERSION } from '@vittix/shared';
+import { SNAPSHOT_SCHEMA_VERSION } from '@vittix/shared';
+import { countParagraphs, countSentences, fnv1a64Hex, topKeywords } from '@vittix/seo-core';
 
 export type SiteExtractorLimits = ExtractorLimits;
 
@@ -99,22 +100,54 @@ export function parsePageSnapshot(
     }
   });
 
-  // --- images ----------------------------------------------------------------
+  // --- images (v4: performance attributes; foldIndex unavailable here) -------
+  // NOTE: getBoundingClientRect is not available in a detached document, so
+  // foldIndex is always null on the fetched-HTML path (documented limitation).
   const imageEls = doc.querySelectorAll('img');
   const images: PageSnapshot['images'] = [];
   let imagesHidden = 0;
+  const isHttpsPage = url.toLowerCase().startsWith('https://');
+  const mixedContentSamples: string[] = [];
+  const formatFromSrc = (src: string): string => {
+    const match = /\.(avif|webp|png|jpe?g|gif|bmp|svg)(?=$|[?#])/i.exec(src);
+    const ext = match === null ? '' : (match[1] ?? '');
+    const lowered = ext.toLowerCase();
+    return lowered === 'jpeg' ? 'jpeg' : lowered;
+  };
   imageEls.forEach((el) => {
     if (isHidden(el)) {
       imagesHidden += 1;
       return;
     }
-    if (images.length >= limits.images) return;
-    const src = el.getAttribute('src') ?? el.getAttribute('data-src') ?? '';
-    const alt = el.getAttribute('alt');
-    images.push({
-      src: src.trim().slice(0, 500),
-      alt: alt === null ? null : alt.slice(0, 300),
-    });
+    const src = (el.getAttribute('src') ?? el.getAttribute('data-src') ?? '').trim();
+    if (images.length < limits.images) {
+      const alt = el.getAttribute('alt');
+      const parent = el.parentElement;
+      const inPicture =
+        parent !== null &&
+        (parent.tagName === 'PICTURE' || parent.querySelectorAll('source[srcset]').length > 0);
+      images.push({
+        src: src.slice(0, 500),
+        alt: alt === null ? null : alt.slice(0, 300),
+        width: notBlank(el.getAttribute('width'), 20),
+        height: notBlank(el.getAttribute('height'), 20),
+        loading: notBlank(el.getAttribute('loading'), 10),
+        decoding: notBlank(el.getAttribute('decoding'), 10),
+        srcset: el.hasAttribute('srcset'),
+        sizes: notBlank(el.getAttribute('sizes'), 200),
+        inPicture,
+        fetchpriority: notBlank(el.getAttribute('fetchpriority'), 10),
+        format: formatFromSrc(src),
+        foldIndex: null,
+      });
+    }
+    if (
+      isHttpsPage &&
+      src.toLowerCase().startsWith('http://') &&
+      mixedContentSamples.length < limits.mixedContentSamples
+    ) {
+      mixedContentSamples.push(src.slice(0, 2000));
+    }
   });
   hiddenCounts.images = imagesHidden;
 
@@ -154,7 +187,7 @@ export function parsePageSnapshot(
   const descriptionValues: string[] = [];
   let descriptionsOmitted = 0;
   doc.querySelectorAll('meta[name="description" i]').forEach((el) => {
-    if (descriptionValues.length >= SNAPSHOT_LIMITS.descriptions) {
+    if (descriptionValues.length >= limits.descriptions) {
       descriptionsOmitted += 1;
       return;
     }
@@ -167,7 +200,7 @@ export function parsePageSnapshot(
   const canonicalValues: string[] = [];
   let canonicalsOmitted = 0;
   doc.querySelectorAll('link[rel~="canonical" i]').forEach((el) => {
-    if (canonicalValues.length >= SNAPSHOT_LIMITS.canonicals) {
+    if (canonicalValues.length >= limits.canonicals) {
       canonicalsOmitted += 1;
       return;
     }
@@ -179,7 +212,7 @@ export function parsePageSnapshot(
 
   const robotsValues: string[] = [];
   doc.querySelectorAll('meta[name="robots" i]').forEach((el) => {
-    if (robotsValues.length >= SNAPSHOT_LIMITS.robotsValues) return;
+    if (robotsValues.length >= limits.robotsValues) return;
     const content = el.getAttribute('content');
     if (content !== null && content.trim() !== '') {
       robotsValues.push(content.trim().slice(0, 500));
@@ -189,7 +222,7 @@ export function parsePageSnapshot(
   const hreflangEntries: PageSnapshot['hreflang'] = [];
   let hreflangOmitted = 0;
   doc.querySelectorAll('link[rel~="alternate" i][hreflang]').forEach((el) => {
-    if (hreflangEntries.length >= SNAPSHOT_LIMITS.hreflang) {
+    if (hreflangEntries.length >= limits.hreflang) {
       hreflangOmitted += 1;
       return;
     }
@@ -198,6 +231,23 @@ export function parsePageSnapshot(
     if (lang !== '') {
       hreflangEntries.push({ lang: lang.slice(0, 35), href: href.slice(0, 2000) });
     }
+  });
+
+  // v4: favicon + pagination
+  let faviconPresent = false;
+  doc.querySelectorAll('link[rel~="icon" i]').forEach((el) => {
+    const href = (el.getAttribute('href') ?? '').trim();
+    if (href !== '') faviconPresent = true;
+  });
+
+  let paginationPrev: string | null = null;
+  let paginationNext: string | null = null;
+  doc.querySelectorAll('link[rel~="prev" i], link[rel~="next" i]').forEach((el) => {
+    const rel = (el.getAttribute('rel') ?? '').toLowerCase();
+    const href = (el.getAttribute('href') ?? '').trim();
+    if (href === '') return;
+    if (rel === 'prev' && paginationPrev === null) paginationPrev = href.slice(0, 2000);
+    if (rel === 'next' && paginationNext === null) paginationNext = href.slice(0, 2000);
   });
 
   const pageMeta: PageMeta = {
@@ -214,6 +264,8 @@ export function parsePageSnapshot(
     twitterTitle: meta('meta[name="twitter:title" i]'),
     twitterDescription: meta('meta[name="twitter:description" i]'),
     twitterImage: meta('meta[name="twitter:image" i]'),
+    ogSiteName: meta('meta[property="og:site_name"]'),
+    ogUrl: meta('meta[property="og:url"]'),
   };
 
   // --- structured data ----------------------------------------------------------
@@ -221,7 +273,7 @@ export function parsePageSnapshot(
   const structuredData: PageSnapshot['structuredData'] = [];
   let structuredDataOmitted = 0;
   jsonLdEls.forEach((el) => {
-    if (structuredData.length >= SNAPSHOT_LIMITS.structuredData) {
+    if (structuredData.length >= limits.structuredData) {
       structuredDataOmitted += 1;
       return;
     }
@@ -229,14 +281,26 @@ export function parsePageSnapshot(
     if (raw !== '') structuredData.push({ raw: raw.slice(0, 10_000) });
   });
 
-  // --- text stats (textContent — no layout in a detached document) --------------
+  // --- microdata / RDFa type detection (v4, bounded, detected types only) -----
+  const microdataRdfaTypes: string[] = [];
+  doc.querySelectorAll('[itemscope][itemtype], [typeof]').forEach((el) => {
+    if (microdataRdfaTypes.length >= 10) return;
+    const itemtype = (el.getAttribute('itemtype') ?? '').trim();
+    const typeofAttr = (el.getAttribute('typeof') ?? '').trim();
+    const value = itemtype !== '' ? itemtype : typeofAttr;
+    if (value !== '') microdataRdfaTypes.push(value.slice(0, 200));
+  });
+
+  // --- text stats + content summary (textContent — no layout in a detached doc) -
   let sample = '';
   try {
-    sample = (doc.body?.textContent ?? '').slice(0, SNAPSHOT_LIMITS.textSampleChars);
+    sample = (doc.body?.textContent ?? '').slice(0, limits.textSampleChars);
   } catch {
     sample = '';
   }
   const wordCount = (sample.match(/\S+/g) ?? []).length;
+  const sentenceCount = countSentences(sample) || 0;
+  const paragraphCount = countParagraphs(sample);
 
   const omitted = {
     headings: Math.max(0, headingsSeen - headings.length),
@@ -247,6 +311,8 @@ export function parsePageSnapshot(
     structuredData: structuredDataOmitted,
     hreflang: hreflangOmitted,
   };
+
+  const pageLang = pageMeta.lang;
 
   return {
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
@@ -270,7 +336,17 @@ export function parsePageSnapshot(
     omitted,
     hidden: hiddenCounts,
     svg: svgStats,
-    textStats: { wordCount, textSampleTruncated: sample.length >= SNAPSHOT_LIMITS.textSampleChars },
+    textStats: { wordCount, textSampleTruncated: sample.length >= limits.textSampleChars },
+    textSummary: {
+      sentenceCount,
+      paragraphCount,
+      keywords: topKeywords(sample, pageLang, limits.keywords),
+      sampleHash: fnv1a64Hex(sample),
+    },
+    mixedContentSamples,
+    faviconPresent,
+    pagination: { prev: paginationPrev, next: paginationNext },
+    microdataRdfaTypes,
     extractedAt: new Date().toISOString(),
   };
 }

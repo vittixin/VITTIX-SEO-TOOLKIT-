@@ -1,6 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { PageSnapshotSchema, type PageSnapshot } from './snapshot.js';
+import { PageSnapshotSchema, type ImageEntry, type PageSnapshot } from './snapshot.js';
 import { SNAPSHOT_LIMITS, SNAPSHOT_SCHEMA_VERSION } from './constants.js';
+
+/** Full v4 image entry with defaulted performance attributes. */
+export function img(src: string, alt: string | null): ImageEntry {
+  return {
+    src,
+    alt,
+    width: null,
+    height: null,
+    loading: null,
+    decoding: null,
+    srcset: false,
+    sizes: null,
+    inPicture: false,
+    fetchpriority: null,
+    format: '',
+    foldIndex: null,
+  };
+}
 
 export function buildSnapshot(overrides: Partial<PageSnapshot> = {}): PageSnapshot {
   const base: PageSnapshot = {
@@ -22,6 +40,8 @@ export function buildSnapshot(overrides: Partial<PageSnapshot> = {}): PageSnapsh
       twitterTitle: null,
       twitterDescription: null,
       twitterImage: null,
+      ogSiteName: 'Example Site',
+      ogUrl: 'https://example.com/page',
     },
     descriptions: ['An example page description.'],
     canonicals: ['https://example.com/page'],
@@ -30,10 +50,7 @@ export function buildSnapshot(overrides: Partial<PageSnapshot> = {}): PageSnapsh
       { tag: 'h2', text: 'Section heading' },
     ],
     headingCounts: { h1: 1, h2: 1, h3: 0, h4: 0, h5: 0, h6: 0 },
-    images: [
-      { src: 'https://example.com/a.png', alt: 'A diagram' },
-      { src: 'https://example.com/b.png', alt: null },
-    ],
+    images: [img('https://example.com/a.png', 'A diagram'), img('https://example.com/b.png', null)],
     imageCount: 2,
     links: [
       { href: '/about', text: 'About', rel: null, target: null, accessibleName: 'About' },
@@ -63,6 +80,16 @@ export function buildSnapshot(overrides: Partial<PageSnapshot> = {}): PageSnapsh
     hidden: { headings: 0, images: 0, links: 0 },
     svg: { total: 0, unnamed: 0 },
     textStats: { wordCount: 42, textSampleTruncated: false },
+    textSummary: {
+      sentenceCount: 3,
+      paragraphCount: 1,
+      keywords: [{ term: 'example page', count: 2 }],
+      sampleHash: '0'.repeat(16),
+    },
+    mixedContentSamples: [],
+    faviconPresent: true,
+    pagination: { prev: null, next: null },
+    microdataRdfaTypes: [],
     extractedAt: '2026-10-31T12:00:00.000Z',
   };
   return { ...base, ...overrides };
@@ -113,10 +140,9 @@ describe('PageSnapshotSchema (v2)', () => {
   });
 
   it('rejects more images than the snapshot limit allows', () => {
-    const images = Array.from({ length: SNAPSHOT_LIMITS.images + 1 }, (_, i) => ({
-      src: `https://example.com/${i}.png`,
-      alt: null,
-    }));
+    const images = Array.from({ length: SNAPSHOT_LIMITS.images + 1 }, (_, i) =>
+      img(`https://example.com/${i}.png`, null),
+    );
     const result = PageSnapshotSchema.safeParse(
       buildSnapshot({ images, imageCount: images.length }),
     );
@@ -147,10 +173,7 @@ describe('PageSnapshotSchema (v2)', () => {
   it('distinguishes null alt (missing attribute) from empty alt (decorative)', () => {
     const parsed = PageSnapshotSchema.parse(
       buildSnapshot({
-        images: [
-          { src: 'https://example.com/a.png', alt: null },
-          { src: 'https://example.com/b.png', alt: '' },
-        ],
+        images: [img('https://example.com/a.png', null), img('https://example.com/b.png', '')],
       }),
     );
     expect(parsed.images[0]?.alt).toBeNull();

@@ -1,12 +1,9 @@
+import type { ExtractorLimits } from '../extraction/snapshot-inject';
+import { EXTRACTOR_LIMITS } from '../extraction/limits';
 import type { PageMeta, PageSnapshot } from '@vittix/shared';
 import { SNAPSHOT_LIMITS, SNAPSHOT_SCHEMA_VERSION } from '@vittix/shared';
 
-export interface SiteExtractorLimits {
-  headings: number;
-  images: number;
-  links: number;
-  textField: number;
-}
+export type SiteExtractorLimits = ExtractorLimits;
 
 /**
  * Snapshot extraction for FETCHED HTML (site mode).
@@ -25,7 +22,7 @@ export interface SiteExtractorLimits {
 export function parsePageSnapshot(
   html: string,
   url: string,
-  limits: SiteExtractorLimits,
+  limits: SiteExtractorLimits = EXTRACTOR_LIMITS,
 ): PageSnapshot {
   const doc = new DOMParser().parseFromString(html, 'text/html');
 

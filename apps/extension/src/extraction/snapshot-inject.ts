@@ -20,6 +20,11 @@ export interface ExtractorLimits {
   links: number;
   textSampleChars: number;
   textField: number;
+  descriptions: number;
+  canonicals: number;
+  robotsValues: number;
+  structuredData: number;
+  hreflang: number;
 }
 
 /**
@@ -190,7 +195,7 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
   const descriptionValues: string[] = [];
   let descriptionsOmitted = 0;
   document.querySelectorAll('meta[name="description" i]').forEach((el) => {
-    if (descriptionValues.length >= 5) {
+    if (descriptionValues.length >= limits.descriptions) {
       descriptionsOmitted += 1;
       return;
     }
@@ -203,7 +208,7 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
   const canonicalValues: string[] = [];
   let canonicalsOmitted = 0;
   document.querySelectorAll('link[rel~="canonical" i], link[rel="canonical" i]').forEach((el) => {
-    if (canonicalValues.length >= 5) {
+    if (canonicalValues.length >= limits.canonicals) {
       canonicalsOmitted += 1;
       return;
     }
@@ -215,7 +220,7 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
 
   const robotsValues: string[] = [];
   document.querySelectorAll('meta[name="robots" i]').forEach((el) => {
-    if (robotsValues.length >= 5) return;
+    if (robotsValues.length >= limits.robotsValues) return;
     const content = el.getAttribute('content');
     if (content !== null && content.trim() !== '') {
       robotsValues.push(content.trim().slice(0, 500));
@@ -225,7 +230,7 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
   const hreflangEntries: HreflangEntry[] = [];
   let hreflangOmitted = 0;
   document.querySelectorAll('link[rel~="alternate" i][hreflang]').forEach((el) => {
-    if (hreflangEntries.length >= 10) {
+    if (hreflangEntries.length >= limits.hreflang) {
       hreflangOmitted += 1;
       return;
     }
@@ -257,7 +262,7 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
   const structuredData: PageSnapshot['structuredData'] = [];
   let structuredDataOmitted = 0;
   jsonLdEls.forEach((el) => {
-    if (structuredData.length >= 5) {
+    if (structuredData.length >= limits.structuredData) {
       structuredDataOmitted += 1;
       return;
     }

@@ -10,18 +10,11 @@ import {
   type AnalyzeResponse,
 } from '@vittix/shared';
 import { analyzeSnapshot } from '@vittix/seo-core';
-import { extractPageSnapshot, type ExtractorLimits } from '@/src/extraction/snapshot-inject';
+import { EXTRACTOR_LIMITS } from '@/src/extraction/limits';
+import { extractPageSnapshot } from '@/src/extraction/snapshot-inject';
 import { isAnalyzableUrl } from '@/src/extraction/guards';
 import { pruneAudits, saveAudit } from '@/src/storage/audits';
 import { getSettings } from '@/src/storage/settings';
-
-const LIMITS: ExtractorLimits = {
-  headings: 300,
-  images: 500,
-  links: 500,
-  textSampleChars: 100_000,
-  textField: 300,
-};
 
 /**
  * Minimal, event-driven MV3 service worker.
@@ -92,7 +85,7 @@ async function analyzeActiveTab(): Promise<AnalyzeResponse> {
     const results = await browser.scripting.executeScript({
       target: { tabId: tab.id },
       func: extractPageSnapshot,
-      args: [LIMITS],
+      args: [EXTRACTOR_LIMITS],
     });
     rawResult = results?.[0]?.result;
   } catch (error) {

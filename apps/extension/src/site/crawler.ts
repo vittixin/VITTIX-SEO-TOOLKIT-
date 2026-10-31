@@ -5,6 +5,7 @@ import { checkCrawlableOrigin, isSameOriginUrl } from './guards';
 import { normalizeSiteUrl } from './normalize';
 import { EMPTY_ROBOTS_POLICY, parseRobotsTxt, type RobotsPolicy } from './robots';
 import { PacedRunner } from './rate';
+import { EXTRACTOR_LIMITS } from '../extraction/limits';
 import { parsePageSnapshot } from './extract-html';
 import {
   addSitePages,
@@ -28,8 +29,6 @@ export interface CrawlerOptions {
    */
   hasPermission?: (origin: string) => Promise<boolean>;
 }
-
-const EXTRACTOR_LIMITS = { headings: 300, images: 500, links: 500, textField: 300 };
 
 /**
  * Site-audit crawler (MVP).

@@ -735,3 +735,84 @@ describe('analyzeStructuredData — @context/@type structure (v3)', () => {
     expect(findByRuleId(findings, 'structured-data-context').severity).toBe('pass');
   });
 });
+
+// --- Issue 2: non-HTTP link classification -------------------------------------
+
+describe('Issue 2 — non-HTTP links classify into an other bucket', () => {
+  const schemeLinks = (hrefs: string[]) =>
+    hrefs.map((href) => ({ href, text: 'x', rel: null, target: null, accessibleName: 'label' }));
+
+  it.each([
+    ['mailto:', 'mailto:info@example.com'],
+    ['tel:', 'tel:+15551234567'],
+    ['sms:', 'sms:+15551234567'],
+    ['javascript:', 'javascript:void(0)'],
+    ['data:', 'data:text/plain,hello'],
+    ['fragment', '#section'],
+  ])('%s links are neither internal nor external', (_label, href) => {
+    const findings = analyzeLinks(buildSnapshot({ links: schemeLinks([href]), linkCount: 1 }));
+    const profile = findByRuleId(findings, 'link-profile').detail;
+    expect(profile).toContain('0 internal');
+    expect(profile).toContain('0 external');
+    expect(profile).toContain('1 mailto/tel/other');
+  });
+
+  it('other links are excluded from the generic-anchor check but empty names still error', () => {
+    const findings = analyzeLinks(
+      buildSnapshot({
+        links: [
+          {
+            href: 'mailto:info@example.com',
+            text: 'click here',
+            rel: null,
+            target: null,
+            accessibleName: 'click here',
+          },
+          { href: 'tel:+1', text: '', rel: null, target: null, accessibleName: '' },
+        ],
+        linkCount: 2,
+      }),
+    );
+    // mailto with generic text is NOT flagged (generic check is internal-only)
+    expect(findByRuleId(findings, 'internal-link-quality').severity).toBe('pass');
+    // tel with NO accessible name IS an accessibility error
+    expect(findByRuleId(findings, 'link-anchor-text').severity).toBe('error');
+    expect(findByRuleId(findings, 'link-anchor-text').evidence).toContain('tel:+1');
+  });
+
+  it('www vs non-www and subdomains: policy is documented and enforced', () => {
+    const findings = analyzeLinks(
+      buildSnapshot({
+        url: 'https://example.com/page',
+        links: schemeLinks([
+          'https://www.example.com/same', // www-stripped equal → internal
+          'https://example.com/other', // exact → internal
+          'https://cdn.example.com/asset', // other subdomain → external
+        ]),
+        linkCount: 3,
+      }),
+    );
+    const profile = findByRuleId(findings, 'link-profile').detail;
+    expect(profile).toContain('2 internal');
+    expect(profile).toContain('1 external');
+  });
+
+  it('named-nonvisually still covers mailto links (informational)', () => {
+    const findings = analyzeLinks(
+      buildSnapshot({
+        links: [
+          {
+            href: 'mailto:info@example.com',
+            text: '',
+            rel: null,
+            target: null,
+            accessibleName: 'Email us',
+          },
+        ],
+        linkCount: 1,
+      }),
+    );
+    expect(findByRuleId(findings, 'link-anchor-text').severity).toBe('pass');
+    expect(findByRuleId(findings, 'link-named-nonvisually').severity).toBe('info');
+  });
+});

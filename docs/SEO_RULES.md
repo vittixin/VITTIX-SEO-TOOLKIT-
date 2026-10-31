@@ -66,12 +66,25 @@ Severities:
 
 ## Link rules
 
-| Rule                     | Severity when triggered                      | Condition                                                                                                                                                                                     |
-| ------------------------ | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `link-anchor-text`       | **error** if any link has NO accessible name | Accessible name = aria-labelledby → aria-label → visible text → descendant img alt → descendant svg title/aria-label (v0.3.0 resolution order; multiple IDREFs are joined in reference order) |
-| `link-named-nonvisually` | **info** when present                        | Links named only via aria-label, aria-labelledby, or image/svg alt (valid for icon links) — never score-affecting                                                                             |
-| `internal-link-quality`  | **warn** on generic internal anchors         | Internal links whose accessible name is "click here", "read more", "learn more", "here", "this page", "this link", "details", "continue" or "more" (v0.3.0; external links are exempt)        |
-| `link-profile`           | always `info`                                | Internal/external counts (resolved against the page URL), nofollow count, unresolvable hrefs, truncation note                                                                                 |
+**Classification policy (v0.4.0):** links are bucketed as
+`internal` / `external` / `other`.
+
+- **internal** — http(s) links whose host equals the page host after stripping
+  a single leading `www.` from BOTH hosts (`www.example.com` ≡ `example.com`).
+  Other subdomains (`cdn.example.com`) are **external**.
+- **external** — http(s) links to any other host.
+- **other** — non-http(s) schemes (`mailto:`, `tel:`, `sms:`, `javascript:`,
+  `data:`) and pure in-page fragments (`#…`). Excluded from internal/external
+  counts, the nofollow tally and the generic-anchor check — but a **nameless
+  `mailto:`/`tel:` link is still an accessibility error** (the
+  `link-anchor-text` check covers every link).
+
+| Rule                     | Severity when triggered                      | Condition                                                                                                                                                                                             |
+| ------------------------ | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `link-anchor-text`       | **error** if any link has NO accessible name | Accessible name = aria-labelledby → aria-label → visible text → descendant img alt → descendant svg title/aria-label (multiple IDREFs joined in reference order). Covers ALL links incl. mailto:/tel: |
+| `link-named-nonvisually` | **info** when present                        | Links named only via aria-label, aria-labelledby, or image/svg alt (valid for icon links) — never score-affecting                                                                                     |
+| `internal-link-quality`  | **warn** on generic internal anchors         | Internal http(s) links whose accessible name is "click here", "read more", "learn more", "here", "this page", "this link", "details", "continue" or "more" (external and `other` links exempt)        |
+| `link-profile`           | always `info`                                | Bucketed counts: `N internal · M external · K mailto/tel/other`, nofollow count (http(s) only), truncation note                                                                                       |
 
 ## Structured data rules (JSON-LD)
 

@@ -3,52 +3,86 @@ import { GENERIC_ANCHOR_TEXTS } from '../rules.js';
 import { finding } from './util.js';
 
 /**
- * Link rules. Anchor accessibility uses the accessible name computed at
- * extraction (aria-label → visible text → first descendant img alt).
+ * Link classification policy (v0.4.0):
  *
- *  - link-anchor-text (error): no accessible name at all — a real
- *    accessibility failure
- *  - link-named-nonvisually (info): named, but only via aria-label/image alt
- *    (no visible text) — informational, never score-affecting, because a
- *    non-visual name is valid practice for icon links
- *  - link-profile (info): internal/external/nofollow summary
+ * - **internal** — http(s) links whose host equals the page host after
+ *   stripping a single leading `www.` from BOTH hosts. `www.example.com` and
+ *   `example.com` are the same site in practice; any OTHER subdomain
+ *   (`cdn.example.com`) is external.
+ * - **external** — http(s) links to any other host.
+ * - **other** — non-http(s) schemes (`mailto:`, `tel:`, `sms:`,
+ *   `javascript:`, `data:`) and pure in-page fragments (`#…`). These are
+ *   navigation aids or code, not web resources: they are excluded from the
+ *   internal/external counts, the nofollow tally and the generic-anchor
+ *   check — but a nameless `mailto:` link is still an accessibility error
+ *   (link-anchor-text covers ALL links).
+ *
+ * Anchor accessibility uses the accessible name computed at extraction
+ * (aria-labelledby → aria-label → visible text → img alt → svg title).
+ *
+ * Severity map:
+ *  - link-anchor-text (error): no accessible name at all
+ *  - link-named-nonvisually (info): named only via aria/alt/svg (valid for
+ *    icon links) — never score-affecting
+ *  - internal-link-quality (warn): generic anchor text on internal links
+ *  - link-profile (info): bucketed summary
  */
+
+/** Classify one href against the page host. */
+export function classifyLink(
+  href: string,
+  pageHost: string | null,
+): 'internal' | 'external' | 'other' {
+  const trimmed = href.trim();
+  if (trimmed === '' || trimmed.startsWith('#')) return 'other';
+  let resolved: URL;
+  try {
+    resolved = new URL(trimmed);
+    // Relative hrefs resolve against the page — but a bare relative path
+    // with no scheme is internal by construction when the page is http(s).
+  } catch {
+    return pageHost === null ? 'other' : 'internal';
+  }
+  if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') return 'other';
+  if (pageHost === null) return 'external';
+  const stripWww = (host: string) => host.toLowerCase().replace(/^www\./, '');
+  return stripWww(resolved.host) === stripWww(pageHost) ? 'internal' : 'external';
+}
+
 export function analyzeLinks(snapshot: PageSnapshot): Finding[] {
   const findings: Finding[] = [];
 
   let internal = 0;
   let external = 0;
-  let unresolvable = 0;
+  let other = 0;
   let nofollow = 0;
   const unnamed: string[] = [];
   const namedNonVisually: string[] = [];
 
-  let pageOrigin: string | null = null;
+  let pageHost: string | null = null;
   try {
-    pageOrigin = new URL(snapshot.url).host;
+    pageHost = new URL(snapshot.url).host;
   } catch {
-    pageOrigin = null;
+    pageHost = null;
   }
 
   for (const link of snapshot.links) {
     const href = link.href.trim();
-    try {
-      const resolved = new URL(href, snapshot.url);
-      if (pageOrigin !== null && resolved.host === pageOrigin) {
-        internal += 1;
-      } else {
-        external += 1;
-      }
-    } catch {
-      unresolvable += 1;
-    }
-    if ((link.rel ?? '').toLowerCase().includes('nofollow')) {
+    const bucket = classifyLink(href, pageHost);
+    if (bucket === 'internal') internal += 1;
+    else if (bucket === 'external') external += 1;
+    else other += 1;
+
+    // nofollow is only meaningful for crawlable http(s) links.
+    if (bucket !== 'other' && (link.rel ?? '').toLowerCase().includes('nofollow')) {
       nofollow += 1;
     }
 
     const visibleText = link.text.trim();
     const accessibleName = (link.accessibleName ?? '').trim();
     if (accessibleName === '') {
+      // A nameless mailto/tel link is as unusable for screen readers as a
+      // nameless http link — the accessibility check covers ALL links.
       unnamed.push(href);
     } else if (visibleText === '') {
       namedNonVisually.push(href);
@@ -62,7 +96,7 @@ export function analyzeLinks(snapshot: PageSnapshot): Finding[] {
         'links',
         'error',
         `${unnamed.length} ${unnamed.length === 1 ? 'link has' : 'links have'} no accessible name`,
-        'These links expose no text, aria-label or image-alt-based name. Screen readers announce them as "link" with no context, and search engines cannot use the anchor as a relevance signal.',
+        'These links expose no text, aria-label or image-alt-based name. Screen readers announce them as "link" with no context, and search engines cannot use the anchor as a relevance signal. This includes nameless mailto:/tel: links.',
         {
           evidence:
             unnamed.slice(0, 3).join(', ') +
@@ -118,26 +152,18 @@ export function analyzeLinks(snapshot: PageSnapshot): Finding[] {
   }
 
   const truncated = snapshot.linkCount > snapshot.links.length;
-  const detailParts = [
-    `${internal} internal · ${external} external link${internal + external === 1 ? '' : 's'}`,
-  ];
+  const detailParts = [`${internal} internal · ${external} external · ${other} mailto/tel/other`];
   if (nofollow > 0) detailParts.push(`${nofollow} nofollow`);
-  if (unresolvable > 0) {
-    detailParts.push(`${unresolvable} unresolvable href${unresolvable === 1 ? '' : 's'}`);
-  }
   if (truncated) detailParts.push(`capped at first ${snapshot.links.length} links`);
 
   // --- internal link quality: generic anchor texts -----------------------------
+  // Internal http(s) links only — mailto:/tel:/fragment links have no
+  // topical anchor semantics to evaluate.
   const genericAnchors: string[] = [];
   for (const link of snapshot.links) {
     const name = (link.accessibleName ?? '').trim().toLowerCase();
     if (name === '') continue;
-    try {
-      const resolved = new URL(link.href.trim(), snapshot.url);
-      if (pageOrigin !== null && resolved.host !== pageOrigin) continue;
-    } catch {
-      continue;
-    }
+    if (classifyLink(link.href.trim(), pageHost) !== 'internal') continue;
     if ((GENERIC_ANCHOR_TEXTS as readonly string[]).includes(name)) {
       genericAnchors.push(link.href);
     }

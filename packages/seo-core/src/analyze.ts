@@ -36,8 +36,9 @@ export function analyzeSnapshot(snapshot: PageSnapshot): AnalysisResult {
 
 /**
  * True when any collection was capped during extraction — either implicit
- * (retained count below total) or explicit (v3 `omitted` counts report the
- * exact number of capped-away elements).
+ * (retained count below total), explicit (v3 `omitted` counts report the
+ * exact number of capped-away elements), or the body-text sample hitting
+ * its cap (v3.1 `textStats.textSampleTruncated`).
  */
 export function isTruncated(snapshot: PageSnapshot): boolean {
   const headingTotal = Object.values(snapshot.headingCounts).reduce((sum, count) => sum + count, 0);
@@ -56,5 +57,8 @@ export function isTruncated(snapshot: PageSnapshot): boolean {
       omitted.canonicals > 0 ||
       omitted.structuredData > 0 ||
       omitted.hreflang > 0);
-  return implicit || explicit;
+  // v3.1: the body-text sample hitting its cap also makes the audit
+  // incomplete (the word count covers only part of the page).
+  const textSample = snapshot.textStats?.textSampleTruncated === true;
+  return implicit || explicit || textSample;
 }

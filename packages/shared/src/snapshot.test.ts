@@ -62,7 +62,7 @@ export function buildSnapshot(overrides: Partial<PageSnapshot> = {}): PageSnapsh
     },
     hidden: { headings: 0, images: 0, links: 0 },
     svg: { total: 0, unnamed: 0 },
-    textStats: { wordCount: 42 },
+    textStats: { wordCount: 42, textSampleTruncated: false },
     extractedAt: '2026-10-31T12:00:00.000Z',
   };
   return { ...base, ...overrides };

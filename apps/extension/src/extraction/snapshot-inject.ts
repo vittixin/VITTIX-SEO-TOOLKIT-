@@ -307,7 +307,7 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
     omitted,
     hidden: hiddenCounts,
     svg: svgStats,
-    textStats: { wordCount },
+    textStats: { wordCount, textSampleTruncated: sample.length >= limits.textSampleChars },
     extractedAt: new Date().toISOString(),
   };
 }

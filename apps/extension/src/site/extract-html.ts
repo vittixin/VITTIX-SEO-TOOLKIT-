@@ -273,7 +273,7 @@ export function parsePageSnapshot(
     omitted,
     hidden: hiddenCounts,
     svg: svgStats,
-    textStats: { wordCount },
+    textStats: { wordCount, textSampleTruncated: sample.length >= SNAPSHOT_LIMITS.textSampleChars },
     extractedAt: new Date().toISOString(),
   };
 }

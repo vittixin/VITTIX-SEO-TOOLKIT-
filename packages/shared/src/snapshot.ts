@@ -53,6 +53,12 @@ export type LinkEntry = z.infer<typeof LinkEntrySchema>;
 
 export const TextStatsSchema = z.object({
   wordCount: nonNegativeInt,
+  /**
+   * True when the body-text sample hit the extraction cap (the word count
+   * therefore covers only part of the page). Defaulted so v1–v3 stored
+   * records remain readable. (v3.1, Phase 7)
+   */
+  textSampleTruncated: z.boolean().default(false),
 });
 export type TextStats = z.infer<typeof TextStatsSchema>;
 

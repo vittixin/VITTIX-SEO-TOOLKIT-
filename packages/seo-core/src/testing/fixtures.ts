@@ -108,7 +108,7 @@ export function buildSnapshot(
     },
     hidden: { headings: 0, images: 0, links: 0, ...overrides.hidden },
     svg: { total: 0, unnamed: 0, ...overrides.svg },
-    textStats: overrides.textStats ?? { wordCount: 350 },
+    textStats: overrides.textStats ?? { wordCount: 350, textSampleTruncated: false },
     extractedAt: overrides.extractedAt ?? '2026-10-31T12:00:00.000Z',
   };
 }

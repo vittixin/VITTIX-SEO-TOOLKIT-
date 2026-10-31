@@ -132,6 +132,10 @@ test('site audit robustness: oversized, malformed and non-HTML pages + clear-dat
     await dashboard.getByTestId('site-start').click();
     await expect(dashboard.getByTestId('site-summary')).toBeVisible({ timeout: 60_000 });
 
+    // The 3.6 MB page exceeds the 100 kB text-sample cap — the audit MUST
+    // be marked incomplete rather than presented as fully verified.
+    await expect(dashboard.getByText(/Incomplete audit/).first()).toBeVisible({ timeout: 10_000 });
+
     // Every recorded page reached a terminal state; nothing crashed.
     await expect(dashboard.locator('text=skipped-non-html').first()).toBeVisible();
     await dashboard.getByTestId('site-url-filter').fill('fixture.test/huge');

@@ -72,9 +72,36 @@ function makeOkPage(
     finalUrl: url,
     httpStatus: 200,
     snapshot: {
+      schemaVersion: 3,
       url,
       title,
-      meta: { description, canonical, robots: null },
+      headings: [],
+      headingCounts: { h1: 0, h2: 0, h3: 0, h4: 0, h5: 0, h6: 0 },
+      images: [],
+      imageCount: 0,
+      linkCount: links.length,
+      structuredData: [],
+      structuredDataCount: 0,
+      robotsValues: [],
+      hreflang: [],
+      hreflangCount: 0,
+      textStats: { wordCount: 100, textSampleTruncated: false },
+      extractedAt: '2026-10-31T00:00:00.000Z',
+      meta: {
+        description,
+        canonical,
+        robots: null,
+        viewport: null,
+        charset: null,
+        lang: 'en',
+        ogTitle: null,
+        ogDescription: null,
+        ogImage: null,
+        twitterCard: null,
+        twitterTitle: null,
+        twitterDescription: null,
+        twitterImage: null,
+      },
       omitted: {
         headings: 0,
         images: 0,
@@ -169,5 +196,49 @@ describe('buildSiteSummary — Phase 4 additions', () => {
       makeOkPage(`${ORIGIN}/c`),
     ]);
     expect(truncated.incomplete).toBe(true);
+  });
+});
+
+describe('Phase 7 — truncation chain (extraction → result → summary → export)', () => {
+  it('a text-sample-capped audit is flagged incomplete everywhere', async () => {
+    const { PageSnapshotSchema } = await import('@vittix/shared');
+    const { analyzeSnapshot, isTruncated, siteAuditToJson } = await import('@vittix/seo-core');
+    const { AuditRecordSchema } = await import('@vittix/shared');
+    // Build a snapshot whose text sample hit the cap.
+    const base = makeOkPage(`${ORIGIN}/huge`) as never as Record<string, unknown>;
+    const snapshot = PageSnapshotSchema.parse(base.snapshot);
+    const sample = { ...snapshot, textStats: { wordCount: 12_500, textSampleTruncated: true } };
+    const analyzed = analyzeSnapshot(sample);
+    expect(analyzed.truncated).toBe(true); // result flag
+    expect(isTruncated(sample)).toBe(true); // direct helper
+
+    // Dashboard completeness indicator (summary derives from the record).
+    const summary = buildSiteSummary(makeSession(), [
+      makePage({ ...makeOkPage(`${ORIGIN}/huge`), snapshot: sample, result: analyzed }),
+    ]);
+    expect(summary.incomplete).toBe(true);
+
+    // The exported JSON cannot present it as fully verified.
+    const record = AuditRecordSchema.parse({
+      url: sample.url,
+      title: 'Huge',
+      analyzedAt: '2026-10-31T00:00:00.000Z',
+      ruleSetVersion: analyzed.ruleSetVersion,
+      snapshot: sample,
+      result: analyzed,
+    });
+    const exported = siteAuditToJson(makeSession(), [
+      { ...record, sessionId: 1 } as unknown as SitePageRecord,
+    ]);
+    expect(exported).toContain('"truncated": true');
+  });
+
+  it('a complete audit is never flagged incomplete by the text-sample flag', async () => {
+    const { analyzeSnapshot } = await import('@vittix/seo-core');
+    const { PageSnapshotSchema } = await import('@vittix/shared');
+    const base = makeOkPage(`${ORIGIN}/normal`) as never as Record<string, unknown>;
+    const snapshot = PageSnapshotSchema.parse(base.snapshot);
+    const analyzed = analyzeSnapshot(snapshot);
+    expect(analyzed.truncated).toBe(false);
   });
 });

@@ -16,8 +16,8 @@ and does not do, in plain language.
   happens entirely inside your browser. **No network requests are made** in
   this mode.
 - **Site audits (opt-in):** only after you explicitly approve ONE website
-  does the extension fetch pages from that site to audit them. Nothing is
-  ever sent anywhere else.
+  does the extension fetch pages starting from that site. Browser-followed
+  redirects may contact a destination before it can be checked.
 - **No accounts, no telemetry, no analytics, no advertising.**
 
 ## What data is read
@@ -48,13 +48,16 @@ browsing history. It does not read content inside iframes.
 
 - **Single-page mode: nothing.** The extension makes no network requests in
   this mode. You can verify this in your browser's developer tools.
-- **Site-audit mode: only what is strictly necessary, and only to the site
-  you approved.** When you start a site audit, Vittix performs GET requests
-  to pages of the exact website origin you approved (for example
-  `https://example.com/…`) and to that site's `/robots.txt` file. Requests
-  are sent **without cookies or credentials**, never leave the approved
-  origin, never submit forms, and are paced and limited in number. robots.txt
-  rules are honored. No page content is ever transmitted anywhere else.
+- **Site-audit mode:** when you start a site audit, Vittix starts GET requests
+  at pages of the exact website origin you approved (for example
+  `https://example.com/…`) and at that site's `/robots.txt` file. Requests
+  omit cookies and credentials, never submit forms, and are paced and limited.
+  The browser may follow a page redirect before Vittix can inspect its final
+  URL, so a destination can receive the redirect request. See the explicit
+  disclosure below. Robots rules are checked before crawler requests and
+  against same-origin final URLs before their response bodies are parsed.
+
+A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page.
 
 ## Permissions
 

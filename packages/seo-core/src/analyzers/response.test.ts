@@ -11,6 +11,7 @@ const metadata = (overrides: Partial<SiteResponseMetadata> = {}): SiteResponseMe
   redirected: false,
   redirectOffOrigin: false,
   redirectFinalUrl: null,
+  fetchFailedPossibleRedirect: false,
   contentType: 'text/html; charset=utf-8',
   contentLength: 100,
   contentEncoding: null,
@@ -34,7 +35,7 @@ describe('site-only response metadata rules', () => {
     const ids = analyzeSnapshot(buildSnapshot()).findings.map((finding) => finding.ruleId);
     for (const id of [
       'redirect-present',
-      'redirect-off-origin',
+      'fetch-failed-possible-redirect',
       'redirect-in-internal-links',
       'x-robots-noindex-header',
       'non-html-content-type',
@@ -44,7 +45,7 @@ describe('site-only response metadata rules', () => {
       expect(ids).not.toContain(id);
   });
 
-  it('reports the observable final URL and off-origin destination without hop claims', () => {
+  it('reports observable final URLs without making claims about unobservable destinations', () => {
     const findings = analyzeResponseMetadata(
       null,
       metadata({ redirected: true, redirectFinalUrl: 'https://example.test/about/' }),
@@ -53,15 +54,17 @@ describe('site-only response metadata rules', () => {
     expect(find(findings, 'redirect-present')?.evidence).toBe('https://example.test/about/');
     expect(find(findings, 'redirect-chain-long')).toBeUndefined();
     expect(find(findings, 'redirect-temporary')).toBeUndefined();
-    const offOrigin = analyzeResponseMetadata(
+    const uncertain = analyzeResponseMetadata(
       null,
       metadata({
-        redirected: true,
-        redirectOffOrigin: true,
-        redirectFinalUrl: 'https://elsewhere.test/',
+        fetchFailedPossibleRedirect: true,
       }),
     );
-    expect(find(offOrigin, 'redirect-off-origin')?.severity).toBe('warn');
+    expect(find(uncertain, 'fetch-failed-possible-redirect')?.severity).toBe('info');
+    expect(find(uncertain, 'redirect-present')).toBeUndefined();
+    expect(find(uncertain, 'fetch-failed-possible-redirect')?.remediation).toContain(
+      'does not establish that a redirect occurred',
+    );
   });
 
   it('omits redirect results when extension fetch exposes an opaque redirect', () => {

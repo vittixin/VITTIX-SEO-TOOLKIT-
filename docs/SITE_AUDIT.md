@@ -86,19 +86,31 @@ blockers, not config options).
 Measured in Playwright against the local HTTPS server on distinct ports and
 origins. `other.test` and `fixture.test` resolve to loopback only inside the
 test browser. The secondary origin's CORS header is present only for the CORS
-case. The crawler is still using `redirect: "follow"` in these measurements.
+case. The table below records the first baseline run before the post-response
+checks. Its initial robots row was invalid: the fixture had not yet disallowed
+`/blocked`. The corrected, post-fix measurement is listed below.
 
-| Redirect target                              | Destination received request? | Extension-page fetch result                                               | Current crawler record                                             | Rules observed                                                  |
-| -------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------- |
-| Different origin, permissive CORS            | Yes                           | Resolved, status 200, `redirected=true`, final URL visible                | `skipped-external-redirect`; final URL retained, body not analyzed | `redirect-present` info; `redirect-off-origin` warn             |
-| Different origin, no CORS                    | Yes                           | Rejected with generic `TypeError: Failed to fetch`; final URL unavailable | `failed`; requested URL retained; no response findings             | No redirect finding (failure is not attributable to a redirect) |
-| Same origin, final path disallowed by robots | Yes                           | Resolved, status 200, same-origin final URL visible                       | `ok`; body parsed and analyzed (known gap being fixed)             | Ordinary page findings and `redirect-present` info              |
-| `127.0.0.1` on a third port                  | Yes                           | Resolved, status 200, final URL visible                                   | `skipped-external-redirect`; final URL retained, body not analyzed | `redirect-present` info; `redirect-off-origin` warn             |
+| Redirect target                              | Destination received request? | Extension-page fetch result                                               | Current crawler record                                                  | Rules observed                               |
+| -------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------- | -------------------------------------------- |
+| Different origin, permissive CORS            | Yes                           | Resolved, status 200, `redirected=true`, final URL visible                | `skipped-external-redirect`; final URL retained, body not analyzed      | `redirect-present` info                      |
+| Different origin, no CORS                    | Yes                           | Rejected with generic `TypeError: Failed to fetch`; final URL unavailable | `failed`; requested URL retained; no response findings                  | No redirect finding in the measured baseline |
+| Same origin, intended robots-disallowed path | Yes                           | Resolved, status 200, same-origin final URL visible                       | Baseline fixture did not disallow `/blocked`; not a valid robots result | Not applicable                               |
+| `127.0.0.1` on a third port                  | Yes                           | Resolved, status 200, final URL visible                                   | `skipped-external-redirect`; final URL retained, body not analyzed      | `redirect-present` info                      |
 
 The server-side request log is the evidence for whether the destination was
 contacted; a rejected Fetch promise does not mean that the server was not
 contacted. For no-CORS failures, the crawler cannot truthfully claim it
 observed an off-origin redirect because Fetch does not expose the final URL.
+
+After correcting the fixture to return `Disallow: /blocked`, the measured
+crawler outcomes are:
+
+| Redirect target                              | Destination received request? | Fetch result                                                | Crawler record after fix                                                     | Rules after fix                                                          |
+| -------------------------------------------- | ----------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Different origin, permissive CORS            | Yes                           | Resolved, status 200, final URL visible                     | `skipped-external-redirect`; body discarded; “Redirect target not permitted” | `redirect-present` info                                                  |
+| Different origin, no CORS                    | Yes                           | Generic `TypeError: Failed to fetch`; final URL unavailable | `failed`; requested URL retained                                             | `fetch-failed-possible-redirect` info; no claim that a redirect occurred |
+| Same origin, `/blocked` disallowed by robots | Yes                           | Resolved, status 200, same-origin final URL visible         | `skipped-robots`; body not stored or analyzed; links not enqueued            | `redirect-present` info only                                             |
+| `127.0.0.1` on a third port                  | Yes                           | Resolved, status 200, final URL visible                     | `skipped-external-redirect`; body discarded; “Redirect target not permitted” | `redirect-present` info                                                  |
 
 ### Network-layer redirect blocking investigation
 
@@ -123,16 +135,18 @@ redirect before those checks.
   destinations.
 - **Important threat-model limitation:** with `redirect: "follow"`, Chromium
   has already issued the request to the redirect destination before the
-  extension can inspect the final URL. A redirect can therefore cause a
-  cross-origin request that this crawler could not independently re-check
-  against the origin permission, robots policy, or pacing gate. The final
-  response body is discarded without parsing when `response.url` is off-origin,
-  but that does not undo the request. Use this mode only with that limitation
-  understood; it weakens the previous same-origin-only network guarantee.
+  extension can inspect the final URL. Each hop in a chain can issue a request;
+  individual hops, status codes, and chain length are not observable. After a
+  response is available, the crawler checks the final URL's origin and
+  permission, then checks same-origin final URLs against robots before reading
+  their bodies. A disallowed or unpermitted final response body is discarded,
+  but that does not undo the request already sent.
 - Browser redirect-loop/network errors are recorded as failed page fetches.
   The browser controls its own redirect limit; Fetch does not offer a setting
   for a crawler-specific 10-hop limit. The final URL and redirect presence are
   recorded when observable; hop count and temporary/permanent status are not.
+
+A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page.
 
 ### Response-header readability probe
 
@@ -220,9 +234,9 @@ families.
 
 ## Privacy disclosures (shown in the UI before consent)
 
-- Site mode performs network requests — unlike single-page mode — but only
-  to the origin the user approved, only GET requests, and with credentials
-  stripped.
+- Site mode performs network requests — unlike single-page mode — with GET
+  and credentials stripped. Browser-followed redirect destinations may also
+  receive requests before they can be checked.
 - robots.txt of the approved origin is fetched as part of every audit.
 - Page content of the audited pages is stored locally in IndexedDB and
   never transmitted anywhere else. Exports are manual.
@@ -258,7 +272,8 @@ and equally affects any browser fetch. No proxying of any kind exists.
 
 ## Non-goals / explicit refusals
 
-- No arbitrary crawling beyond the consented origin.
+- No arbitrary queue expansion beyond the consented origin; browser-followed
+  redirect destinations can receive requests before their final URL is checked.
 - No bypassing of authentication, CAPTCHAs, robots directives, or access
   controls.
 - No form submission or state-changing requests.

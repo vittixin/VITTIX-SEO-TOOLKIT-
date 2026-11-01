@@ -36,7 +36,9 @@ export default async function globalSetup() {
     recordRequest('approved', req);
     if (path === '/robots.txt') {
       res.writeHead(200, { 'content-type': 'text/plain' });
-      res.end(`User-agent: VittixBot\nCrawl-delay: 0.1\nSitemap: https://${host}/sitemap.xml.gz\n`);
+      res.end(
+        `User-agent: VittixBot\nDisallow: /blocked\nCrawl-delay: 0.1\nSitemap: https://${host}/sitemap.xml.gz\n`,
+      );
       return;
     }
     if (path === '/sitemap.xml.gz') {

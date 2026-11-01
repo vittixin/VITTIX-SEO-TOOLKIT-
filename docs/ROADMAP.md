@@ -5,9 +5,9 @@
 Phase C part 1 and the requested part 2 features cover response metadata,
 sitemap discovery, bounded duplicate similarity heuristics, an internal link
 graph, and stored site-audit regressions. Browser-follow redirect behavior
-weakens the prior strict same-origin network guarantee: a redirected
-destination can receive a request before the extension can inspect it. See
-SITE_AUDIT.md for the threat-model details.
+means the crawler cannot guarantee that each network request stays on the
+approved origin. It checks the final response destination after Fetch returns.
+A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page.
 
 ## Snapshot schema v5 (Phase A follow-up, 2026-11-01)
 
@@ -80,7 +80,8 @@ Delivered (threat model: [SITE_AUDIT.md](SITE_AUDIT.md)):
   grant CATALOG only — install-time permissions unchanged
   (`activeTab` + `scripting`), enforced by CI manifest audit
 - **Safe crawler MVP**: dashboard-run paced loop (concurrency ≤3, min
-  interval + Crawl-delay), same-origin only, GET-only with
+  interval + Crawl-delay), same-origin URL discovery, followed redirects
+  checked after fetch, GET-only with
   `credentials: "omit"`, robots.txt `*`-group honored (4xx allow / 5xx
   block, RFC 9309), cross-origin redirects recorded-not-parsed, hard page
   cap (default 20, max 50), BFS depth ≤2, URL normalization + dedup

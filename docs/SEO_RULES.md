@@ -1,4 +1,4 @@
-# SEO Rules — Rule Set v0.8.0
+# SEO Rules — Rule Set v0.9.0
 
 All rules are pure functions of a validated `PageSnapshot` (schema **v5**):
 the same snapshot always produces the same findings, in the same order
@@ -34,22 +34,22 @@ Severities:
 
 ## Technical rules
 
-| Rule                       | Severity when triggered                                                                                                 | Condition                                                                                                              |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `viewport-present`         | **warn** if missing                                                                                                     | `meta[name=viewport]` declared                                                                                         |
-| `viewport-responsive`      | **warn** on fixed width (no `width=device-width`) or disabled pinch zoom (`user-scalable=no` / `maximum-scale=1`)       | Viewport content inspection (v0.3.0)                                                                                   |
-| `lang-present`             | **warn** if missing                                                                                                     | `<html lang>` declared                                                                                                 |
-| `lang-format`              | **warn** if the tag does not match the BCP-47 shape (e.g. `english`, `en_US`)                                           | Language-tag format check — registry validation NOT performed (v0.3.0)                                                 |
-| `page-https`               | **warn** if not https                                                                                                   | Page URL uses the https scheme                                                                                         |
-| `robots-directives`        | **error** on `noindex` (or `none`); **warn** on `nofollow`-only or on conflicting duplicate robots tags; pass otherwise | All `meta[name=robots]` values are reconciled (v0.3.0); indexable by default when absent                               |
-| `hreflang-syntax`          | **error** on a missing href; **warn** on malformed language codes (`en_US`); pass when absent or well-formed            | `<link rel="alternate" hreflang>` entries (v0.3.0)                                                                     |
-| `hreflang-duplicates`      | **warn** when a language code is declared more than once                                                                | Duplicate detection across the cluster (v0.3.0)                                                                        |
-| `hreflang-consistency`     | **info** without a self-reference; **warn** when the canonical contradicts a self-referencing cluster; pass otherwise   | Evaluated within available page evidence only — cross-page return links are NOT fetched (zero-network policy) (v0.3.0) |
-| `canonical-self-reference` | **warn** on cross-host canonical without hreflang; **info** for same-host variants; pass on self-reference              | Cross-host canonicals without hreflang tell engines to ignore the page (v0.5.0)                                        |
-| `mixed-content`            | **warn** on http:// subresources on an https page (img/script/link/iframe, bounded sample)                              | Mixed content undermines TLS; browsers block or downgrade it (v0.5.0)                                                  |
-| `favicon-present`          | **info** when absent                                                                                                    | `<link rel="icon">` declaration; browsers fall back to /favicon.ico (v0.5.0)                                           |
-| `pagination-rel`           | **info** when rel=prev/next detected                                                                                    | Google no longer uses rel=prev/next for indexing — observation only (v0.5.0)                                           |
-| `url-hygiene`              | **info** listing observations (uppercase path, underscores, >115 chars, >3 params, session-style params)                | Minor ranking aid; observations, never blocking (v0.5.0)                                                               |
+| Rule                       | Severity when triggered                                                                                                 | Condition                                                                                                                |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `viewport-present`         | **warn** if missing                                                                                                     | `meta[name=viewport]` declared                                                                                           |
+| `viewport-responsive`      | **warn** on fixed width (no `width=device-width`) or disabled pinch zoom (`user-scalable=no` / `maximum-scale=1`)       | Viewport content inspection (v0.3.0)                                                                                     |
+| `lang-present`             | **warn** if missing                                                                                                     | `<html lang>` declared                                                                                                   |
+| `lang-format`              | **warn** if the tag does not match the BCP-47 shape (e.g. `english`, `en_US`)                                           | Language-tag format check — registry validation NOT performed (v0.3.0)                                                   |
+| `page-https`               | **warn** if not https                                                                                                   | Page URL uses the https scheme                                                                                           |
+| `robots-directives`        | **error** on `noindex` (or `none`); **warn** on `nofollow`-only or on conflicting duplicate robots tags; pass otherwise | All `meta[name=robots]` values are reconciled (v0.3.0); indexable by default when absent                                 |
+| `hreflang-syntax`          | **error** on a missing href; **warn** on malformed language codes (`en_US`); pass when absent or well-formed            | `<link rel="alternate" hreflang>` entries (v0.3.0)                                                                       |
+| `hreflang-duplicates`      | **warn** when a language code is declared more than once                                                                | Duplicate detection across the cluster (v0.3.0)                                                                          |
+| `hreflang-consistency`     | **info** without a self-reference; **warn** when the canonical contradicts a self-referencing cluster; pass otherwise   | Evaluated within available page evidence only — cross-page return links are NOT fetched in single-page analysis (v0.3.0) |
+| `canonical-self-reference` | **warn** on cross-host canonical without hreflang; **info** for same-host variants; pass on self-reference              | Cross-host canonicals without hreflang tell engines to ignore the page (v0.5.0)                                          |
+| `mixed-content`            | **warn** on http:// subresources on an https page (img/script/link/iframe, bounded sample)                              | Mixed content undermines TLS; browsers block or downgrade it (v0.5.0)                                                    |
+| `favicon-present`          | **info** when absent                                                                                                    | `<link rel="icon">` declaration; browsers fall back to /favicon.ico (v0.5.0)                                             |
+| `pagination-rel`           | **info** when rel=prev/next detected                                                                                    | Google no longer uses rel=prev/next for indexing — observation only (v0.5.0)                                             |
+| `url-hygiene`              | **info** listing observations (uppercase path, underscores, >115 chars, >3 params, session-style params)                | Minor ranking aid; observations, never blocking (v0.5.0)                                                                 |
 
 ## Social rules
 
@@ -129,7 +129,7 @@ Severities:
 
 Also **detected-types only** (no validation) for Microdata (`itemscope`/`itemtype`) and RDFa (`typeof`), reported in the snapshot's `microdataRdfaTypes` (bounded to 10).
 
-## Site-audit response rules (v0.8.0)
+## Site-audit response rules (v0.9.0)
 
 These rules consume bounded response metadata captured by the extension's
 site-audit fetches. They are never emitted by single-page analysis because
@@ -137,15 +137,15 @@ that mode does not fetch the page response. Header availability was verified
 from the extension page with the approved origin grant; details are in
 [SITE_AUDIT.md](SITE_AUDIT.md).
 
-| Rule                         | Site-audit behavior                                                                                                                                                 |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `redirect-present`           | **info** when the browser reports a redirect and provides a final URL. Individual hop status, count, and chain length are unavailable.                              |
-| `redirect-off-origin`        | **warn** when a requested same-origin URL resolves to a final URL on another origin. The browser has already issued the destination request; its body is discarded. |
-| `redirect-in-internal-links` | **info** when inspected internal links target a URL that the crawl observed redirecting; update links to final URLs when practical.                                 |
-| `x-robots-noindex-header`    | **error** for X-Robots-Tag noindex/none when meta robots does not already report the same block; counts toward the blocking score cap.                              |
-| `non-html-content-type`      | **info** for non-HTML response content types; pass for HTML/XHTML.                                                                                                  |
-| `slow-response`              | **warn** at 5,000 ms or more; **info** at 2,000–4,999 ms; pass below 2,000 ms. Timing is measured by this browser/network and is not a lab test.                    |
-| `missing-security-headers`   | **info only**, never score-affecting, when any checked header family is absent (HSTS, CSP, X-Content-Type-Options, Referrer-Policy, frame protection).              |
+| Rule                             | Site-audit behavior                                                                                                                                                              |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `redirect-present`               | **info** when the browser reports a redirect and provides a final URL. Individual hop status, count, and chain length are unavailable.                                           |
+| `fetch-failed-possible-redirect` | **info** on a generic fetch failure. A blocked cross-origin redirect is possible, but the final URL is unobservable and the finding does not establish that a redirect occurred. |
+| `redirect-in-internal-links`     | **info** when inspected internal links target a URL that the crawl observed redirecting; update links to final URLs when practical.                                              |
+| `x-robots-noindex-header`        | **error** for X-Robots-Tag noindex/none when meta robots does not already report the same block; counts toward the blocking score cap.                                           |
+| `non-html-content-type`          | **info** for non-HTML response content types; pass for HTML/XHTML.                                                                                                               |
+| `slow-response`                  | **warn** at 5,000 ms or more; **info** at 2,000–4,999 ms; pass below 2,000 ms. Timing is measured by this browser/network and is not a lab test.                                 |
+| `missing-security-headers`       | **info only**, never score-affecting, when any checked header family is absent (HSTS, CSP, X-Content-Type-Options, Referrer-Policy, frame protection).                           |
 
 ## Scoring
 
@@ -170,7 +170,7 @@ all other profiles retain the blocking cap. An explicit severity override on
 a blocking rule may also change whether the cap applies, and the UI warns
 before saving that override.
 
-Formula (rule set v0.8.0):
+Formula (rule set v0.9.0):
 
 1. Each category starts at **100**.
 2. Only `error` (−25) and `warn` (−10) deduct. `info`/`pass` never do
@@ -244,7 +244,7 @@ score always reports "Poor".
   `display:none`/`visibility:hidden` are treated as hidden (documented,
   deterministic subset)
 - hreflang cross-page return links are NOT verified (would require fetching
-  other URLs — excluded by the zero-network policy)
+  other URLs — excluded from single-page analysis)
 - iframes are not analyzed (extraction targets the top frame only)
 - SPAs are analyzed at click time (live DOM ground truth); no continuous
   monitoring by design — use Re-analyze after client-side navigation

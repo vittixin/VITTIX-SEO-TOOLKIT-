@@ -29,6 +29,8 @@ dependency or manifest change.
   requests with credentials stripped, robots.txt honored, revocable. See
   docs/SITE_AUDIT.md for the full threat model.
 
+A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page.
+
 ## 3. Privacy-policy consistency
 
 - docs/PRIVACY.md states: single-page mode = zero network; site mode =

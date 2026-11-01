@@ -16,7 +16,7 @@ leaves the user's machine.
 
 ## Product principles
 
-1. **Privacy-first** — analysis only on explicit user action; zero network calls
+1. **Privacy-first** — analysis starts only on explicit user action; single-page audits make no network requests, while the optional site audit performs disclosed credential-free GET requests
 2. **Minimal permissions** — `activeTab` + `scripting`, nothing else
 3. **Explainable results** — every finding shows what was checked, what was
    found, and why it matters; no black-box scores

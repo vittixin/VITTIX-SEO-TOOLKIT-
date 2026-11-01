@@ -29,14 +29,17 @@ every finding
 SITE AUDITS (opt-in, disclosed network use)
 • Audit up to 50 pages of ONE origin you explicitly approve
 • Standard Chrome permission prompt per origin — revocable anytime
-• robots.txt rules honored; GET requests only; no cookies or credentials
+• robots.txt rules checked before crawler requests; GET requests only; no cookies or credentials
 • Duplicate titles/descriptions, missing canonicals, noindex warnings,
 broken-link candidates and orphan-page analysis across the crawled pages
 
 PRIVACY BY DESIGN
 • Single-page mode performs zero network requests — verified in CI
+• Site audits request an approved origin at runtime; browser-followed redirects may contact a destination before it can be checked
 • No accounts, no telemetry, no analytics, no remote code
 • All data stays in your browser's local storage; delete it anytime
+
+A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page.
 
 Note: scores are clearly labeled preliminary — they describe on-page
 hygiene, not search rankings.

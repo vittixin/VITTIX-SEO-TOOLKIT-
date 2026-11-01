@@ -1,6 +1,7 @@
 import { Lock, ShieldCheck, WandSparkles } from 'lucide-react';
 import { browser } from 'wxt/browser';
 import { RULE_SET_VERSION } from '@vittix/seo-core';
+import { SITE_REDIRECT_DISCLOSURE } from '@vittix/shared';
 import { SettingsPanel } from '@/src/components/SettingsPanel';
 
 const PRIVACY_POINTS: { title: string; body: string }[] = [
@@ -9,12 +10,12 @@ const PRIVACY_POINTS: { title: string; body: string }[] = [
     body: 'Vittix reads a page only after you click “Analyze Current Page”. There is no persistent content script, no background scanning, and no automatic collection.',
   },
   {
-    title: 'Nothing ever leaves your browser',
-    body: 'Snapshots, audits and settings are stored locally in IndexedDB. The extension makes zero network requests — no telemetry, no analytics, no API calls.',
+    title: 'Audit data stays on your device',
+    body: `Snapshots, audits and settings are stored locally in IndexedDB. Single-page audits make no network requests. Site audits use network requests after you approve an origin; there is no telemetry, analytics, or API service. ${SITE_REDIRECT_DISCLOSURE}`,
   },
   {
     title: 'Minimal permissions by design',
-    body: 'The extension requests only activeTab (temporary access to the tab you are looking at, granted on click) and scripting (to run the one-shot extractor). No tabs, no history, no host permissions.',
+    body: 'At install, the extension requests activeTab (temporary access to the tab you are looking at, granted on click) and scripting (to run the one-shot extractor). It has no tabs or history permission. Site audits request an origin only when you start one.',
   },
   {
     title: 'You control your data',

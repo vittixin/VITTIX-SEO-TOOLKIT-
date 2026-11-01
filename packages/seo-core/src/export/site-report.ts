@@ -54,6 +54,7 @@ export interface SiteReportInput {
       redirectCount?: number | null;
       redirected?: boolean;
       redirectOffOrigin?: boolean;
+      fetchFailedPossibleRedirect?: boolean;
       xRobotsTag?: string | null;
     }[];
     sitemap?: {
@@ -149,8 +150,12 @@ function buildSiteAuditReportHtmlBase(
     page.contentType ?? 'Unavailable',
     page.responseTimeMs == null ? 'Unavailable' : Math.round(page.responseTimeMs),
     page.redirectCount == null ? 'Unavailable' : page.redirectCount,
-    page.redirected ? 'Yes' : 'No',
-    page.redirectOffOrigin ? 'Off-origin' : 'Same-origin / none',
+    page.fetchFailedPossibleRedirect
+      ? 'Unknown (possible redirect)'
+      : page.redirected
+        ? 'Yes'
+        : 'No',
+    redirectDestination(page),
     page.xRobotsTag ?? '—',
   ]);
   const issues = [
@@ -246,6 +251,17 @@ function buildSiteAuditReportHtmlBase(
       '<section><h2>Top issues by page count',
       `${comparisonHtml}${duplicateHeuristicsHtml}${graphHtml}${siteFindingHtml}<section><h2>Top issues by page count`,
     );
+}
+
+function redirectDestination(page: {
+  redirected?: boolean;
+  redirectOffOrigin?: boolean;
+  fetchFailedPossibleRedirect?: boolean;
+}): string {
+  if (page.fetchFailedPossibleRedirect) return 'Unknown; fetch failed (possible redirect)';
+  if (page.redirectOffOrigin) return 'Off-origin observed';
+  if (page.redirected) return 'Same-origin observed';
+  return 'No redirect observed';
 }
 
 /** Add excerpt/keyword content only when the export dialog explicitly opts in. */
@@ -465,7 +481,7 @@ export function buildSiteAuditMarkdown(
     '| --- | --- | --- | ---: | ---: | ---: | --- | ---: | ---: | --- | --- | --- |',
     ...pages.map(
       (page) =>
-        `| ${escapeReportMarkdown(page.url)} | ${escapeReportMarkdown(page.finalUrl ?? '—')} | ${escapeReportMarkdown(page.status)} | ${page.score ?? '—'} | ${page.errorCount} | ${page.warnCount} | ${escapeReportMarkdown(page.contentType ?? 'Unavailable')} | ${page.responseTimeMs == null ? '—' : Math.round(page.responseTimeMs)} | Unavailable | ${page.redirected ? 'Yes' : 'No'} | ${page.redirectOffOrigin ? 'Off-origin' : 'Same-origin / none'} | ${escapeReportMarkdown(page.xRobotsTag ?? '—')} |`,
+        `| ${escapeReportMarkdown(page.url)} | ${escapeReportMarkdown(page.finalUrl ?? '—')} | ${escapeReportMarkdown(page.status)} | ${page.score ?? '—'} | ${page.errorCount} | ${page.warnCount} | ${escapeReportMarkdown(page.contentType ?? 'Unavailable')} | ${page.responseTimeMs == null ? '—' : Math.round(page.responseTimeMs)} | Unavailable | ${page.fetchFailedPossibleRedirect ? 'Unknown (possible)' : page.redirected ? 'Yes' : 'No'} | ${escapeReportMarkdown(redirectDestination(page))} | ${escapeReportMarkdown(page.xRobotsTag ?? '—')} |`,
     ),
   );
   if (summary.pages.length > 200) lines.push('', 'See CSV for the full page list.');

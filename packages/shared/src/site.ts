@@ -1,4 +1,8 @@
 import { z } from 'zod';
+
+/** Canonical redirect-risk disclosure shown before each site audit. */
+export const SITE_REDIRECT_DISCLOSURE =
+  'A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page.';
 import { FindingSchema } from './finding.js';
 
 /**
@@ -38,6 +42,7 @@ export const SiteResponseMetadataSchema = z.object({
   redirected: z.boolean().default(false),
   redirectOffOrigin: z.boolean().default(false),
   redirectFinalUrl: z.string().max(2048).nullable().default(null),
+  fetchFailedPossibleRedirect: z.boolean().default(false),
   contentType: z.string().max(2048).nullable().default(null),
   contentLength: z.number().int().nonnegative().nullable().default(null),
   contentEncoding: z.string().max(256).nullable().default(null),

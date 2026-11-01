@@ -184,6 +184,8 @@ test('site audit: consent → crawl → summary → export', async () => {
       url: 'https://fixture.test/redirect',
       location: null,
     });
+    await expect(dashboard.getByTestId('site-start')).toBeDisabled();
+    await dashboard.getByTestId('site-redirect-consent').check();
     await dashboard.getByTestId('site-start').click();
 
     // The crawl completes quickly on fixtures; the summary must appear and
@@ -357,6 +359,7 @@ test('site audit against a real local HTTPS server: robots, gzip sitemap, redire
       'referrer-policy': 'no-referrer',
       'x-frame-options': 'DENY',
     });
+    await dashboard.getByTestId('site-redirect-consent').check();
     await dashboard.getByTestId('site-start').click();
     await expect(dashboard.getByTestId('site-summary')).toBeVisible({ timeout: 45000 });
     await expect(dashboard.getByTestId('site-cancel')).toHaveCount(0, { timeout: 45000 });
@@ -467,6 +470,7 @@ test('measures followed redirect destinations, fetch outcomes, crawl records and
       },
       { origin, secondPort, thirdPort },
     );
+    await dashboard.getByTestId('site-redirect-consent').check();
     await dashboard.getByTestId('site-start').click();
     await expect(dashboard.getByTestId('site-summary')).toBeVisible({ timeout: 45000 });
     await expect(dashboard.getByTestId('site-cancel')).toHaveCount(0, { timeout: 45000 });
@@ -518,6 +522,25 @@ test('measures followed redirect destinations, fetch outcomes, crawl records and
       ),
     };
     console.log('measured redirect behavior', JSON.stringify(measured));
+    const pageByRequestedPath = (suffix: string) =>
+      measured.pages.find((page) => String(page.url).endsWith(suffix));
+    expect(pageByRequestedPath('/redirect-cors')).toMatchObject({
+      status: 'skipped-external-redirect',
+      error: expect.stringContaining('Redirect target not permitted'),
+    });
+    const noCorsRecord = pageByRequestedPath('/redirect-no-cors');
+    expect(noCorsRecord?.status).toBe('failed');
+    expect(noCorsRecord?.findings).toContainEqual(
+      expect.objectContaining({ ruleId: 'fetch-failed-possible-redirect', severity: 'info' }),
+    );
+    expect(pageByRequestedPath('/redirect-robots')).toMatchObject({
+      status: 'skipped-robots',
+      finalUrl: expect.stringContaining('/blocked'),
+    });
+    expect(pageByRequestedPath('/redirect-localhost')).toMatchObject({
+      status: 'skipped-external-redirect',
+      error: expect.stringContaining('Redirect target not permitted'),
+    });
     const outcomes = fetchOutcomes.outcomes as Record<
       string,
       { outcome: string; name?: string; status?: number; redirected?: boolean; url?: string }
@@ -594,6 +617,7 @@ test('site audit robustness: oversized, malformed and non-HTML pages + clear-dat
     await dashboard.getByTestId('site-origin-input').fill('https://fixture.test');
     await dashboard.getByTestId('site-grant').click();
     await expect(dashboard.getByTestId('site-consent')).toBeVisible({ timeout: 10_000 });
+    await dashboard.getByTestId('site-redirect-consent').check();
     await dashboard.getByTestId('site-start').click();
     await expect(dashboard.getByTestId('site-summary')).toBeVisible({ timeout: 60_000 });
 

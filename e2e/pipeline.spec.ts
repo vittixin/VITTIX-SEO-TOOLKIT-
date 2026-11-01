@@ -144,7 +144,7 @@ test('real extraction → validation → analysis pipeline', async () => {
     expect(result.score.total).toBeGreaterThan(0);
     expect(result.score.total).toBeLessThanOrEqual(100);
     expect(result.score.preliminary).toBe(true);
-    expect(result.ruleSetVersion).toBe('0.8.0');
+    expect(result.ruleSetVersion).toBe('0.9.0');
   } finally {
     await context.close();
   }

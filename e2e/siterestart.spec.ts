@@ -94,6 +94,7 @@ test('site audit survives a full browser restart and resumes idempotently', asyn
   await dashboard1.getByTestId('site-origin-input').fill('https://fixture.test');
   await dashboard1.getByTestId('site-grant').click();
   await expect(dashboard1.getByTestId('site-consent')).toBeVisible({ timeout: 10_000 });
+  await dashboard1.getByTestId('site-redirect-consent').check();
   await dashboard1.getByTestId('site-start').click();
 
   // Deterministic readiness: at least one page analyzed (and /a fetched).
@@ -149,6 +150,7 @@ test('site audit survives a full browser restart and resumes idempotently', asyn
     await dumpState(dashboard2, second.extensionId, 'run2-before-resume');
 
     // Resume from durable state.
+    await dashboard2.getByTestId('site-redirect-consent').check();
     await dashboard2.getByTestId('site-resume').click();
     await expect(dashboard2.getByTestId('site-summary')).toBeVisible({ timeout: 30_000 });
     // Sitemap discovery now runs before a resumed queue. Wait until the

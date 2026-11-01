@@ -32,6 +32,7 @@ export interface OriginRuleSettingsRow {
  * - v7: browser-follow redirect outcome fields on response metadata.
  * - v8: bounded duplicate-analysis hashes on site pages.
  * - v9: site-session profile and rule overrides are snapshotted for resume/compare.
+ * - v10: response metadata records whether a generic fetch failure could hide a redirect.
  */
 export class VittixDatabase extends Dexie {
   audits!: EntityTable<AuditRecord, 'id'>;
@@ -41,7 +42,7 @@ export class VittixDatabase extends Dexie {
   targetKeywords!: EntityTable<TargetKeywordRow, 'url'>;
   originRuleSettings!: EntityTable<OriginRuleSettingsRow, 'origin'>;
 
-  constructor(name = DB_NAME, schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 = 9) {
+  constructor(name = DB_NAME, schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 = 10) {
     super(name);
     this.version(1).stores({
       // Primary key ++id; queryable: by url and by analyzedAt (ISO string,
@@ -125,6 +126,27 @@ export class VittixDatabase extends Dexie {
         targetKeywords: 'url',
         originRuleSettings: 'origin',
       });
+    }
+    if (schemaVersion >= 10) {
+      this.version(10)
+        .stores({
+          audits: '++id, url, analyzedAt',
+          settings: 'key',
+          siteAudits: '++id, origin, status, startedAt',
+          sitePages: '++id, sessionId, url, status',
+          targetKeywords: 'url',
+          originRuleSettings: 'origin',
+        })
+        .upgrade(async (transaction) => {
+          await transaction
+            .table('sitePages')
+            .toCollection()
+            .modify((page: { responseMetadata?: Record<string, unknown> | null }) => {
+              if (page.responseMetadata) {
+                page.responseMetadata.fetchFailedPossibleRedirect ??= false;
+              }
+            });
+        });
     }
   }
 }

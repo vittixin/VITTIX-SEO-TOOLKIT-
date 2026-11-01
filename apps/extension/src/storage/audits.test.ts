@@ -139,7 +139,7 @@ describe('stored-record migration and compatibility', () => {
 
   it('preserves the rule-set version on stored records for cross-version guards', () => {
     const parsed = AuditRecordSchema.parse(wrapAudit(v1Snapshot()));
-    expect(parsed.result.ruleSetVersion).toBe('0.8.0');
+    expect(parsed.result.ruleSetVersion).toBe('0.9.0');
     expect(parsed.result.score.preliminary).toBe(true);
   });
 });

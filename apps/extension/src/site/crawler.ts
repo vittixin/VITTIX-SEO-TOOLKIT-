@@ -46,7 +46,7 @@ export interface CrawlerOptions {
  *  - the origin permission is re-verified before every fetch; revocation
  *    cancels the audit immediately
  *  - paced: bounded concurrency + minimum start interval (+ Crawl-delay)
- *  - hard page cap; same-origin redirects only are parsed
+ *  - hard page cap; fetched redirect destinations are checked before parsing
  *  - cancellation checked before every fetch and persisted in IndexedDB
  *
  * The loop lives in the calling page (dashboard): closing the tab pauses
@@ -656,7 +656,6 @@ interface SafeResponse {
   response: Response | null;
   metadata: SiteResponseMetadata;
   finalUrl: string;
-  externalRedirect: boolean;
   failure: string | null;
 }
 
@@ -680,7 +679,6 @@ async function fetchSameOriginResponse(
       response: null,
       metadata: makeMetadata(null, [], startedAt, true),
       finalUrl: initialUrl,
-      externalRedirect: false,
       failure: 'Requested URL is outside the approved origin.',
     };
   if (!robots.allows(parsed.pathname + parsed.search))
@@ -688,7 +686,6 @@ async function fetchSameOriginResponse(
       response: null,
       metadata: makeMetadata(null, [], startedAt, true),
       finalUrl: initialUrl,
-      externalRedirect: false,
       failure: 'Requested URL is disallowed by robots.txt.',
     };
   if (!firstRequestAlreadyPaced) await context.runner.pace();
@@ -697,7 +694,6 @@ async function fetchSameOriginResponse(
       response: null,
       metadata: makeMetadata(null, [], startedAt, true),
       finalUrl: initialUrl,
-      externalRedirect: false,
       failure: 'Origin permission was revoked before a response fetch.',
     };
   if (await shouldStop(context.sessionId))
@@ -705,7 +701,6 @@ async function fetchSameOriginResponse(
       response: null,
       metadata: makeMetadata(null, [], startedAt, true),
       finalUrl: initialUrl,
-      externalRedirect: false,
       failure: 'Crawl cancelled before response fetch.',
     };
   let response: Response;
@@ -718,10 +713,9 @@ async function fetchSameOriginResponse(
   } catch (error) {
     return {
       response: null,
-      metadata: makeMetadata(null, [], startedAt, true),
+      metadata: { ...makeMetadata(null, [], startedAt, true), fetchFailedPossibleRedirect: true },
       finalUrl: initialUrl,
-      externalRedirect: false,
-      failure: `Response fetch failed (the browser may have rejected a redirect loop): ${error instanceof Error ? error.message : String(error)}`,
+      failure: `Fetch failed; a redirect or network/CORS failure is possible, but the redirect target is not observable: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
   const redirected = response.redirected === true;
@@ -737,12 +731,12 @@ async function fetchSameOriginResponse(
     redirected,
     redirectOffOrigin: offOrigin,
     redirectFinalUrl: redirected ? finalUrl : null,
+    fetchFailedPossibleRedirect: false,
   };
   return {
-    response: offOrigin ? null : response,
+    response,
     metadata,
     finalUrl,
-    externalRedirect: offOrigin,
     failure: null,
   };
 }
@@ -768,6 +762,7 @@ function makeMetadata(
     redirected: false,
     redirectOffOrigin: false,
     redirectFinalUrl: null,
+    fetchFailedPossibleRedirect: false,
     contentType: header('content-type'),
     contentLength,
     contentEncoding: header('content-encoding', 256),
@@ -833,28 +828,62 @@ async function processUrl(
           finalUrl: safe.finalUrl,
           error: safe.failure,
           responseMetadata: safe.metadata,
-        });
-        await syncCounters(sessionId);
-        onProgress();
-        return;
-      }
-      if (safe.externalRedirect) {
-        await updateSitePage(pageId, {
-          status: 'skipped-external-redirect',
-          finalUrl: safe.finalUrl,
-          httpStatus: safe.metadata.finalStatus,
-          responseMetadata: safe.metadata,
           responseFindings: analyzeResponseMetadata(null, safe.metadata),
         });
         await syncCounters(sessionId);
         onProgress();
         return;
       }
-
       const response = safe.response!;
       const finalUrl = safe.finalUrl;
       const responseFindings = analyzeResponseMetadata(null, safe.metadata);
-
+      let finalOrigin: string;
+      try {
+        finalOrigin = new URL(finalUrl).origin;
+      } catch {
+        finalOrigin = '';
+      }
+      const approvedOrigin = new URL(session.origin).origin;
+      const finalOriginPermitted = finalOrigin !== '' && (await context.hasPermission(finalOrigin));
+      if (finalOrigin !== approvedOrigin) {
+        void response.body?.cancel().catch(() => undefined);
+        await updateSitePage(pageId, {
+          status: 'skipped-external-redirect',
+          finalUrl,
+          httpStatus: safe.metadata.finalStatus,
+          error:
+            'Redirect target not permitted. The browser already sent a credential-free GET request before this check; the response body was discarded.',
+          responseMetadata: safe.metadata,
+          responseFindings,
+        });
+        await syncCounters(sessionId);
+        onProgress();
+        return;
+      }
+      if (!finalOriginPermitted) {
+        void response.body?.cancel().catch(() => undefined);
+        await failSession(
+          sessionId,
+          'Origin permission was revoked during the audit; response processing stopped immediately.',
+        );
+        runner.stop();
+        return;
+      }
+      const finalPath = new URL(finalUrl).pathname + (new URL(finalUrl).search || '');
+      if (!robots.allows(finalPath)) {
+        void response.body?.cancel().catch(() => undefined);
+        await updateSitePage(pageId, {
+          status: 'skipped-robots',
+          finalUrl,
+          httpStatus: safe.metadata.finalStatus,
+          error: 'Final URL is disallowed by robots.txt; response body discarded.',
+          responseMetadata: safe.metadata,
+          responseFindings,
+        });
+        await syncCounters(sessionId);
+        onProgress();
+        return;
+      }
       const contentType = response.headers.get('content-type') ?? '';
       if (!contentType.toLowerCase().includes('text/html')) {
         await updateSitePage(pageId, {

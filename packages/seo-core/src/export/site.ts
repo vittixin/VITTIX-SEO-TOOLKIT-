@@ -211,6 +211,7 @@ const SITE_CSV_COLUMNS = [
   'redirectObservationUnavailable',
   'redirected',
   'redirectOffOrigin',
+  'fetchFailedPossibleRedirect',
   'redirectFinalUrl',
   'xRobotsTag',
   'cacheControl',
@@ -299,8 +300,17 @@ export function sitePagesToCsv(session: SiteSession, pages: SitePageRecord[]): s
         ? ''
         : String(page.responseMetadata?.redirectChain.length ?? 0),
       page.responseMetadata?.redirectObservationUnavailable ? 'yes' : 'no',
-      page.responseMetadata?.redirected ? 'yes' : 'no',
-      page.responseMetadata?.redirectOffOrigin ? 'yes' : 'no',
+      page.responseMetadata?.fetchFailedPossibleRedirect
+        ? 'unknown'
+        : page.responseMetadata?.redirected
+          ? 'yes'
+          : 'no',
+      page.responseMetadata?.fetchFailedPossibleRedirect
+        ? 'unknown'
+        : page.responseMetadata?.redirectOffOrigin
+          ? 'yes'
+          : 'no',
+      page.responseMetadata?.fetchFailedPossibleRedirect ? 'yes' : 'no',
       page.responseMetadata?.redirectFinalUrl ?? '',
       page.responseMetadata?.xRobotsTag ?? '',
       page.responseMetadata?.cacheControl ?? '',

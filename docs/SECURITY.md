@@ -45,8 +45,11 @@ permissions, content scripts, web-accessible resources, or a CSP that allows
 
 ## Data handling
 
-See [PRIVACY.md](PRIVACY.md). In short: everything stays on-device; the
-extension makes no network requests of any kind.
+See [PRIVACY.md](PRIVACY.md). Single-page audits make no network requests.
+Optional site audits fetch the approved site locally and may contact redirect
+destinations before their final URLs can be checked.
+
+A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page.
 
 ## Reporting
 
@@ -63,7 +66,8 @@ repository. Please do not open public issues for vulnerabilities.
   are refused (fail closed) so embedded credentials can never leak into
   fetches, logs or exports.
 - **Site-mode permission re-verification**: the site-audit crawler re-checks
-  `browser.permissions.contains` before every request; revocation cancels
-  the audit immediately (see [SITE_AUDIT.md](SITE_AUDIT.md)).
+  `browser.permissions.contains` before every crawler fetch. The final URL is
+  checked again after a page fetch; browser-followed intermediate redirect
+  hops cannot be checked before their requests (see [SITE_AUDIT.md](SITE_AUDIT.md)).
 - **robots.txt redirects**: cross-origin robots redirects block the audit
   (fail closed) instead of being trusted.

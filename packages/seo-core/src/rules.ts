@@ -6,7 +6,7 @@
  * target keyword): same input in, same findings out. Each finding carries a
  * remediation hint ("how to fix").
  */
-export const RULE_SET_VERSION = '0.8.0';
+export const RULE_SET_VERSION = '0.9.0';
 
 /** Rule ids implemented by the analyzers. */
 export const RULE_IDS = [
@@ -77,7 +77,7 @@ export const RULE_IDS = [
   'structured-data-recommended-props',
   // Site-audit response observations; never emitted without response metadata.
   'redirect-present',
-  'redirect-off-origin',
+  'fetch-failed-possible-redirect',
   'redirect-in-internal-links',
   'x-robots-noindex-header',
   'non-html-content-type',

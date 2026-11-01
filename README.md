@@ -71,9 +71,14 @@ are provably free of React and Chrome APIs (enforced by ESLint boundary rules).
 
 ## Privacy in one paragraph
 
-The extension requests only `activeTab` and `scripting`. It loads no content
-scripts, has no host permissions, makes **zero network requests**, and stores
-everything locally. You can wipe all data from the options page at any time.
+The extension requests only `activeTab` and `scripting` at install. Single-page
+audits make no network requests; optional site audits request one origin at
+runtime and make credential-free GET requests. A redirect may cause the
+browser to contact its destination before the extension can inspect it; the
+body is discarded when that final destination is outside the approved origin
+or disallowed by robots. Results are stored locally. You can wipe all data from
+the options page at any time.
+A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page.
 See [docs/PRIVACY.md](docs/PRIVACY.md) and
 [docs/SECURITY.md](docs/SECURITY.md).
 

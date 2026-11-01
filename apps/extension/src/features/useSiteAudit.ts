@@ -154,6 +154,11 @@ export function useSiteAudit() {
   }
 
   async function startAudit(): Promise<void> {
+    if (!consented) {
+      setError('Confirm the redirect request disclosure before starting or resuming this audit.');
+      return;
+    }
+    setConsented(false);
     if (session?.status === 'running' && session.id !== undefined) {
       setError(null);
       setPhase('running');
@@ -269,7 +274,11 @@ export function useSiteAudit() {
       (responseFilter === 'non-html' &&
         Boolean(metadata?.contentType && !/html/i.test(metadata.contentType))) ||
       (responseFilter === 'redirected' &&
-        Boolean(metadata?.redirectChain.length || metadata?.redirectObservationUnavailable));
+        Boolean(
+          metadata?.redirectChain.length ||
+          metadata?.redirectObservationUnavailable ||
+          metadata?.fetchFailedPossibleRedirect,
+        ));
     return matchesUrl && matchesResponse;
   });
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Globe, Info, OctagonX, Play, RefreshCw, ShieldQuestion, Trash2, X } from 'lucide-react';
-import { SITE_LIMITS } from '@vittix/shared';
+import { SITE_LIMITS, SITE_REDIRECT_DISCLOSURE } from '@vittix/shared';
 import type { SitePageRecord } from '@vittix/shared';
 import { useSiteAudit } from '@/src/features/useSiteAudit';
 import { formatDate } from '@/src/lib/format';
@@ -36,12 +36,9 @@ export function SiteAuditView() {
       <div className="flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
         <Info className="mt-0.5 size-5 shrink-0" aria-hidden />
         <p>
-          <strong>Site mode performs network activity</strong>, unlike single-page mode: it fetches
-          pages and <span className="font-mono">/robots.txt</span> from the one origin you approve
-          (GET only, without cookies or credentials). Everything found is stored and analyzed
-          locally. Robots rules are honored for discovered URLs. Redirects are followed by the
-          browser so canonical URLs can be inspected; a redirect may issue a request to another
-          origin before its final URL can be checked. Off-origin response bodies are discarded.
+          <strong>Site mode performs network activity.</strong> It uses credential-free GET
+          requests, stores and analyzes results locally, and honors robots rules for discovered
+          URLs. {SITE_REDIRECT_DISCLOSURE}
         </p>
       </div>
 
@@ -83,7 +80,7 @@ export function SiteAuditView() {
             </p>
           ) : null}
 
-          {site.grantedOrigin !== null && !site.consented ? (
+          {site.grantedOrigin !== null ? (
             <div
               className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50/60 p-4"
               data-testid="site-consent"
@@ -98,9 +95,19 @@ export function SiteAuditView() {
                   • Up to <strong>{site.maxPages}</strong> pages, depth {SITE_LIMITS.maxDepth},
                   paced at ≥{SITE_LIMITS.delayMsFloor} ms between requests
                 </li>
-                <li>• Same-origin pages only · robots.txt honored · no forms, no credentials</li>
+                <li>• No forms or credentials · robots.txt checked before crawler fetches</li>
                 <li>• The audit runs while this dashboard tab is open</li>
               </ul>
+              <label className="mt-3 flex items-start gap-2 text-xs text-slate-700">
+                <input
+                  type="checkbox"
+                  data-testid="site-redirect-consent"
+                  checked={site.consented}
+                  onChange={(event) => site.setConsented(event.target.checked)}
+                  aria-label="Confirm redirect request disclosure for this audit"
+                />
+                <span>{SITE_REDIRECT_DISCLOSURE}</span>
+              </label>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
                   <input
@@ -115,6 +122,7 @@ export function SiteAuditView() {
                   type="button"
                   data-testid="site-start"
                   onClick={() => void site.startAudit()}
+                  disabled={!site.consented}
                   className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500"
                 >
                   <Play className="size-4" aria-hidden /> Start site audit
@@ -180,14 +188,27 @@ export function SiteAuditView() {
                   </button>
                 ) : null}
                 {site.session.status === 'running' && !running ? (
-                  <button
-                    type="button"
-                    data-testid="site-resume"
-                    onClick={() => void site.startAudit()}
-                    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500"
-                  >
-                    <RefreshCw className="size-4" aria-hidden /> Resume audit
-                  </button>
+                  <div className="space-y-2">
+                    <label className="flex max-w-3xl items-start gap-2 text-xs text-slate-700">
+                      <input
+                        type="checkbox"
+                        data-testid="site-redirect-consent"
+                        checked={site.consented}
+                        onChange={(event) => site.setConsented(event.target.checked)}
+                        aria-label="Confirm redirect request disclosure before resuming this audit"
+                      />
+                      <span>{SITE_REDIRECT_DISCLOSURE}</span>
+                    </label>
+                    <button
+                      type="button"
+                      data-testid="site-resume"
+                      onClick={() => void site.startAudit()}
+                      disabled={!site.consented}
+                      className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500"
+                    >
+                      <RefreshCw className="size-4" aria-hidden /> Resume audit
+                    </button>
+                  </div>
                 ) : null}
                 {(site.session.status !== 'running' || !running) && (
                   <button
@@ -483,14 +504,18 @@ function PageRow({ page }: { page: SitePageRecord }) {
       <td className="px-4 py-2 text-xs tabular-nums text-slate-600">
         {page.responseMetadata?.redirectObservationUnavailable
           ? 'Unavailable'
-          : (page.responseMetadata?.redirectChain.length ?? '—')}
+          : page.responseMetadata?.fetchFailedPossibleRedirect
+            ? 'Unknown'
+            : (page.responseMetadata?.redirectChain.length ?? '—')}
       </td>
       <td className="px-4 py-2 text-xs text-slate-600">
         {page.responseMetadata?.redirected
           ? page.responseMetadata.redirectOffOrigin
             ? 'Followed off-origin; body discarded'
             : 'Redirect followed'
-          : 'No redirect observed'}
+          : page.responseMetadata?.fetchFailedPossibleRedirect
+            ? 'Fetch failed; possible redirect (destination unknown)'
+            : 'No redirect observed'}
       </td>
       <td
         className="max-w-40 truncate px-4 py-2 text-xs text-slate-600"

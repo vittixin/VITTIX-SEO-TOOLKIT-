@@ -226,6 +226,45 @@ describe('runSiteAudit', () => {
     ).toMatchObject({ redirect: 'follow', method: 'GET', credentials: 'omit' });
   });
 
+  it('drops a same-origin redirected response when the final URL is disallowed by robots', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt'))
+        return Promise.resolve(
+          new Response('User-agent: VittixBot\nDisallow: /private\n', { status: 200 }),
+        );
+      if (url === `${ORIGIN}/`)
+        return Promise.resolve(htmlResponse('<a href="https://site.test/redirect">Go</a>', url));
+      if (url === `${ORIGIN}/redirect`)
+        return Promise.resolve(
+          htmlResponse(
+            '<title>must not store</title><a href="https://site.test/secret">secret</a>',
+            `${ORIGIN}/private/page`,
+            200,
+            true,
+          ),
+        );
+      return Promise.resolve(htmlResponse('', url));
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+
+    const pages = await listSitePages(sessionId);
+    const redirected = pages.find((page) => page.url === `${ORIGIN}/redirect`);
+    expect(redirected).toMatchObject({
+      status: 'skipped-robots',
+      finalUrl: `${ORIGIN}/private/page`,
+      error: 'Final URL is disallowed by robots.txt; response body discarded.',
+    });
+    expect(redirected?.snapshot).toBeUndefined();
+    expect(redirected?.result).toBeUndefined();
+    expect(pages.some((page) => page.url === `${ORIGIN}/secret`)).toBe(false);
+  });
+
   it('records browser redirect-loop network failures against the requested URL', async () => {
     const fetchImpl = vi.fn((input: string | URL) => {
       const url = String(input);

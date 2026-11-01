@@ -1,7 +1,8 @@
 # Privacy
 
-**Short version: Vittix SEO Toolkit cannot send your data anywhere — it makes
-zero network requests.**
+**Short version: single-page audits make no network requests. Optional site
+audits make local, credential-free GET requests to the approved origin and
+may contact redirect destinations before they can be checked.**
 
 ## What is collected
 
@@ -112,13 +113,13 @@ Verified against the final production build (`pnpm build:chrome`, 2026-10-31):
   which the extension never renders — zero requests are made. (Strings
   like `tinyurl.com`/`bit.ly` in the bundle are Dexie/React error-message
   documentation links, never fetched.)
-- **Site-mode requests**: requests start at approved-origin URLs and use
-  `GET` with credentials omitted. Page fetches use browser-managed redirect
-  following because extension-page Fetch returns opaque manual redirects.
-  The browser can issue a cross-origin destination request before Vittix can
-  inspect `response.url`; off-origin bodies are discarded without parsing.
-  The extension cannot re-check permission, robots, or pacing for those
-  browser-followed destinations. Robots and sitemap redirects fail closed.
+- **Site-mode requests**: requested URLs are same-origin and use `GET` with
+  credentials omitted. Page fetches use browser-managed redirect following
+  because extension-page Fetch returns opaque manual redirects. Each redirect
+  destination may receive a credential-free request before the extension can
+  inspect it; destination bodies outside the approved origin are discarded,
+  and same-origin final URLs are checked against robots before parsing. Robots
+  and sitemap redirects fail closed.
 - **Permissions**: install-time grants remain exactly `activeTab` +
   `scripting` (CI-verified); `optional_host_permissions` is a grant
   catalog — one exact origin per user approval, revocable, re-verified
@@ -126,6 +127,8 @@ Verified against the final production build (`pnpm build:chrome`, 2026-10-31):
 - **Private-network & credential protections**: https-only public origins,
   loopback/link-local/private ranges and IP literals rejected,
   `user:pass@host` URLs rejected — see docs/SITE_AUDIT.md.
+
+A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page.
 
 ### Site audit sitemaps
 

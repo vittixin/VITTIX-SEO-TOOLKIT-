@@ -119,7 +119,7 @@ test.describe('Vittix SEO Toolkit smoke tests', () => {
       await expect(page.getByTestId('clear-all-done')).toBeVisible({ timeout: 15_000 });
 
       // Privacy information is present.
-      await expect(page.getByText('Nothing ever leaves your browser')).toBeVisible();
+      await expect(page.getByText('Audit data stays on your device')).toBeVisible();
       await expect(page.getByText('Minimal permissions by design')).toBeVisible();
     } finally {
       await context.close();

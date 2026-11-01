@@ -149,8 +149,10 @@ Site mode adds a second, explicitly opt-in pipeline documented in
 - **Safety**: https-only public origins (SSRF boundary in
   `src/site/guards.ts`), same-origin discovery with normalization/dedup,
   robots.txt `*`-group honored (5xx blocks the audit per RFC 9309), GET
-  only with `credentials: "omit"`, cross-origin redirects recorded but not
-  parsed, hard page cap and paced concurrency.
+  only with `credentials: "omit"`, followed page redirects checked after the
+  response and discarded when unpermitted, hard page cap and paced concurrency.
 - **Extraction** for fetched HTML uses `src/site/extract-html.ts`
   (DOMParser-based mirror of the live injector; textContent-based word
   count is the one documented difference).
+
+A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page.

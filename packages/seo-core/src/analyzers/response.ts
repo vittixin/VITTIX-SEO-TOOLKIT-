@@ -34,14 +34,13 @@ export function analyzeResponseMetadata(
       metadata.redirectFinalUrl ?? undefined,
     );
   }
-  if (metadata.redirectOffOrigin) {
+  if (metadata.fetchFailedPossibleRedirect) {
     push(
-      'redirect-off-origin',
-      'warn',
-      'URL redirected off-origin',
-      'The browser followed a redirect to another origin. Its response body was discarded and not parsed.',
-      'Check the redirect destination and update internal links to a same-origin URL when appropriate.',
-      metadata.redirectFinalUrl ?? undefined,
+      'fetch-failed-possible-redirect',
+      'info',
+      'Fetch failed; redirect could not be confirmed',
+      'The browser returned a generic fetch failure. A cross-origin redirect blocked by CORS or another network failure is possible; the destination URL was not observable.',
+      'Check the page URL and network configuration. This result does not establish that a redirect occurred.',
     );
   }
 

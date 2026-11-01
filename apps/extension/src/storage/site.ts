@@ -144,6 +144,7 @@ export interface SitePageSummary {
   redirectCount: number | null;
   redirected: boolean;
   redirectOffOrigin: boolean;
+  fetchFailedPossibleRedirect: boolean;
   xRobotsTag: string | null;
 }
 
@@ -396,11 +397,14 @@ export function buildSiteSummary(session: SiteSession, pages: SitePageRecord[]):
         truncated: result?.truncated ?? false,
         contentType: page.responseMetadata?.contentType ?? null,
         responseTimeMs: page.responseMetadata?.durationMs ?? null,
-        redirectCount: page.responseMetadata?.redirectObservationUnavailable
-          ? null
-          : (page.responseMetadata?.redirectChain.length ?? 0),
+        redirectCount:
+          page.responseMetadata?.redirectObservationUnavailable ||
+          page.responseMetadata?.fetchFailedPossibleRedirect
+            ? null
+            : (page.responseMetadata?.redirectChain.length ?? 0),
         redirected: page.responseMetadata?.redirected ?? false,
         redirectOffOrigin: page.responseMetadata?.redirectOffOrigin ?? false,
+        fetchFailedPossibleRedirect: page.responseMetadata?.fetchFailedPossibleRedirect ?? false,
         xRobotsTag: page.responseMetadata?.xRobotsTag ?? null,
       };
     }),

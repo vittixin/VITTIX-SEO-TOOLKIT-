@@ -12,7 +12,7 @@ import {
   buildSiteAuditReportHtml,
   type SiteReportInput,
 } from './site-report.js';
-import { siteAuditToJson } from './site.js';
+import { siteAuditToJson, sitePagesToCsv } from './site.js';
 
 const hostile =
   '<script>alert(1)</script> "><img onerror=alert(2)> javascript:alert(3) ` RTL \u202e';
@@ -177,6 +177,63 @@ describe('site-audit reports', () => {
   it('is deterministic for identical input', () => {
     expect(buildSiteAuditReportHtml(site)).toBe(buildSiteAuditReportHtml(site));
     expect(buildSiteAuditMarkdown(site)).toBe(buildSiteAuditMarkdown(site));
+  });
+
+  it('labels generic fetch failures as uncertain instead of claiming an off-origin redirect', () => {
+    const uncertain: SiteReportInput = {
+      ...site,
+      summary: {
+        ...site.summary,
+        pages: [
+          {
+            ...site.summary.pages[0]!,
+            url: 'https://example.test/no-cors',
+            status: 'failed',
+            redirected: false,
+            redirectOffOrigin: false,
+            fetchFailedPossibleRedirect: true,
+          },
+        ],
+      },
+    };
+    const html = buildSiteAuditReportHtml(uncertain);
+    const markdown = buildSiteAuditMarkdown(uncertain);
+    expect(html).toContain('Unknown; fetch failed (possible redirect)');
+    expect(markdown).toContain('Unknown; fetch failed');
+    expect(markdown).toContain('possible redirect');
+    expect(html).not.toContain('Off-origin observed');
+    expect(markdown).not.toContain('Off-origin observed');
+  });
+
+  it('marks the redirect destination as unknown in site CSV after a generic fetch failure', () => {
+    const csv = sitePagesToCsv(
+      {
+        origin: 'https://example.test',
+        status: 'failed',
+        startedAt: '2026-10-31T12:00:00Z',
+        maxPages: 10,
+      } as never,
+      [
+        {
+          url: 'https://example.test/no-cors',
+          status: 'failed',
+          responseMetadata: {
+            redirectChain: [],
+            redirectObservationUnavailable: false,
+            redirected: false,
+            redirectOffOrigin: false,
+            fetchFailedPossibleRedirect: true,
+          },
+        } as never,
+      ],
+    );
+    const [header, row] = csv
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => line.split(','));
+    expect(row?.[header?.indexOf('redirected') ?? -1]).toBe('unknown');
+    expect(row?.[header?.indexOf('redirectOffOrigin') ?? -1]).toBe('unknown');
+    expect(row?.[header?.indexOf('fetchFailedPossibleRedirect') ?? -1]).toBe('yes');
   });
 
   it('caps site page tables at 200 rows and points to CSV for the full list', () => {

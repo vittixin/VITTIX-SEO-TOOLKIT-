@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -11,10 +11,18 @@ import { RULE_IDS } from './rules.js';
  */
 const SEO_CORE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO_ROOT = resolve(SEO_CORE_ROOT, '..', '..');
+function collectTestSources(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) return collectTestSources(path);
+    return entry.name.endsWith('.test.ts') ? [readFileSync(path, 'utf8')] : [];
+  });
+}
 
 describe('PRE-STEP: documentation consistency', () => {
   const rulesDoc = readFileSync(resolve(REPO_ROOT, 'docs', 'SEO_RULES.md'), 'utf8');
   const productSpec = readFileSync(resolve(REPO_ROOT, 'docs', 'PRODUCT_SPEC.md'), 'utf8');
+  const testSources = collectTestSources(SEO_CORE_ROOT);
   const analyzerSources = [
     'analyzers/metadata.ts',
     'analyzers/headings.ts',
@@ -39,12 +47,20 @@ describe('PRE-STEP: documentation consistency', () => {
     expect(missing, `rules not emitted by any analyzer: ${missing.join(', ')}`).toEqual([]);
   });
 
+  it('has no duplicate IDs and keeps a test reference for every catalog entry', () => {
+    expect(new Set(RULE_IDS).size).toBe(RULE_IDS.length);
+    const missing = RULE_IDS.filter(
+      (id) => !testSources.some((source) => source.includes(`'${id}'`)),
+    );
+    expect(missing, `rules without a test reference: ${missing.join(', ')}`).toEqual([]);
+  });
+
   it('keeps the rule count in docs/PRODUCT_SPEC.md in sync with RULE_IDS.length', () => {
     expect(productSpec).toContain(`${RULE_IDS.length} rules`);
   });
 
   it('keeps documented verification counts aligned with the last real run', () => {
-    expect(productSpec).toContain('313 unit tests');
+    expect(productSpec).toContain('329 unit tests');
     expect(productSpec).toContain('11 Playwright E2E tests');
   });
 

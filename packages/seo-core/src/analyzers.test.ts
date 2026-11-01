@@ -10,6 +10,7 @@ import { analyzeStructuredData } from './analyzers/structured-data.js';
 import { analyzeHreflang } from './analyzers/hreflang.js';
 import { analyzeContent } from './analyzers/content.js';
 import { buildSnapshot, findByRuleId } from './testing/fixtures.js';
+import { defaultImage } from './testing/fixtures.js';
 
 describe('analyzeMetadata — title rules', () => {
   it('passes a healthy metadata page (no error/warn findings)', () => {
@@ -53,6 +54,120 @@ describe('analyzeMetadata — title rules', () => {
       const findings = analyzeMetadata(buildSnapshot({ title }));
       expect(findByRuleId(findings, 'title-length').severity).toBe('pass');
     }
+  });
+});
+
+describe('rule inventory regression coverage', () => {
+  it('covers heading-empty for an empty heading', () => {
+    const finding = findByRuleId(
+      analyzeHeadings(buildSnapshot({ headings: [{ tag: 'h1', text: '' }] })),
+      'heading-empty',
+    );
+    expect(finding.severity).toBe('warn');
+  });
+
+  it('covers heading-duplicate for repeated visible headings', () => {
+    const finding = findByRuleId(
+      analyzeHeadings(
+        buildSnapshot({
+          headings: [
+            { tag: 'h1', text: 'Repeated section' },
+            { tag: 'h2', text: 'Repeated section' },
+          ],
+        }),
+      ),
+      'heading-duplicate',
+    );
+    expect(finding.severity).toBe('info');
+  });
+
+  it('covers title-h1-alignment when their topic terms differ', () => {
+    const finding = findByRuleId(
+      analyzeHeadings(
+        buildSnapshot({
+          title: 'Cobalt instrument',
+          headings: [{ tag: 'h1', text: 'Velvet panorama' }],
+        }),
+      ),
+      'title-h1-alignment',
+    );
+    expect(finding.severity).toBe('info');
+  });
+
+  it('covers image-dimensions-missing when dimensions are absent', () => {
+    const image = { ...defaultImage('/chart.png', 'Sales chart'), width: null, height: null };
+    const finding = findByRuleId(
+      analyzeImages(buildSnapshot({ images: [image] })),
+      'image-dimensions-missing',
+    );
+    expect(finding.severity).toBe('warn');
+  });
+
+  it('covers image-lazy-loading for an above-fold lazy image', () => {
+    const image = { ...defaultImage('/hero.png', 'Hero image'), foldIndex: 0, loading: 'lazy' };
+    const finding = findByRuleId(
+      analyzeImages(buildSnapshot({ images: [image] })),
+      'image-lazy-loading',
+    );
+    expect(finding.severity).toBe('warn');
+  });
+
+  it('covers image-modern-format for a legacy source with no alternative', () => {
+    const image = { ...defaultImage('/chart.png', 'Sales chart'), format: 'png' };
+    const finding = findByRuleId(
+      analyzeImages(buildSnapshot({ images: [image] })),
+      'image-modern-format',
+    );
+    expect(finding.severity).toBe('info');
+  });
+
+  it('covers image-srcset-missing for a large image without srcset', () => {
+    const image = { ...defaultImage('/chart.png', 'Sales chart'), width: '800' };
+    const finding = findByRuleId(
+      analyzeImages(buildSnapshot({ images: [image] })),
+      'image-srcset-missing',
+    );
+    expect(finding.severity).toBe('info');
+  });
+
+  it('covers structured-data-type-detected for a recognized Product node', () => {
+    const findings = analyzeStructuredData(
+      buildSnapshot({
+        structuredData: [
+          { raw: '{"@context":"https://schema.org","@type":"Product","name":"Candle"}' },
+        ],
+        structuredDataCount: 1,
+      }),
+    );
+    expect(findByRuleId(findings, 'structured-data-type-detected').detail).toContain(
+      'recognized node',
+    );
+  });
+
+  it('covers structured-data-required-props when Product fields are missing', () => {
+    const findings = analyzeStructuredData(
+      buildSnapshot({
+        structuredData: [
+          { raw: '{"@context":"https://schema.org","@type":"Product","name":"Candle"}' },
+        ],
+        structuredDataCount: 1,
+      }),
+    );
+    expect(findByRuleId(findings, 'structured-data-required-props').severity).toBe('warn');
+  });
+
+  it('covers structured-data-recommended-props when Product suggestions are absent', () => {
+    const findings = analyzeStructuredData(
+      buildSnapshot({
+        structuredData: [
+          {
+            raw: '{"@context":"https://schema.org","@type":"Product","name":"Candle","image":"/candle.jpg","offers":{"@type":"Offer"}}',
+          },
+        ],
+        structuredDataCount: 1,
+      }),
+    );
+    expect(findByRuleId(findings, 'structured-data-recommended-props').severity).toBe('info');
   });
 });
 

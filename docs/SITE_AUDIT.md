@@ -100,6 +100,21 @@ contacted; a rejected Fetch promise does not mean that the server was not
 contacted. For no-CORS failures, the crawler cannot truthfully claim it
 observed an off-origin redirect because Fetch does not expose the final URL.
 
+### Network-layer redirect blocking investigation
+
+Dynamic `declarativeNetRequest` blocking was not adopted. The production
+extension's Playwright probe requested this permission at runtime and Chromium
+rejected it with `Only permissions specified in the manifest may be
+requested.` [Chrome's permissions API](https://developer.chrome.com/docs/extensions/reference/api/permissions)
+does not support this permission as an optional permission. Adding it as a required permission would violate the
+site-audit-only permission boundary and would affect all extension installs.
+Because a permission cannot be granted under the permitted runtime model, a
+dynamic rule cannot be installed and its `initiatorDomains` scoping or blocked
+fetch error cannot be meaningfully exercised in the shipped extension. No DNR
+permission or rules are included. The crawler uses the disclosure and
+post-response checks below; it cannot prevent the browser from following a
+redirect before those checks.
+
 - The extension-page probe confirmed `redirect: "manual"` produces an opaque
   response (`opaqueredirect`, status 0, no readable `Location`) for a redirect.
   To crawl canonical trailing-slash and scheme redirects, page requests now use

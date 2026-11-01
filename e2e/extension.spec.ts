@@ -13,6 +13,41 @@ const SECTION_TITLES: Record<string, string> = {
 };
 
 test.describe('Vittix SEO Toolkit smoke tests', () => {
+  test('DNR is not runtime-grantable by the production test manifest', async () => {
+    const { context, page, extensionId } = await loadExtension();
+    try {
+      await page.goto(extensionPageUrl(extensionId, 'dashboard.html'));
+      await page.evaluate(() => {
+        const button = document.createElement('button');
+        button.id = 'probe-dnr-permission';
+        button.textContent = 'probe';
+        button.addEventListener('click', () => {
+          void chrome.permissions
+            .request({ permissions: ['declarativeNetRequest'] })
+            .then((granted) => {
+              (window as typeof window & { dnrProbe?: unknown }).dnrProbe = { granted };
+            })
+            .catch((error: unknown) => {
+              (window as typeof window & { dnrProbe?: unknown }).dnrProbe = {
+                rejected: String(error),
+              };
+            });
+        });
+        document.body.append(button);
+      });
+      await page.locator('#probe-dnr-permission').click();
+      await expect
+        .poll(() =>
+          page.evaluate(() => (window as typeof window & { dnrProbe?: unknown }).dnrProbe),
+        )
+        .toEqual({
+          rejected: 'Error: Only permissions specified in the manifest may be requested.',
+        });
+    } finally {
+      await context.close();
+    }
+  });
+
   test('popup renders, runs the guard, and shows a friendly error on unsupported pages', async () => {
     const { context, page, extensionId } = await loadExtension();
     try {

@@ -84,7 +84,7 @@ export const BASE_MANIFEST = {
    * enforces that this list never grows beyond the https wildcard and that
    * host_permissions stays absent.
    */
-  optional_host_permissions: ['https://*/*'],
+  optional_host_permissions: ['https://*/*', 'http://localhost/*', 'http://127.0.0.1/*'],
   icons: {
     '16': 'icon/16.png',
     '32': 'icon/32.png',

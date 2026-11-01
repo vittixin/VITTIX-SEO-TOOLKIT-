@@ -20,7 +20,7 @@ import {
 import { browser } from 'wxt/browser';
 import { useAudits } from '@/src/features/useAudits';
 import { OverviewView } from '@/src/features/views/OverviewView';
-import { analyzeSnapshot } from '@vittix/seo-core';
+import { analyzeSnapshot, isDevelopmentOrigin } from '@vittix/seo-core';
 import { getTargetKeyword } from '@/src/storage/keywords';
 import { getOriginRuleSettings } from '@/src/storage/rule-settings';
 import { saveAudit } from '@/src/storage/audits';
@@ -234,6 +234,11 @@ export function App() {
             </h1>
             <p className="truncate text-xs text-slate-400">{SECTION_TITLES[section].subtitle}</p>
           </div>
+          {audits.current && isDevelopmentOrigin(audits.current.url) ? (
+            <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900">
+              Development origin
+            </span>
+          ) : null}
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6">

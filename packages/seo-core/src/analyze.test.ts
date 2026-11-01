@@ -24,6 +24,24 @@ describe('analyzeSnapshot', () => {
     expect(result.score.preliminary).toBe(true);
   });
 
+  it('softens HTTPS and mixed-content findings to informational on explicit dev origins', () => {
+    const snapshot = buildSnapshot({
+      url: 'http://127.0.0.1:5173/',
+      mixedContentSamples: ['http://localhost:8080/image.png'],
+    });
+    const result = analyzeSnapshot(snapshot);
+    for (const id of ['page-https', 'mixed-content']) {
+      const finding = result.findings.find((item) => item.ruleId === id);
+      expect(finding?.severity).toBe('info');
+      expect(finding?.detail).toContain('development origin');
+    }
+    expect(
+      analyzeSnapshot(buildSnapshot({ url: 'http://example.com/' })).findings.find(
+        (item) => item.ruleId === 'page-https',
+      )?.severity,
+    ).not.toBe('info');
+  });
+
   it('only emits catalogued rules, and covers the always-on ones on a healthy page', () => {
     const result = analyzeSnapshot(buildSnapshot());
     const emitted = new Set(result.findings.map((f) => f.ruleId));

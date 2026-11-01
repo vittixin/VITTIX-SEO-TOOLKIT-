@@ -256,3 +256,9 @@ score always reports "Poor".
 ## Sitemap interpretation (site audit, informational only)
 
 Sitemap discovery is site-audit evidence and does not add SEO scoring rules. A URL omitted from a sitemap is reported only when sitemap reading completed within the configured 50,000 URL and 50 MB decompressed limits. Incomplete reads report the comparison as unchecked. Sitemap-listed URLs not fetched are labeled not crawled; this does not imply that they are missing or unavailable.
+
+## Development-origin handling
+
+On `http://localhost` and `http://127.0.0.1`, `page-https` and
+`mixed-content` are informational and explain that local development commonly
+uses HTTP. The selected scoring profile remains unchanged.

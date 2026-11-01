@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Phase D Part 1
+
+- Added opt-in site audits for only `http://localhost/*` and
+  `http://127.0.0.1/*`; match patterns ignore ports. Development-origin
+  badges and informational HTTPS/mixed-content severity are provided without
+  switching the chosen scoring profile.
+- Added redirect consent wording that loopback redirects may reach local
+  network services.
+
 ## Unreleased — Phase C redirect observations, duplicate heuristics, link graph, and comparisons
 
 - Page fetches now follow browser redirects, record requested/final URLs, discard off-origin response bodies, and report redirect presence, off-origin destinations, and internal-link hygiene. Individual redirect hops remain unobservable; Chromium may issue a cross-origin destination request before the extension can inspect it.

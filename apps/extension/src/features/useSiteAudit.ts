@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { browser } from 'wxt/browser';
 import { SITE_LIMITS, type SitePageRecord, type SiteSession } from '@vittix/shared';
 import { RULE_SET_VERSION, compareSiteSessions, type SiteComparison } from '@vittix/seo-core';
-import { checkCrawlableOrigin } from '@/src/site/guards';
+import { checkCrawlableOrigin, permissionPatternForOrigin } from '@/src/site/guards';
 import { runSiteAudit } from '@/src/site/crawler';
 import {
   buildSiteSummary,
@@ -49,7 +49,7 @@ export function useSiteAudit() {
   const checkPermission = useCallback(async (origin: string | null): Promise<boolean | null> => {
     if (origin === null) return null;
     try {
-      return await browser.permissions.contains({ origins: [`${origin}/*`] });
+      return await browser.permissions.contains({ origins: [permissionPatternForOrigin(origin)] });
     } catch {
       return false;
     }
@@ -131,7 +131,7 @@ export function useSiteAudit() {
     const parsed = new URL(originInput.trim());
     // Store the bare origin (URL.origin never has a trailing slash).
     const normalized = parsed.origin;
-    const pattern = `${parsed.origin}/*`;
+    const pattern = permissionPatternForOrigin(parsed.origin);
     try {
       const granted = await browser.permissions.request({ origins: [pattern] });
       if (!granted) {

@@ -6,7 +6,7 @@ import {
   normalizedTextHash,
   simhash64,
 } from '@vittix/seo-core';
-import { checkCrawlableOrigin, isSameOriginUrl } from './guards';
+import { checkCrawlableOrigin, isSameOriginUrl, permissionPatternForOrigin } from './guards';
 import { normalizeSiteUrl } from './normalize';
 import { EMPTY_ROBOTS_POLICY, parseRobotsTxt, type RobotsPolicy } from './robots';
 import { PacedRunner } from './rate';
@@ -60,7 +60,9 @@ export async function runSiteAudit(sessionId: number, options: CrawlerOptions = 
     options.hasPermission ??
     (async (origin: string) => {
       try {
-        return await browser.permissions.contains({ origins: [`${origin}/*`] });
+        return await browser.permissions.contains({
+          origins: [permissionPatternForOrigin(origin)],
+        });
       } catch {
         return false;
       }
@@ -920,6 +922,7 @@ async function processUrl(
       const similarityTokens = visibleText.match(/[\p{L}\p{N}]+/gu) ?? [];
       const result = analyzeSnapshot(snapshot, {
         responseMetadata: metadata,
+        developmentOrigin: /^http:\/\/(localhost|127\.0\.0\.1)(:|\/)/i.test(finalUrl),
         profileId: session.profileId as
           'standard' | 'content-site' | 'e-commerce' | 'developer-staging',
         ignoredRuleIds: session.ignoredRuleIds,

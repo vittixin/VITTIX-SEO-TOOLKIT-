@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkCrawlableOrigin, isSameOriginUrl } from './guards';
+import { checkCrawlableOrigin, isSameOriginUrl, permissionPatternForOrigin } from './guards';
 
 describe('checkCrawlableOrigin — the SSRF / private-network boundary', () => {
   it('allows ordinary public https origins', () => {
@@ -11,6 +11,13 @@ describe('checkCrawlableOrigin — the SSRF / private-network boundary', () => {
       const result = checkCrawlableOrigin(url);
       expect(result.allowed).toBe(true);
     }
+  });
+
+  it('allows only the two explicit HTTP development origins', () => {
+    expect(checkCrawlableOrigin('http://localhost:5173/path').allowed).toBe(true);
+    expect(checkCrawlableOrigin('http://127.0.0.1:8080/').allowed).toBe(true);
+    expect(checkCrawlableOrigin('http://192.168.1.2/').allowed).toBe(false);
+    expect(checkCrawlableOrigin('http://example.com/').allowed).toBe(false);
   });
 
   it('rejects non-https schemes', () => {
@@ -27,7 +34,6 @@ describe('checkCrawlableOrigin — the SSRF / private-network boundary', () => {
 
   it('rejects localhost and local hostnames', () => {
     for (const url of [
-      'http://localhost:8080',
       'https://localhost',
       'https://foo.localhost',
       'https://printer.local',
@@ -80,6 +86,13 @@ describe('isSameOriginUrl', () => {
     expect(isSameOriginUrl('https://other.com/', 'https://example.com')).toBe(false);
     expect(isSameOriginUrl('http://example.com/', 'https://example.com')).toBe(false);
     expect(isSameOriginUrl('::bad::', 'https://example.com')).toBe(false);
+  });
+});
+
+describe('permissionPatternForOrigin', () => {
+  it('removes ports as Chrome match patterns ignore them', () => {
+    expect(permissionPatternForOrigin('http://127.0.0.1:4321')).toBe('http://127.0.0.1/*');
+    expect(permissionPatternForOrigin('https://example.com:8443')).toBe('https://example.com/*');
   });
 });
 

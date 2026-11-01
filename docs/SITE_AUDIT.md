@@ -146,7 +146,7 @@ redirect before those checks.
   for a crawler-specific 10-hop limit. The final URL and redirect presence are
   recorded when observable; hop count and temporary/permanent status are not.
 
-A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page.
+A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page. For localhost or 127.0.0.1 audits, a redirect can reach another local-network service.
 
 ### Response-header readability probe
 
@@ -259,6 +259,18 @@ network stack, so DNS-level rebinding is outside the extension's control
 and equally affects any browser fetch. No proxying of any kind exists.
 
 ## Chrome Web Store permission review implications
+
+### Development origins
+
+Site audits accept HTTPS origins and, for local development only, the exact
+HTTP hosts `localhost` and `127.0.0.1`. Their optional host patterns are
+`http://localhost/*` and `http://127.0.0.1/*`; Chrome ignores the port in a
+match pattern, so a grant covers that host at all ports. No other HTTP host
+or private IP range is accepted. The UI and reports label these as
+development origins. The selected scoring profile remains as chosen. HTTPS
+and mixed-content findings become informational because HTTP is expected on
+these local development servers. Redirect consent also warns that redirects
+may reach local-network services.
 
 - Install-time warnings are unchanged (no `host_permissions`, no
   `<all_urls>`, no content scripts).

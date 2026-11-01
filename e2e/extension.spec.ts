@@ -13,6 +13,22 @@ const SECTION_TITLES: Record<string, string> = {
 };
 
 test.describe('Vittix SEO Toolkit smoke tests', () => {
+  test('permission probe: Chrome accepts localhost patterns and sidePanel as optional manifest entries', async () => {
+    const { context, page, extensionId } = await loadExtension('e2e');
+    try {
+      await page.goto(extensionPageUrl(extensionId, 'dashboard.html'));
+      const optional = await page.evaluate(() => chrome.runtime.getManifest());
+      expect(optional.optional_host_permissions).toContain('http://localhost/*');
+      expect(optional.optional_host_permissions).toContain('http://127.0.0.1/*');
+      expect(optional.optional_permissions).toContain('sidePanel');
+      expect(
+        await page.evaluate(() => chrome.permissions.contains({ permissions: ['sidePanel'] })),
+      ).toBe(false);
+    } finally {
+      await context.close();
+    }
+  });
+
   test('DNR is not runtime-grantable by the production test manifest', async () => {
     const { context, page, extensionId } = await loadExtension();
     try {

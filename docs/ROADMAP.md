@@ -1,5 +1,14 @@
 # Roadmap
 
+## Phase D Part 1 — localhost/dev-origin support
+
+- Added optional site-audit origins for `http://localhost/*` and
+  `http://127.0.0.1/*` only. Chrome host patterns ignore ports.
+- Marked loopback audits as development origins and softened HTTPS/mixed-
+  content findings to informational without changing the selected profile.
+- Side panel remains gated on runtime permission behavior; no install-time
+  permission has been added.
+
 ## Phase C status update (2026-11-01)
 
 Phase C part 1 and the requested part 2 features cover response metadata,
@@ -7,7 +16,7 @@ sitemap discovery, bounded duplicate similarity heuristics, an internal link
 graph, and stored site-audit regressions. Browser-follow redirect behavior
 means the crawler cannot guarantee that each network request stays on the
 approved origin. It checks the final response destination after Fetch returns.
-A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page.
+A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page. For localhost or 127.0.0.1 audits, a redirect can reach another local-network service.
 
 ## Snapshot schema v5 (Phase A follow-up, 2026-11-01)
 

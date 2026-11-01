@@ -90,6 +90,13 @@ CSP, no remote code).
 
 ## Site-audit response metadata
 
+Site audits accept HTTPS origins and, for development only, `http://localhost`
+or `http://127.0.0.1`. These are optional runtime host patterns; Chrome match
+patterns ignore ports, so approving either host can cover any port on that host.
+The site audit consent repeats the redirect disclosure because a redirected
+request from a loopback audit can reach another local-network service. Reports
+label these audits as development origins. No page text is transmitted.
+
 Site audits now keep bounded response headers and timing locally alongside
 each crawled page, including content type/length/encoding, X-Robots-Tag,
 cache-control, security-header presence flags, redirect observations, and
@@ -128,7 +135,7 @@ Verified against the final production build (`pnpm build:chrome`, 2026-10-31):
   loopback/link-local/private ranges and IP literals rejected,
   `user:pass@host` URLs rejected — see docs/SITE_AUDIT.md.
 
-A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page.
+A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page. For localhost or 127.0.0.1 audits, a redirect can reach another local-network service.
 
 ### Site audit sitemaps
 

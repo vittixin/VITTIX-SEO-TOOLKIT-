@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Globe, Info, OctagonX, Play, RefreshCw, ShieldQuestion, Trash2, X } from 'lucide-react';
 import { SITE_LIMITS, SITE_REDIRECT_DISCLOSURE } from '@vittix/shared';
+import { isDevelopmentOrigin } from '@vittix/seo-core';
 import type { SitePageRecord } from '@vittix/shared';
 import { useSiteAudit } from '@/src/features/useSiteAudit';
 import { formatDate } from '@/src/lib/format';
@@ -32,6 +33,11 @@ export function SiteAuditView() {
 
   return (
     <div className="space-y-6" data-testid="site-audit-view">
+      {site.session && isDevelopmentOrigin(site.session.origin) ? (
+        <p className="inline-flex rounded-full border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900">
+          Development origin
+        </p>
+      ) : null}
       {/* Disclosure — site mode is the only mode with network activity */}
       <div className="flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
         <Info className="mt-0.5 size-5 shrink-0" aria-hidden />
@@ -47,7 +53,7 @@ export function SiteAuditView() {
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-sm font-semibold text-slate-900">Audit a website</h3>
           <label className="mt-3 block text-sm font-medium text-slate-700" htmlFor="site-origin">
-            Site origin (https only)
+            Site origin (public https, or localhost / 127.0.0.1 for development)
           </label>
           <div className="mt-1 flex flex-wrap gap-2">
             <div className="relative min-w-64 flex-1">

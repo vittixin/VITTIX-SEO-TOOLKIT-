@@ -1,7 +1,8 @@
 /**
  * Site-audit origin guards — the SSRF / private-network boundary.
  *
- * Default-deny: only https URLs with a public, non-local hostname pass.
+ * Default-deny: https URLs with a public hostname pass, plus the two explicit
+ * HTTP development origins supported for local testing.
  * These checks run BEFORE the permission request and again on every URL
  * considered for fetching. See docs/SITE_AUDIT.md.
  */
@@ -60,7 +61,10 @@ export function checkCrawlableOrigin(input: string): OriginCheckResult {
     return { allowed: false, reason: 'Not a valid URL.' };
   }
 
-  if (parsed.protocol !== 'https:') {
+  const localDev =
+    parsed.protocol === 'http:' &&
+    (parsed.hostname.toLowerCase() === 'localhost' || parsed.hostname === '127.0.0.1');
+  if (parsed.protocol !== 'https:' && !localDev) {
     return {
       allowed: false,
       reason: 'Site audits support https:// only (http, files and other schemes are rejected).',
@@ -82,7 +86,7 @@ export function checkCrawlableOrigin(input: string): OriginCheckResult {
     return { allowed: false, reason: 'URL has no host.' };
   }
 
-  if (PRIVATE_HOST_PATTERNS.some((pattern) => pattern.test(host))) {
+  if (!localDev && PRIVATE_HOST_PATTERNS.some((pattern) => pattern.test(host))) {
     return {
       allowed: false,
       reason: `"${host}" is a local or private hostname and cannot be audited.`,
@@ -91,7 +95,7 @@ export function checkCrawlableOrigin(input: string): OriginCheckResult {
 
   // Any IPv4/IPv6 literal host is rejected: private-network ranges are
   // forbidden, and public IP literals offer no meaningful origin identity.
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+  if (!localDev && /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
     const blockedBy = PRIVATE_IP_CHECKS.find((check) => check.match(host));
     if (blockedBy) {
       return {
@@ -104,7 +108,7 @@ export function checkCrawlableOrigin(input: string): OriginCheckResult {
       reason: 'IP-literal hosts cannot be audited — enter a domain name instead.',
     };
   }
-  if (host.includes(':')) {
+  if (!localDev && host.includes(':')) {
     // IPv6 literal (hostname keeps brackets inside URL.hostname? No —
     // URL.hostname strips brackets for IPv6; detect by colon presence).
     return {
@@ -125,4 +129,10 @@ export function isSameOriginUrl(candidate: string, approvedOrigin: string): bool
   } catch {
     return false;
   }
+}
+
+/** Chrome match patterns ignore ports; same-origin checks retain the port. */
+export function permissionPatternForOrigin(origin: string): string {
+  const parsed = new URL(origin);
+  return `${parsed.protocol}//${parsed.hostname}/*`;
 }

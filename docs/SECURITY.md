@@ -9,8 +9,11 @@ The extension requests **exactly**:
 - `scripting` — required to run the one-shot extraction function in that tab
 
 Explicitly **not** requested: `tabs`, `history`, `downloads`, `storage`,
-`clipboardWrite`, `unlimitedStorage`, any `host_permissions` (including
-`optional_host_permissions`), and any content scripts.
+`clipboardWrite`, `unlimitedStorage`, any install-time `host_permissions`,
+and any content scripts. Runtime optional host patterns are limited to
+`https://*/*`, `http://localhost/*`, and `http://127.0.0.1/*`; the HTTP
+patterns support local development only and Chrome ignores ports in these
+patterns.
 
 `minimum_chrome_version` is 111 (Tailwind CSS 4 baseline; MV3 itself requires 88+).
 
@@ -49,7 +52,7 @@ See [PRIVACY.md](PRIVACY.md). Single-page audits make no network requests.
 Optional site audits fetch the approved site locally and may contact redirect
 destinations before their final URLs can be checked.
 
-A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page.
+A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page. For localhost or 127.0.0.1 audits, a redirect can reach another local-network service.
 
 ## Reporting
 

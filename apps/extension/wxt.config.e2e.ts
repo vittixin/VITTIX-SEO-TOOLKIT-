@@ -19,6 +19,8 @@ export default defineConfig({
   manifest: {
     ...BASE_MANIFEST,
     name: 'Vittix SEO Toolkit (E2E TEST BUILD)',
-    host_permissions: ['https://fixture.test/*'],
+    host_permissions: ['https://fixture.test/*', 'http://localhost/*', 'http://127.0.0.1/*'],
+    // Probe-only optional capabilities. Production manifest is unchanged.
+    optional_permissions: ['sidePanel'],
   },
 });

@@ -58,9 +58,9 @@ for (const key of mustBeEmpty) {
 // optional_host_permissions: a CATALOG of grantable patterns for the opt-in
 // site audit, NOT a grant (nothing is accessible until the user approves a
 // single exact origin at runtime, and it is revocable). The catalog must
-// never grow beyond the https wildcard — no http, no file, no <all_urls>.
+// may include only the https catalog and explicit loopback dev origins.
 const optionalHosts = manifest.optional_host_permissions ?? [];
-const allowedOptionalHosts = ['https://*/*'];
+const allowedOptionalHosts = ['https://*/*', 'http://localhost/*', 'http://127.0.0.1/*'].sort();
 if (JSON.stringify([...optionalHosts].sort()) !== JSON.stringify(allowedOptionalHosts)) {
   errors.push(
     `optional_host_permissions must be exactly ${JSON.stringify(
@@ -94,5 +94,5 @@ if (errors.length > 0) {
 console.log(
   `✓ Manifest verification passed (${manifestPath}): permissions=${JSON.stringify(
     actual,
-  )}, no host permissions, no content scripts, no web-accessible resources.`,
+  )}, optional dev origins are narrowly allow-listed, no content scripts, no web-accessible resources.`,
 );

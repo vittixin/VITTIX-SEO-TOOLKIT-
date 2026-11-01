@@ -2,7 +2,69 @@ import { expect, test } from '@playwright/test';
 import { gzipSync } from 'node:zlib';
 import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { extensionPageUrl, loadExtension } from './helpers/extension';
+
+test('site audit accepts and labels an HTTP 127.0.0.1 development origin', async () => {
+  test.setTimeout(60_000);
+  const requests: string[] = [];
+  const server = createServer((req, res) => {
+    requests.push(`${req.method} ${req.url}`);
+    if (req.url === '/robots.txt') {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('User-agent: VittixBot\nAllow: /\n');
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(
+      '<!doctype html><html lang="en"><head><title>Local development</title><meta name="description" content="Local dev page for testing." /></head><body><h1>Local development</h1><p>Local test page content for the development origin audit flow.</p></body></html>',
+    );
+  });
+  await new Promise<void>((resolve, reject) =>
+    server.listen(0, '127.0.0.1', () => resolve()).once('error', reject),
+  );
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('HTTP fixture failed to bind');
+  const origin = `http://127.0.0.1:${address.port}`;
+  const { context, extensionId } = await loadExtension('e2e', [
+    '--use-fake-ui-for-permission-flow',
+  ]);
+  try {
+    const dashboard = await context.newPage();
+    await dashboard.goto(extensionPageUrl(extensionId, 'dashboard.html'));
+    await dashboard.getByTestId('nav-site').click();
+    await dashboard.getByTestId('site-origin-input').fill(origin);
+    await dashboard.getByTestId('site-grant').click();
+    await expect(dashboard.getByTestId('site-consent')).toBeVisible();
+    await dashboard.getByTestId('site-redirect-consent').check();
+    await dashboard.getByTestId('site-start').click();
+    await expect(dashboard.getByTestId('site-summary')).toBeVisible({ timeout: 30_000 });
+    await expect(dashboard.getByText('Development origin').first()).toBeVisible();
+    expect(requests).toContain('GET /robots.txt');
+    await expect.poll(() => requests).toContain('GET /');
+    const pageRecord = await dashboard.evaluate(async () => {
+      const dbRequest = indexedDB.open('vittix-seo');
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        dbRequest.onsuccess = () => resolve(dbRequest.result);
+        dbRequest.onerror = () => reject(dbRequest.error);
+      });
+      const rows = await new Promise<Record<string, unknown>[]>((resolve, reject) => {
+        const request = db.transaction('sitePages').objectStore('sitePages').getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      db.close();
+      return rows.find((row) => String(row.url).endsWith('/'));
+    });
+    const result = pageRecord?.result as { findings: { ruleId: string; severity: string }[] };
+    expect(result.findings.find((finding) => finding.ruleId === 'page-https')?.severity).toBe(
+      'info',
+    );
+  } finally {
+    await context.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
 
 /**
  * Site-audit E2E: the REAL crawl pipeline against routed fixture pages.

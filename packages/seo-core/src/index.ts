@@ -30,6 +30,7 @@ export {
 } from './text-summary.js';
 export { analyzeStructuredData } from './analyzers/structured-data.js';
 export { analyzeResponseMetadata } from './analyzers/response.js';
+export { isDevelopmentOrigin } from './dev-origin.js';
 export { analyzeInternalRedirectLinks } from './analyzers/site-graph.js';
 export { diffSitemap, normalizeSitemapDocument, type SitemapDocumentResult } from './sitemap.js';
 export {

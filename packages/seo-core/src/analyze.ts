@@ -18,6 +18,7 @@ import { computeScore } from './scoring.js';
 import { RULE_SET_VERSION } from './rules.js';
 import { SCORING_PROFILES, type ProfileId } from './profiles.js';
 import type { Severity } from '@vittix/shared';
+import { isDevelopmentOrigin } from './dev-origin.js';
 
 export interface AnalyzeOptions {
   /**
@@ -31,6 +32,8 @@ export interface AnalyzeOptions {
   severityOverrides?: Readonly<Record<string, Severity>>;
   /** Only supplied by site-audit; single-page audits intentionally omit response rules. */
   responseMetadata?: SiteResponseMetadata;
+  /** True only for http://localhost or http://127.0.0.1 development pages. */
+  developmentOrigin?: boolean;
 }
 
 /**
@@ -60,11 +63,19 @@ export function analyzeSnapshot(
       ? analyzeResponseMetadata(snapshot, options.responseMetadata)
       : []),
   ]
-    .map((finding) => ({
-      ...finding,
-      severity: overrides[finding.ruleId] ?? finding.severity,
-      ignored: ignored.has(finding.ruleId),
-    }))
+    .map((finding) => {
+      const devSoftened =
+        (options.developmentOrigin || isDevelopmentOrigin(snapshot.url)) &&
+        (finding.ruleId === 'page-https' || finding.ruleId === 'mixed-content');
+      return {
+        ...finding,
+        severity: devSoftened ? ('info' as const) : (overrides[finding.ruleId] ?? finding.severity),
+        detail: devSoftened
+          ? `${finding.detail} This is a development origin; HTTP is expected locally and this finding is informational.`
+          : finding.detail,
+        ignored: ignored.has(finding.ruleId),
+      };
+    })
     .sort(
       (a, b) =>
         FINDING_SEVERITY_ORDER[a.severity] - FINDING_SEVERITY_ORDER[b.severity] ||

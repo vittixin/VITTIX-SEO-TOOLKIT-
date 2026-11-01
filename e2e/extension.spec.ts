@@ -54,6 +54,31 @@ test.describe('Vittix SEO Toolkit smoke tests', () => {
     expect(normalize(e2e)).toEqual(normalize(production));
   });
 
+  test('built production manifest declares its locale and resolves every message reference', () => {
+    const outputDir = resolve(import.meta.dirname, '../apps/extension/.output/chrome-mv3');
+    const manifest = JSON.parse(readFileSync(resolve(outputDir, 'manifest.json'), 'utf8')) as {
+      default_locale?: string;
+      [key: string]: unknown;
+    };
+    expect(manifest.default_locale).toBe('en');
+
+    const locale = JSON.parse(
+      readFileSync(resolve(outputDir, `_locales/${manifest.default_locale}/messages.json`), 'utf8'),
+    ) as Record<string, { message: string }>;
+    const visit = (value: unknown): string[] => {
+      if (typeof value === 'string') return [value];
+      if (Array.isArray(value)) return value.flatMap(visit);
+      if (value && typeof value === 'object') return Object.values(value).flatMap(visit);
+      return [];
+    };
+    const references = visit(manifest).flatMap((value) =>
+      [...value.matchAll(/__MSG_([A-Za-z0-9_]+)__/g)].map((match) => match[1]),
+    );
+    expect(references).toEqual([...new Set(references)]);
+    for (const key of references)
+      expect(locale[key]?.message, `Missing locale message: ${key}`).toBeTruthy();
+  });
+
   test('page highlight is bounded, dismissible, stale-safe and makes no requests', async () => {
     const { context, page } = await loadExtension('e2e');
     const requests: string[] = [];

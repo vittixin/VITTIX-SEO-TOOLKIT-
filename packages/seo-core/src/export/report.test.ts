@@ -170,4 +170,29 @@ describe('site-audit reports', () => {
     expect(buildSiteAuditReportHtml(site)).toBe(buildSiteAuditReportHtml(site));
     expect(buildSiteAuditMarkdown(site)).toBe(buildSiteAuditMarkdown(site));
   });
+
+  it('caps site page tables at 200 rows and points to CSV for the full list', () => {
+    const many: SiteReportInput = {
+      ...site,
+      summary: {
+        ...site.summary,
+        pages: Array.from({ length: 205 }, (_, index) => ({
+          url: `https://example.test/page-${index}`,
+          status: 'ok',
+          score: 90,
+          errorCount: 0,
+          warnCount: 0,
+          truncated: false,
+        })),
+      },
+    };
+    const html = buildSiteAuditReportHtml(many);
+    const markdown = buildSiteAuditMarkdown(many);
+    expect(html).toContain('Showing 200 rows. See CSV for the full list.');
+    expect(markdown).toContain('See CSV for the full page list.');
+    expect(html).toContain('page-199');
+    expect(html).not.toContain('page-200');
+    expect(markdown).toContain('page\\-199');
+    expect(markdown).not.toContain('page\\-200');
+  });
 });

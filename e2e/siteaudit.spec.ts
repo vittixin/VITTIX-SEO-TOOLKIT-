@@ -79,6 +79,15 @@ test('site audit: consent → crawl → summary → export', async () => {
     await dashboard.getByTestId('site-export-csv').click();
     expect((await csvDownload).suggestedFilename()).toContain('vittix-site-pages');
 
+    const htmlReportDownload = dashboard.waitForEvent('download');
+    await dashboard.getByTestId('site-export-html-report').click();
+    const htmlReport = await htmlReportDownload;
+    expect(htmlReport.suggestedFilename()).toContain('vittix-site-report');
+    const markdownReportDownload = dashboard.waitForEvent('download');
+    await dashboard.getByTestId('site-export-markdown-report').click();
+    const markdownReport = await markdownReportDownload;
+    expect(markdownReport.suggestedFilename()).toContain('.md');
+
     // Session finished and page statuses are grounded.
     await expect(dashboard.getByTestId('site-url-filter')).toBeVisible();
     await expect(dashboard.locator('text=skipped-robots').first()).toBeVisible();

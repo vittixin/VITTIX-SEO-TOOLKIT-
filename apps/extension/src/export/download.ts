@@ -2,8 +2,12 @@ import type { AuditRecord } from '@vittix/shared';
 import {
   auditToJson,
   buildAuditMarkdown,
+  buildSiteAuditMarkdown,
+  buildSiteAuditReportHtml,
   findingsToCsv,
   type AuditReportOptions,
+  type SiteReportInput,
+  type SiteReportOptions,
 } from '@vittix/seo-core';
 
 /**
@@ -75,4 +79,28 @@ export async function copyTextToClipboard(value: string): Promise<boolean> {
   const copied = document.execCommand('copy');
   textarea.remove();
   return copied;
+}
+
+export function exportSiteReportHtml(
+  site: SiteReportInput,
+  sessionId: number | undefined,
+  options: SiteReportOptions = {},
+): void {
+  downloadFile(
+    `vittix-site-report-${sessionId ?? 'latest'}.html`,
+    buildSiteAuditReportHtml(site, options),
+    'text/html;charset=utf-8',
+  );
+}
+
+export function exportSiteReportMarkdown(
+  site: SiteReportInput,
+  sessionId: number | undefined,
+  options: SiteReportOptions = {},
+): void {
+  downloadFile(
+    `vittix-site-report-${sessionId ?? 'latest'}.md`,
+    buildSiteAuditMarkdown(site, options),
+    'text/markdown;charset=utf-8',
+  );
 }

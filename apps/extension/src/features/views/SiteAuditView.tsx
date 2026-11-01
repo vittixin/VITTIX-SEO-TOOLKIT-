@@ -12,10 +12,11 @@ import {
   X,
 } from 'lucide-react';
 import { SITE_LIMITS } from '@vittix/shared';
-import { siteAuditToJson, sitePagesToCsv } from '@vittix/seo-core';
-import type { SitePageRecord } from '@vittix/shared';
+import { siteAuditToJson, sitePagesToCsv, type SiteReportInput } from '@vittix/seo-core';
+import type { AnalysisResult, SitePageRecord } from '@vittix/shared';
 import { useSiteAudit } from '@/src/features/useSiteAudit';
 import { formatDate } from '@/src/lib/format';
+import { exportSiteReportHtml, exportSiteReportMarkdown } from '@/src/export/download';
 
 const STATUS_BADGES: Record<string, string> = {
   ok: 'bg-emerald-100 text-emerald-700',
@@ -43,6 +44,20 @@ function download(filename: string, content: string, mime: string): void {
 export function SiteAuditView() {
   const site = useSiteAudit();
   const [confirmClear, setConfirmClear] = useState(false);
+
+  function siteReportInput(): SiteReportInput | null {
+    if (!site.session || !site.summary) return null;
+    return {
+      session: site.session,
+      summary: site.summary,
+      profileId: 'standard',
+      ignoredRuleIds: [],
+      pages: site.pages.map((page) => ({
+        url: page.url,
+        result: page.result as AnalysisResult | null,
+      })),
+    };
+  }
 
   const progressTotal = site.session?.maxPages ?? SITE_LIMITS.maxPagesDefault;
   const processed =
@@ -312,6 +327,28 @@ export function SiteAuditView() {
                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
               >
                 <FileJson className="size-3.5" aria-hidden /> Site JSON
+              </button>
+              <button
+                type="button"
+                data-testid="site-export-html-report"
+                onClick={() => {
+                  const input = siteReportInput();
+                  if (input && site.session) exportSiteReportHtml(input, site.session.id);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-medium text-indigo-800 transition hover:bg-indigo-50"
+              >
+                Site HTML report
+              </button>
+              <button
+                type="button"
+                data-testid="site-export-markdown-report"
+                onClick={() => {
+                  const input = siteReportInput();
+                  if (input && site.session) exportSiteReportMarkdown(input, site.session.id);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-xs font-medium text-violet-800 transition hover:bg-violet-50"
+              >
+                Site Markdown
               </button>
               <button
                 type="button"

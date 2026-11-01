@@ -13,6 +13,7 @@
     "dev": "pnpm --filter @vittix/extension dev",
     "build": "pnpm -r build",
     "build:chrome": "pnpm --filter @vittix/extension build:chrome",
+    "bundle:report": "pnpm build:chrome && node scripts/bundle-report.mjs",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write . && eslint . --fix",
     "typecheck": "pnpm -r typecheck",
@@ -22,6 +23,7 @@
     "clean": "pnpm -r clean",
     "icons": "node scripts/generate-icons.mjs",
     "verify:manifest": "node scripts/verify-manifest.mjs",
+    "rules:inventory": "node scripts/rule-inventory.mjs",
     "zip": "pnpm build:chrome && pnpm notices && pnpm --filter @vittix/extension zip",
     "notices": "node scripts/generate-notices.mjs"
   },
@@ -32,6 +34,7 @@
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-react-refresh": "0.5.7",
+    "fake-indexeddb": "^6.2.7",
     "prettier": "3.9.10",
     "typescript": "5.9.3",
     "typescript-eslint": "8.72.1",

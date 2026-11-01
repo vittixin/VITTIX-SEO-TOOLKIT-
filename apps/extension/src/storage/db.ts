@@ -36,8 +36,8 @@ export class VittixDatabase extends Dexie {
   targetKeywords!: EntityTable<TargetKeywordRow, 'url'>;
   originRuleSettings!: EntityTable<OriginRuleSettingsRow, 'origin'>;
 
-  constructor() {
-    super(DB_NAME);
+  constructor(name = DB_NAME, schemaVersion: 3 | 4 = 4) {
+    super(name);
     this.version(1).stores({
       // Primary key ++id; queryable: by url and by analyzedAt (ISO string,
       // which sorts chronologically).
@@ -57,14 +57,16 @@ export class VittixDatabase extends Dexie {
       sitePages: '++id, sessionId, url, status',
       targetKeywords: 'url',
     });
-    this.version(4).stores({
-      audits: '++id, url, analyzedAt',
-      settings: 'key',
-      siteAudits: '++id, origin, status, startedAt',
-      sitePages: '++id, sessionId, url, status',
-      targetKeywords: 'url',
-      originRuleSettings: 'origin',
-    });
+    if (schemaVersion >= 4) {
+      this.version(4).stores({
+        audits: '++id, url, analyzedAt',
+        settings: 'key',
+        siteAudits: '++id, origin, status, startedAt',
+        sitePages: '++id, sessionId, url, status',
+        targetKeywords: 'url',
+        originRuleSettings: 'origin',
+      });
+    }
   }
 }
 

@@ -126,6 +126,27 @@ Also **detected-types only** (no validation) for Microdata (`itemscope`/`itemtyp
 
 ## Scoring
 
+### Profiles (A7)
+
+Profiles change category weights deterministically; weights always sum to 100.
+Per-origin ignored rule IDs and severity overrides layer on the selected
+profile. Ignored findings remain visible in gray and do not affect category
+scores or caps.
+
+| Profile           | Metadata | Headings | Images | Links | Content | Social | Technical | Built-in ignored rules                          | Blocking cap |
+| ----------------- | -------: | -------: | -----: | ----: | ------: | -----: | --------: | ----------------------------------------------- | ------------ |
+| Standard          |       25 |       20 |     15 |    15 |      10 |     10 |         5 | none                                            | enforced     |
+| Content site      |       20 |       20 |     10 |    10 |      25 |     10 |         5 | none                                            | enforced     |
+| E-commerce        |       20 |       15 |     15 |    10 |      10 |     10 |        20 | none                                            | enforced     |
+| Developer/staging |       25 |       20 |     15 |    15 |      15 |      0 |        10 | all social rules, `page-https`, `mixed-content` | relaxed      |
+
+The e-commerce profile increases technical weight because Product structured
+data checks are reported in the technical category. Developer/staging relaxes
+the noindex score cap because staging pages are intentionally marked noindex;
+all other profiles retain the blocking cap. An explicit severity override on
+a blocking rule may also change whether the cap applies, and the UI warns
+before saving that override.
+
 Formula (rule set v0.5.0):
 
 1. Each category starts at **100**.

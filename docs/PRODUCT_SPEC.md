@@ -54,9 +54,9 @@ links, content, social, technical) — see
 
 ## Quality bar (current)
 
-- **307 unit tests** (19 files; verified 2026-11-01) — schemas, all 57 rules, scoring math,
+- **313 unit tests** (20 files; verified 2026-11-01) — schemas, all 57 rules, scoring math,
   migration/compatibility, crawler security, limits parity
-- **10 Playwright E2E tests** — popup/dashboard/options smoke, real
+- **11 Playwright E2E tests** — popup/dashboard/options smoke, real
   injection pipeline, real-flow persistence + exports, site audit,
   browser-restart recovery, oversized/malformed page robustness
 - CI: lint (ESLint + Prettier), strict typecheck (3 workspaces), frozen

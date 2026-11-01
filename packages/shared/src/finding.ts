@@ -38,6 +38,8 @@ export const FindingSchema = z.object({
    * scale the penalty; optional so older records validate.
    */
   ratio: z.number().min(0).max(1).optional(),
+  /** Rule-control state: ignored findings remain visible but do not score. */
+  ignored: z.boolean().optional(),
 });
 export type Finding = z.infer<typeof FindingSchema>;
 

@@ -82,6 +82,32 @@ test('real message → real injection → persisted history → exports', async 
     });
     await dashboard.getByTestId('nav-history').click();
 
+    await dashboard.getByTestId('nav-content').click();
+    await expect(dashboard.getByText('Top keywords and phrases')).toBeVisible();
+    await dashboard.getByLabel('Target keyword').fill('fixture');
+    await dashboard.getByRole('button', { name: 'Save keyword' }).click();
+    await expect(
+      dashboard.getByText('Keyword rules are active for the next analysis.'),
+    ).toBeVisible();
+    await dashboard.screenshot({
+      path: resolve(import.meta.dirname, '../docs/acceptance-evidence/13-content.png'),
+      fullPage: true,
+    });
+    await dashboard.getByRole('button', { name: 'Re-analyze saved snapshot' }).click();
+    await expect(dashboard.getByText(/Keyword rules are active/i)).toBeVisible();
+    await dashboard.getByTestId('nav-settings').click();
+    await dashboard.getByLabel('Scoring profile').selectOption('content-site');
+    await dashboard.getByRole('button', { name: 'Save settings' }).first().click();
+    await expect(dashboard.getByText('Settings saved on this device.')).toBeVisible();
+    await dashboard.screenshot({
+      path: resolve(import.meta.dirname, '../docs/acceptance-evidence/14-rule-controls.png'),
+      fullPage: true,
+    });
+    await dashboard.getByRole('button', { name: 'Reset to defaults' }).click();
+    await dashboard.getByTestId('nav-content').click();
+    await dashboard.getByRole('button', { name: 'Clear' }).click();
+    await dashboard.getByTestId('nav-history').click();
+
     // Load it back from history via the View button (deep-link path).
     await dashboard.getByTestId('history-view').first().click();
     await expect(dashboard.getByTestId('section-title')).toContainText('Overview');

@@ -27,7 +27,13 @@ const CATEGORY_LABELS: Record<string, string> = {
   technical: 'Technical',
 };
 
-export function FindingList({ findings }: { findings: readonly Finding[] }) {
+export function FindingList({
+  findings,
+  onUnignore,
+}: {
+  findings: readonly Finding[];
+  onUnignore?: (ruleId: string) => void;
+}) {
   if (findings.length === 0) {
     return <p className="text-sm text-slate-500">No findings recorded.</p>;
   }
@@ -38,7 +44,7 @@ export function FindingList({ findings }: { findings: readonly Finding[] }) {
         return (
           <li
             key={`${finding.ruleId}-${finding.title}`}
-            className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+            className={`rounded-xl border border-slate-200 p-4 shadow-sm ${finding.ignored ? 'bg-slate-100 opacity-70' : 'bg-white'}`}
           >
             <div className="flex items-start gap-3">
               <Icon
@@ -49,6 +55,11 @@ export function FindingList({ findings }: { findings: readonly Finding[] }) {
                 <div className="flex flex-wrap items-center gap-2">
                   <h4 className="text-sm font-semibold text-slate-900">{finding.title}</h4>
                   <SeverityBadge severity={finding.severity} />
+                  {finding.ignored ? (
+                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                      ignored
+                    </span>
+                  ) : null}
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
                     {CATEGORY_LABELS[finding.category] ?? finding.category}
                   </span>
@@ -66,6 +77,15 @@ export function FindingList({ findings }: { findings: readonly Finding[] }) {
                   </p>
                 ) : null}
                 <p className="mt-1.5 font-mono text-[11px] text-slate-400">{finding.ruleId}</p>
+                {finding.ignored && onUnignore ? (
+                  <button
+                    type="button"
+                    onClick={() => onUnignore(finding.ruleId)}
+                    className="mt-2 rounded text-xs font-medium text-indigo-700 underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
+                  >
+                    Un-ignore
+                  </button>
+                ) : null}
               </div>
             </div>
           </li>

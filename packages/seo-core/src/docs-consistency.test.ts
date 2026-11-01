@@ -43,6 +43,11 @@ describe('PRE-STEP: documentation consistency', () => {
     expect(productSpec).toContain(`${RULE_IDS.length} rules`);
   });
 
+  it('keeps documented verification counts aligned with the last real run', () => {
+    expect(productSpec).toContain('313 unit tests');
+    expect(productSpec).toContain('11 Playwright E2E tests');
+  });
+
   it('does not contain removed/renamed rule ids', () => {
     // Guard against doc drift after renames (e.g. description-length is now
     // meta-description-length).

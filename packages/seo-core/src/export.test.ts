@@ -20,6 +20,7 @@ function buildAudit(): AuditRecord {
     title: snapshot.title,
     analyzedAt: '2026-10-31T12:00:00.000Z',
     ruleSetVersion: '0.2.0',
+    profileId: 'standard',
     snapshot,
     result: { ...analyzeSnapshot(snapshot), truncated: false },
   };
@@ -40,6 +41,18 @@ describe('csvEscape', () => {
 
   it('quotes values with newlines', () => {
     expect(csvEscape('line1\nline2')).toBe('"line1\nline2"');
+  });
+});
+
+describe('optional local keyword JSON export', () => {
+  it('omits the target keyword unless explicitly requested', () => {
+    const audit = buildAudit();
+    const omitted = JSON.parse(auditToJson(audit)) as { audit: Record<string, unknown> };
+    const included = JSON.parse(auditToJson(audit, 'coffee grinder')) as {
+      audit: Record<string, unknown>;
+    };
+    expect(omitted.audit).not.toHaveProperty('targetKeyword');
+    expect(included.audit.targetKeyword).toBe('coffee grinder');
   });
 });
 

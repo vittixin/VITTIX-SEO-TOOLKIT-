@@ -51,6 +51,9 @@ export const AuditRecordSchema = z.object({
   title: z.string(),
   analyzedAt: z.string().min(1),
   ruleSetVersion: z.string().min(1),
+  profileId: z
+    .enum(['standard', 'content-site', 'e-commerce', 'developer-staging'])
+    .default('standard'),
   snapshot: PageSnapshotSchema,
   result: AnalysisResultSchema,
 });

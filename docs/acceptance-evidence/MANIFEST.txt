@@ -1,3 +1,7 @@
-Acceptance evidence captured 2026-10-31T11:16:32.945Z
-Build: production (01-05) + e2e test-variant (06-09)
+Acceptance evidence captured 2026-11-01
+Build: production and e2e test-variant
 Profile: disposable Chromium (Playwright), not the owner profile
+
+12-previews.png: Preview estimates and privacy-safe social cards
+13-content.png: Content summary, target keyword and prominence
+14-rule-controls.png: Profile picker and per-rule controls

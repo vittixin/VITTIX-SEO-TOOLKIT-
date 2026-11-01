@@ -15,6 +15,8 @@ import { extractPageSnapshot } from '@/src/extraction/snapshot-inject';
 import { isAnalyzableUrl } from '@/src/extraction/guards';
 import { pruneAudits, saveAudit } from '@/src/storage/audits';
 import { getSettings } from '@/src/storage/settings';
+import { getTargetKeyword } from '@/src/storage/keywords';
+import { getOriginRuleSettings } from '@/src/storage/rule-settings';
 
 /**
  * Minimal, event-driven MV3 service worker.
@@ -117,13 +119,21 @@ async function analyzeActiveTab(): Promise<AnalyzeResponse> {
 
   let auditId: number;
   try {
-    const result = analyzeSnapshot(snapshot);
+    const ruleSettings = await getOriginRuleSettings(snapshot.url);
+    const result = analyzeSnapshot(snapshot, {
+      targetKeyword: await getTargetKeyword(snapshot.url),
+      profileId: ruleSettings.profileId,
+      ignoredRuleIds: ruleSettings.ignoredRuleIds,
+      unignoredRuleIds: ruleSettings.unignoredRuleIds,
+      severityOverrides: ruleSettings.severityOverrides,
+    });
     const analyzedAt = new Date().toISOString();
     auditId = await saveAudit({
       url: snapshot.url,
       title: snapshot.title,
       analyzedAt,
       ruleSetVersion: result.ruleSetVersion,
+      profileId: ruleSettings.profileId,
       snapshot,
       result,
     });

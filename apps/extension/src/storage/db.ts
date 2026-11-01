@@ -7,6 +7,19 @@ export interface SettingRow {
   value: unknown;
 }
 
+export interface TargetKeywordRow {
+  url: string;
+  keyword: string;
+}
+
+export interface OriginRuleSettingsRow {
+  origin: string;
+  profileId: 'standard' | 'content-site' | 'e-commerce' | 'developer-staging';
+  ignoredRuleIds: string[];
+  unignoredRuleIds: string[];
+  severityOverrides: Record<string, 'error' | 'warn' | 'info'>;
+}
+
 /**
  * Local audit history, site-audit state + settings, stored in the
  * extension's own origin.
@@ -20,6 +33,8 @@ export class VittixDatabase extends Dexie {
   settings!: EntityTable<SettingRow, 'key'>;
   siteAudits!: EntityTable<SiteSessionInput, 'id'>;
   sitePages!: EntityTable<SitePageInput, 'id'>;
+  targetKeywords!: EntityTable<TargetKeywordRow, 'url'>;
+  originRuleSettings!: EntityTable<OriginRuleSettingsRow, 'origin'>;
 
   constructor() {
     super(DB_NAME);
@@ -34,6 +49,21 @@ export class VittixDatabase extends Dexie {
       settings: 'key',
       siteAudits: '++id, origin, status, startedAt',
       sitePages: '++id, sessionId, url, status',
+    });
+    this.version(3).stores({
+      audits: '++id, url, analyzedAt',
+      settings: 'key',
+      siteAudits: '++id, origin, status, startedAt',
+      sitePages: '++id, sessionId, url, status',
+      targetKeywords: 'url',
+    });
+    this.version(4).stores({
+      audits: '++id, url, analyzedAt',
+      settings: 'key',
+      siteAudits: '++id, origin, status, startedAt',
+      sitePages: '++id, sessionId, url, status',
+      targetKeywords: 'url',
+      originRuleSettings: 'origin',
     });
   }
 }

@@ -10,6 +10,8 @@ import { analyzeTechnical } from './analyzers/technical.js';
 import { analyzeStructuredData } from './analyzers/structured-data.js';
 import { computeScore } from './scoring.js';
 import { RULE_SET_VERSION } from './rules.js';
+import { SCORING_PROFILES, type ProfileId } from './profiles.js';
+import type { Severity } from '@vittix/shared';
 
 export interface AnalyzeOptions {
   /**
@@ -17,6 +19,10 @@ export interface AnalyzeOptions {
    * keyword rules emit nothing.
    */
   targetKeyword?: string;
+  profileId?: ProfileId;
+  ignoredRuleIds?: readonly string[];
+  unignoredRuleIds?: readonly string[];
+  severityOverrides?: Readonly<Record<string, Severity>>;
 }
 
 /**
@@ -28,6 +34,10 @@ export function analyzeSnapshot(
   snapshot: PageSnapshot,
   options: AnalyzeOptions = {},
 ): AnalysisResult {
+  const profile = SCORING_PROFILES[options.profileId ?? 'standard'];
+  const ignored = new Set([...profile.ignoredRuleIds, ...(options.ignoredRuleIds ?? [])]);
+  for (const ruleId of options.unignoredRuleIds ?? []) ignored.delete(ruleId);
+  const overrides = { ...profile.severityOverrides, ...options.severityOverrides };
   const findings = [
     ...analyzeMetadata(snapshot),
     ...analyzeHreflang(snapshot),
@@ -38,16 +48,25 @@ export function analyzeSnapshot(
     ...analyzeContent(snapshot),
     ...analyzeKeywords(snapshot, options.targetKeyword),
     ...analyzeStructuredData(snapshot),
-  ].sort(
-    (a, b) =>
-      FINDING_SEVERITY_ORDER[a.severity] - FINDING_SEVERITY_ORDER[b.severity] ||
-      a.ruleId.localeCompare(b.ruleId),
-  );
+  ]
+    .map((finding) => ({
+      ...finding,
+      severity: overrides[finding.ruleId] ?? finding.severity,
+      ignored: ignored.has(finding.ruleId),
+    }))
+    .sort(
+      (a, b) =>
+        FINDING_SEVERITY_ORDER[a.severity] - FINDING_SEVERITY_ORDER[b.severity] ||
+        a.ruleId.localeCompare(b.ruleId),
+    );
 
   return {
     ruleSetVersion: RULE_SET_VERSION,
     findings,
-    score: computeScore(findings),
+    score: computeScore(findings, {
+      weights: profile.weights,
+      relaxBlockingCap: profile.relaxBlockingCap,
+    }),
     truncated: isTruncated(snapshot),
   };
 }

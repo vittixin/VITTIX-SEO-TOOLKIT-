@@ -96,14 +96,18 @@ function findBlocking(findings: readonly Finding[]): Finding[] {
   );
 }
 
-export function computeScore(findings: readonly Finding[]): Score {
+export function computeScore(
+  findings: readonly Finding[],
+  options: { weights?: Record<Category, number>; relaxBlockingCap?: boolean } = {},
+): Score {
+  const categoryWeights = options.weights ?? CATEGORY_WEIGHTS;
   const categories = CATEGORIES.map((category) => {
     // Deduplicate by ruleId so one underlying issue can never be penalized
     // twice, and only score-affecting severities count.
     const seen = new Set<string>();
     let penalty = 0;
     for (const finding of findings) {
-      if (finding.category !== category) continue;
+      if (finding.category !== category || finding.ignored) continue;
       if (!SCORE_AFFECTING_SEVERITIES.includes(finding.severity)) continue;
       if (seen.has(finding.ruleId)) continue;
       seen.add(finding.ruleId);
@@ -113,11 +117,13 @@ export function computeScore(findings: readonly Finding[]): Score {
   });
 
   let total = Math.round(
-    categories.reduce((sum, c) => sum + c.score * CATEGORY_WEIGHTS[c.category], 0) / 100,
+    categories.reduce((sum, c) => sum + c.score * categoryWeights[c.category], 0) / 100,
   );
 
   // Blocking-issue cap.
-  const blocking = findBlocking(findings);
+  const blocking = options.relaxBlockingCap
+    ? []
+    : findBlocking(findings.filter((finding) => !finding.ignored));
   let capReason: string | null = null;
   if (blocking.length > 0) {
     const ruleIds = [...new Set(blocking.map((finding) => finding.ruleId))];

@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { Download, FileJson, FileSpreadsheet, Search } from 'lucide-react';
 import type { AuditRecord } from '@vittix/shared';
 import { EmptyState } from '@/src/components/EmptyState';
 import { exportAuditJson, exportFindingsCsv } from '@/src/export/download';
+import { getTargetKeyword } from '@/src/storage/keywords';
 
 export function ExportView({ audit }: { audit: AuditRecord | null }) {
+  const [includeKeyword, setIncludeKeyword] = useState(false);
   if (!audit) {
     return (
       <EmptyState icon={Search} title="Nothing to export yet">
@@ -23,7 +26,11 @@ export function ExportView({ audit }: { audit: AuditRecord | null }) {
         <button
           type="button"
           data-testid="export-json"
-          onClick={() => exportAuditJson(audit)}
+          onClick={() =>
+            void getTargetKeyword(audit.url).then((keyword) =>
+              exportAuditJson(audit, includeKeyword ? keyword : undefined),
+            )
+          }
           className="group flex flex-col items-start gap-2 rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-indigo-300 hover:shadow"
         >
           <span className="flex size-10 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
@@ -58,6 +65,15 @@ export function ExportView({ audit }: { audit: AuditRecord | null }) {
           </span>
         </button>
       </div>
+      <label className="flex items-center gap-2 text-sm text-slate-700">
+        <input
+          type="checkbox"
+          checked={includeKeyword}
+          onChange={(event) => setIncludeKeyword(event.target.checked)}
+          aria-label="Include target keyword in JSON export"
+        />
+        Include the locally stored target keyword in JSON export
+      </label>
     </div>
   );
 }

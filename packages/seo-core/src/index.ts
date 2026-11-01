@@ -1,4 +1,11 @@
 export { analyzeSnapshot, isTruncated } from './analyze.js';
+export {
+  PROFILE_IDS,
+  SCORING_PROFILES,
+  isProfileId,
+  type ProfileId,
+  type ScoringProfile,
+} from './profiles.js';
 export { analyzeMetadata } from './analyzers/metadata.js';
 export { analyzeHreflang } from './analyzers/hreflang.js';
 export { analyzeHeadings } from './analyzers/headings.js';

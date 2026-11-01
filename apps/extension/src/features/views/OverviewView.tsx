@@ -20,9 +20,11 @@ const CATEGORY_LABELS: Record<string, string> = {
 export function OverviewView({
   audit,
   previous,
+  onReanalyze,
 }: {
   audit: AuditRecord | null;
   previous?: AuditRecord | null;
+  onReanalyze?: () => void;
 }) {
   if (!audit) {
     return (
@@ -139,7 +141,31 @@ export function OverviewView({
         <StatCard label="Links" value={audit.snapshot.linkCount} />
       </section>
 
-      {previous ? <ComparePanel current={audit} previous={previous} /> : null}
+      {previous &&
+      (previous.profileId !== audit.profileId ||
+        previous.ruleSetVersion !== audit.ruleSetVersion) ? (
+        <section
+          role="status"
+          className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"
+        >
+          <p>
+            Score comparison is unavailable because the profile or rule-set version differs (current{' '}
+            {audit.profileId} / v{audit.ruleSetVersion}; previous {previous.profileId} / v
+            {previous.ruleSetVersion}).
+          </p>
+          {onReanalyze ? (
+            <button
+              type="button"
+              onClick={onReanalyze}
+              className="rounded-lg bg-amber-800 px-3 py-2 text-sm font-medium text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-800"
+            >
+              Re-analyze with current settings
+            </button>
+          ) : null}
+        </section>
+      ) : previous ? (
+        <ComparePanel current={audit} previous={previous} />
+      ) : null}
 
       <section>
         <h3 className="mb-3 text-sm font-semibold text-slate-900">Top findings</h3>

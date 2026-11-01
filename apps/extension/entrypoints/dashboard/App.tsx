@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   Download,
+  BookOpen,
   FileText,
   Globe,
   Heading,
@@ -29,6 +30,11 @@ import { OverviewView } from '@/src/features/views/OverviewView';
 import { SettingsView } from '@/src/features/views/SettingsView';
 import { SiteAuditView } from '@/src/features/views/SiteAuditView';
 import { PreviewsView } from '@/src/features/views/PreviewsView';
+import { analyzeSnapshot } from '@vittix/seo-core';
+import { getTargetKeyword } from '@/src/storage/keywords';
+import { getOriginRuleSettings } from '@/src/storage/rule-settings';
+import { saveAudit } from '@/src/storage/audits';
+import { ContentView } from '@/src/features/views/ContentView';
 
 type Section =
   | 'overview'
@@ -40,6 +46,7 @@ type Section =
   | 'history'
   | 'site'
   | 'previews'
+  | 'content'
   | 'export'
   | 'settings';
 
@@ -53,6 +60,7 @@ const NAV: { id: Section; label: string; icon: LucideIcon }[] = [
   { id: 'history', label: 'Audit History', icon: History },
   { id: 'site', label: 'Site Audits', icon: Globe },
   { id: 'previews', label: 'Previews', icon: Newspaper },
+  { id: 'content', label: 'Content', icon: BookOpen },
   { id: 'export', label: 'Export', icon: Download },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
@@ -67,6 +75,7 @@ const SECTION_TITLES: Record<Section, { title: string; subtitle: string }> = {
   history: { title: 'Audit History', subtitle: 'Locally stored audits' },
   site: { title: 'Site Audits', subtitle: 'Opt-in multi-page audits of one approved origin' },
   previews: { title: 'Previews', subtitle: 'Search-result and social share estimates' },
+  content: { title: 'Content', subtitle: 'Text summary and keyword analysis' },
   export: { title: 'Export', subtitle: 'JSON and CSV downloads' },
   settings: { title: 'Settings', subtitle: 'Retention and local data controls' },
 };
@@ -90,6 +99,30 @@ export function App() {
   function viewAudit(id: number) {
     void audits.loadAudit(id);
     navigate('overview');
+  }
+
+  async function reanalyzeCurrent() {
+    const audit = audits.current;
+    if (!audit) return;
+    const settings = await getOriginRuleSettings(audit.url);
+    const result = analyzeSnapshot(audit.snapshot, {
+      targetKeyword: await getTargetKeyword(audit.url),
+      profileId: settings.profileId,
+      ignoredRuleIds: settings.ignoredRuleIds,
+      unignoredRuleIds: settings.unignoredRuleIds,
+      severityOverrides: settings.severityOverrides,
+    });
+    const id = await saveAudit({
+      url: audit.url,
+      title: audit.title,
+      analyzedAt: new Date().toISOString(),
+      ruleSetVersion: result.ruleSetVersion,
+      profileId: settings.profileId,
+      snapshot: audit.snapshot,
+      result,
+    });
+    await audits.loadAudit(id);
+    await audits.refresh();
   }
 
   return (
@@ -183,7 +216,11 @@ export function App() {
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <div className="mx-auto max-w-5xl">
             {section === 'overview' ? (
-              <OverviewView audit={audits.current} previous={audits.previous} />
+              <OverviewView
+                audit={audits.current}
+                previous={audits.previous}
+                onReanalyze={() => void reanalyzeCurrent()}
+              />
             ) : null}
             {section === 'metadata' ? <MetadataView audit={audits.current} /> : null}
             {section === 'headings' ? <HeadingsView audit={audits.current} /> : null}
@@ -200,8 +237,11 @@ export function App() {
             ) : null}
             {section === 'site' ? <SiteAuditView /> : null}
             {section === 'previews' ? <PreviewsView audit={audits.current} /> : null}
+            {section === 'content' ? (
+              <ContentView audit={audits.current} onReanalyze={() => void reanalyzeCurrent()} />
+            ) : null}
             {section === 'export' ? <ExportView audit={audits.current} /> : null}
-            {section === 'settings' ? <SettingsView /> : null}
+            {section === 'settings' ? <SettingsView audit={audits.current} /> : null}
           </div>
         </main>
       </div>

@@ -1,4 +1,4 @@
-# SEO Rules — Rule Set v0.6.0
+# SEO Rules — Rule Set v0.8.0
 
 All rules are pure functions of a validated `PageSnapshot` (schema **v5**):
 the same snapshot always produces the same findings, in the same order
@@ -129,7 +129,7 @@ Severities:
 
 Also **detected-types only** (no validation) for Microdata (`itemscope`/`itemtype`) and RDFa (`typeof`), reported in the snapshot's `microdataRdfaTypes` (bounded to 10).
 
-## Site-audit response rules (v0.6.0)
+## Site-audit response rules (v0.8.0)
 
 These rules consume bounded response metadata captured by the extension's
 site-audit fetches. They are never emitted by single-page analysis because
@@ -137,14 +137,15 @@ that mode does not fetch the page response. Header availability was verified
 from the extension page with the approved origin grant; details are in
 [SITE_AUDIT.md](SITE_AUDIT.md).
 
-| Rule                       | Site-audit behavior                                                                                                                                           |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `redirect-chain-long`      | **warn** above 2 observable same-origin hops; pass at 0–2. Manual redirects were opaque in Chromium, so this check is absent when observation is unavailable. |
-| `redirect-temporary`       | **info** for observable 302/307 responses; pass when no such response is observed. Opaque redirect hops are not followed or classified.                       |
-| `x-robots-noindex-header`  | **error** for X-Robots-Tag noindex/none when meta robots does not already report the same block; counts toward the blocking score cap.                        |
-| `non-html-content-type`    | **info** for non-HTML response content types; pass for HTML/XHTML.                                                                                            |
-| `slow-response`            | **warn** at 5,000 ms or more; **info** at 2,000–4,999 ms; pass below 2,000 ms. Timing is measured by this browser/network and is not a lab test.              |
-| `missing-security-headers` | **info only**, never score-affecting, when any checked header family is absent (HSTS, CSP, X-Content-Type-Options, Referrer-Policy, frame protection).        |
+| Rule                         | Site-audit behavior                                                                                                                                                 |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `redirect-present`           | **info** when the browser reports a redirect and provides a final URL. Individual hop status, count, and chain length are unavailable.                              |
+| `redirect-off-origin`        | **warn** when a requested same-origin URL resolves to a final URL on another origin. The browser has already issued the destination request; its body is discarded. |
+| `redirect-in-internal-links` | **info** when inspected internal links target a URL that the crawl observed redirecting; update links to final URLs when practical.                                 |
+| `x-robots-noindex-header`    | **error** for X-Robots-Tag noindex/none when meta robots does not already report the same block; counts toward the blocking score cap.                              |
+| `non-html-content-type`      | **info** for non-HTML response content types; pass for HTML/XHTML.                                                                                                  |
+| `slow-response`              | **warn** at 5,000 ms or more; **info** at 2,000–4,999 ms; pass below 2,000 ms. Timing is measured by this browser/network and is not a lab test.                    |
+| `missing-security-headers`   | **info only**, never score-affecting, when any checked header family is absent (HSTS, CSP, X-Content-Type-Options, Referrer-Policy, frame protection).              |
 
 ## Scoring
 
@@ -169,7 +170,7 @@ all other profiles retain the blocking cap. An explicit severity override on
 a blocking rule may also change whether the cap applies, and the UI warns
 before saving that override.
 
-Formula (rule set v0.6.0):
+Formula (rule set v0.8.0):
 
 1. Each category starts at **100**.
 2. Only `error` (−25) and `warn` (−10) deduct. `info`/`pass` never do

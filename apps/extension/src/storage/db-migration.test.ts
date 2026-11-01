@@ -44,7 +44,7 @@ describe('Dexie v3 → current migration', () => {
     const upgraded = new VittixDatabase(name);
     openDatabases.push(upgraded);
     await upgraded.open();
-    expect(upgraded.verno).toBe(6);
+    expect(upgraded.verno).toBe(9);
     expect((await upgraded.audits.get(auditId))?.title).toBe('Legacy title');
     expect((await upgraded.targetKeywords.get('https://legacy.example/page'))?.keyword).toBe(
       'legacy phrase',
@@ -82,7 +82,7 @@ describe('oldest supported Dexie v1 → current migration', () => {
     const current = new VittixDatabase(name);
     openDatabases.push(current);
     await current.open();
-    expect(current.verno).toBe(6);
+    expect(current.verno).toBe(9);
     expect((await current.audits.get(auditId))?.title).toBe('V1 legacy row');
     expect(await current.settings.get('legacy-setting')).toEqual({
       key: 'legacy-setting',
@@ -122,7 +122,7 @@ describe('Dexie v4 → v5 response-metadata migration', () => {
     const upgraded = new VittixDatabase(name);
     openDatabases.push(upgraded);
     await upgraded.open();
-    expect(upgraded.verno).toBe(6);
+    expect(upgraded.verno).toBe(9);
     const stored = await upgraded.sitePages.get(pageId);
     expect(stored?.url).toBe('https://legacy.example/page');
     const validated = (await import('@vittix/shared')).SitePageRecordSchema.parse(stored);
@@ -156,12 +156,117 @@ describe('Dexie v5 → v6 sitemap migration', () => {
     const current = new VittixDatabase(name);
     openDatabases.push(current);
     await current.open();
-    expect(current.verno).toBe(6);
+    expect(current.verno).toBe(9);
     expect((await current.sitePages.get(pageId))?.url).toBe('https://legacy.example/');
     const { SiteSessionSchema } = await import('@vittix/shared');
     expect(SiteSessionSchema.parse(await current.siteAudits.get(id))).toMatchObject({
       sitemap: { entries: [], fullyRead: false },
       seedFromSitemap: false,
+    });
+  });
+});
+
+describe('Dexie v6 → v7 redirect-outcome migration', () => {
+  it('preserves stored sitemap and page rows and defaults new redirect fields', async () => {
+    const name = `vittix-redirect-migration-${Date.now()}-${Math.random()}`;
+    const previous = new VittixDatabase(name, 6);
+    openDatabases.push(previous);
+    await previous.open();
+    const sessionId = await previous.siteAudits.add({
+      origin: 'https://legacy.example',
+      status: 'completed',
+      startedAt: '2025-01-01T00:00:00Z',
+      maxPages: 20,
+      maxDepth: 2,
+      concurrency: 2,
+      delayMs: 250,
+      sitemap: {
+        entries: [{ url: 'https://legacy.example/', lastmod: null, alternates: [] }],
+        fullyRead: true,
+        truncated: false,
+        invalidLastmodCount: 0,
+        duplicateCount: 0,
+        crossOriginCount: 0,
+        warnings: [],
+      },
+    } as never);
+    const pageId = await previous.sitePages.add({
+      sessionId,
+      url: 'https://legacy.example/',
+      status: 'ok',
+      responseMetadata: { finalStatus: 200 },
+    } as never);
+    previous.close();
+    const upgraded = new VittixDatabase(name);
+    openDatabases.push(upgraded);
+    await upgraded.open();
+    expect(upgraded.verno).toBe(9);
+    const page = (await import('@vittix/shared')).SitePageRecordSchema.parse(
+      await upgraded.sitePages.get(pageId),
+    );
+    expect(page.url).toBe('https://legacy.example/');
+    expect(page.responseMetadata).toMatchObject({
+      redirected: false,
+      redirectOffOrigin: false,
+      redirectFinalUrl: null,
+    });
+    expect((await upgraded.siteAudits.get(sessionId))?.sitemap).toMatchObject({ fullyRead: true });
+  });
+});
+
+describe('Dexie v7 → v8 duplicate-hash migration', () => {
+  it('keeps legacy page rows and defaults bounded similarity hashes', async () => {
+    const name = `vittix-similarity-migration-${Date.now()}-${Math.random()}`;
+    const previous = new VittixDatabase(name, 7);
+    openDatabases.push(previous);
+    await previous.open();
+    const id = await previous.sitePages.add({
+      sessionId: 9,
+      url: 'https://old.test/',
+      status: 'ok',
+    } as never);
+    previous.close();
+    const current = new VittixDatabase(name);
+    openDatabases.push(current);
+    await current.open();
+    const page = (await import('@vittix/shared')).SitePageRecordSchema.parse(
+      await current.sitePages.get(id),
+    );
+    expect(page).toMatchObject({
+      url: 'https://old.test/',
+      normalizedTextHash: null,
+      simhash64: null,
+      similarityWordCount: 0,
+    });
+  });
+});
+
+describe('Dexie v8 → v9 site analysis settings migration', () => {
+  it('keeps legacy site records and supplies profile/rule defaults', async () => {
+    const name = `vittix-site-profile-migration-${Date.now()}-${Math.random()}`;
+    const previous = new VittixDatabase(name, 8);
+    openDatabases.push(previous);
+    await previous.open();
+    const id = await previous.siteAudits.add({
+      origin: 'https://old.test',
+      status: 'completed',
+      startedAt: '2026-01-01',
+      maxPages: 10,
+      maxDepth: 2,
+      concurrency: 2,
+      delayMs: 100,
+    } as never);
+    previous.close();
+    const current = new VittixDatabase(name);
+    openDatabases.push(current);
+    await current.open();
+    expect(current.verno).toBe(9);
+    const { SiteSessionSchema } = await import('@vittix/shared');
+    expect(SiteSessionSchema.parse(await current.siteAudits.get(id))).toMatchObject({
+      profileId: 'standard',
+      ignoredRuleIds: [],
+      unignoredRuleIds: [],
+      severityOverrides: {},
     });
   });
 });

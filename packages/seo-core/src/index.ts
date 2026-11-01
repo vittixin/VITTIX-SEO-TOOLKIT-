@@ -30,7 +30,23 @@ export {
 } from './text-summary.js';
 export { analyzeStructuredData } from './analyzers/structured-data.js';
 export { analyzeResponseMetadata } from './analyzers/response.js';
+export { analyzeInternalRedirectLinks } from './analyzers/site-graph.js';
 export { diffSitemap, normalizeSitemapDocument, type SitemapDocumentResult } from './sitemap.js';
+export {
+  detectDuplicateClusters,
+  normalizedTextHash,
+  simhash64,
+  hammingDistance64,
+  type SimilarityPage,
+  type DuplicateCluster,
+} from './duplicates.js';
+export {
+  buildInternalLinkGraph,
+  type LinkGraph,
+  type LinkGraphPage,
+  type LinkGraphNode,
+  type LinkGraphEdge,
+} from './link-graph.js';
 export { CATEGORY_WEIGHTS, SEVERITY_PENALTIES, computeScore, scoreLabel } from './scoring.js';
 export {
   ALT_MIN_MEANINGFUL_LENGTH,

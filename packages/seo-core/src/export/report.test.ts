@@ -220,6 +220,52 @@ describe('site-audit reports', () => {
     expect(includedHtml).toContain('&lt;script&gt;');
   });
 
+  it('escapes duplicate-cluster and link-graph page values in site reports', () => {
+    const hostileUrl = 'https://example.test/\"><img onerror=alert(1)>';
+    const hostile = {
+      ...site,
+      summary: {
+        ...site.summary,
+        duplicateClusters: [
+          {
+            kind: 'near-title',
+            urls: [hostileUrl],
+            disposition: 'unconsolidated',
+            similarity: 0.95,
+          },
+        ],
+        linkGraph: {
+          orphanStatus: 'unchecked',
+          nodes: [
+            {
+              url: hostileUrl,
+              depth: 0,
+              inbound: 1,
+              outbound: 1,
+              anchorDiversity: 1,
+              orphanCandidate: null,
+            },
+          ],
+          edges: [
+            {
+              from: hostileUrl,
+              to: hostileUrl,
+              anchorText: '<script>alert(1)</script>',
+              nofollow: false,
+            },
+          ],
+          depthHistogram: { '0': 1 },
+        },
+      },
+    } as SiteReportInput;
+    const html = buildSiteAuditReportHtml(hostile);
+    const markdown = buildSiteAuditMarkdown(hostile);
+    expect(html).toContain('&lt;img onerror=alert(1)&gt;');
+    expect(html).not.toContain('<img onerror');
+    expect(markdown).toContain('https://example\\.test/');
+    expect(markdown).not.toContain('<script>alert(1)</script>');
+  });
+
   it('omits site JSON excerpts and keywords by default', () => {
     const session = {
       origin: 'https://example.test',

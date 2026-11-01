@@ -1,13 +1,17 @@
 import { browser } from 'wxt/browser';
 import { SITE_LIMITS, type SiteResponseMetadata, type SiteSession } from '@vittix/shared';
-import { analyzeSnapshot } from '@vittix/seo-core';
-import { analyzeResponseMetadata } from '@vittix/seo-core';
+import {
+  analyzeSnapshot,
+  analyzeResponseMetadata,
+  normalizedTextHash,
+  simhash64,
+} from '@vittix/seo-core';
 import { checkCrawlableOrigin, isSameOriginUrl } from './guards';
 import { normalizeSiteUrl } from './normalize';
 import { EMPTY_ROBOTS_POLICY, parseRobotsTxt, type RobotsPolicy } from './robots';
 import { PacedRunner } from './rate';
 import { EXTRACTOR_LIMITS } from '../extraction/limits';
-import { parsePageSnapshot } from './extract-html';
+import { parsePageSnapshot, extractVisibleTextForSimilarity } from './extract-html';
 import {
   addSitePages,
   getSiteSession,
@@ -656,11 +660,12 @@ interface SafeResponse {
   failure: string | null;
 }
 
-const MAX_REDIRECT_HOPS = 10;
-
-/** Fetches manually so a redirect is never followed implicitly. Opaque
- * redirects are recorded and stopped; this Chrome extension context exposes
- * `opaqueredirect` rather than the hop status/Location. */
+/**
+ * The browser follows page redirects. It exposes only the final URL and a
+ * boolean; individual hops cannot be checked or paced. Cross-origin final
+ * responses are discarded without parsing, but the browser has already sent
+ * the request. See docs/SITE_AUDIT.md for the resulting threat-model limit.
+ */
 async function fetchSameOriginResponse(
   initialUrl: string,
   session: SiteSession,
@@ -669,130 +674,76 @@ async function fetchSameOriginResponse(
   firstRequestAlreadyPaced: boolean,
 ): Promise<SafeResponse> {
   const startedAt = performance.now();
-  const redirectChain: SiteResponseMetadata['redirectChain'] = [];
-  let currentUrl = initialUrl;
-  for (let requestIndex = 0; requestIndex <= MAX_REDIRECT_HOPS; requestIndex += 1) {
-    if (!isSameOriginUrl(currentUrl, session.origin))
-      return {
-        response: null,
-        metadata: makeMetadata(null, redirectChain, startedAt, true),
-        finalUrl: currentUrl,
-        externalRedirect: true,
-        failure: null,
-      };
-    const parsed = new URL(currentUrl);
-    if (!robots.allows(parsed.pathname + parsed.search))
-      return {
-        response: null,
-        metadata: makeMetadata(null, redirectChain, startedAt, true),
-        finalUrl: currentUrl,
-        externalRedirect: false,
-        failure: 'Redirect target is disallowed by robots.txt.',
-      };
-    if (requestIndex > 0 || !firstRequestAlreadyPaced) await context.runner.pace();
-    if (!(await context.hasPermission(session.origin)))
-      return {
-        response: null,
-        metadata: makeMetadata(null, redirectChain, startedAt, true),
-        finalUrl: currentUrl,
-        externalRedirect: false,
-        failure: 'Origin permission was revoked before a response fetch.',
-      };
-    if (await shouldStop(context.sessionId))
-      return {
-        response: null,
-        metadata: makeMetadata(null, redirectChain, startedAt, true),
-        finalUrl: currentUrl,
-        externalRedirect: false,
-        failure: 'Crawl cancelled before response fetch.',
-      };
-    let response: Response;
-    try {
-      response = await context.fetchImpl(currentUrl, {
-        method: 'GET',
-        credentials: 'omit',
-        redirect: 'manual',
-      });
-    } catch (error) {
-      return {
-        response: null,
-        metadata: makeMetadata(null, redirectChain, startedAt, false),
-        finalUrl: currentUrl,
-        externalRedirect: false,
-        failure: `Response fetch failed: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
-    if (response.type === 'opaqueredirect' || response.status === 0) {
-      redirectChain.push({
-        url: currentUrl.slice(0, 2048),
-        status: null,
-        location: null,
-        opaque: true,
-      });
-      return {
-        response: null,
-        metadata: makeMetadata(null, redirectChain, startedAt, true),
-        finalUrl: currentUrl,
-        externalRedirect: false,
-        failure:
-          'Redirect response metadata is opaque in this browser; the redirect was not followed for safety.',
-      };
-    }
-    if ([301, 302, 303, 307, 308].includes(response.status)) {
-      const location = response.headers.get('location');
-      let destination: URL | null = null;
-      try {
-        if (location !== null) destination = new URL(location, currentUrl);
-      } catch {
-        destination = null;
-      }
-      redirectChain.push({
-        url: currentUrl.slice(0, 2048),
-        status: response.status,
-        location: location?.slice(0, 2048) ?? null,
-        opaque: false,
-      });
-      if (destination === null)
-        return {
-          response,
-          metadata: makeMetadata(response, redirectChain, startedAt, false),
-          finalUrl: currentUrl,
-          externalRedirect: false,
-          failure: 'Redirect response had no valid Location; it was not followed.',
-        };
-      if (destination.origin !== new URL(session.origin).origin)
-        return {
-          response,
-          metadata: makeMetadata(response, redirectChain, startedAt, false),
-          finalUrl: destination.href.slice(0, 2048),
-          externalRedirect: true,
-          failure: null,
-        };
-      if (requestIndex === MAX_REDIRECT_HOPS)
-        return {
-          response,
-          metadata: makeMetadata(response, redirectChain, startedAt, false),
-          finalUrl: currentUrl,
-          externalRedirect: false,
-          failure: 'Redirect hop limit exceeded.',
-        };
-      currentUrl = destination.href;
-      continue;
-    }
+  const parsed = new URL(initialUrl);
+  if (!isSameOriginUrl(initialUrl, session.origin))
     return {
-      response,
-      metadata: makeMetadata(response, redirectChain, startedAt, false),
-      finalUrl: currentUrl,
+      response: null,
+      metadata: makeMetadata(null, [], startedAt, true),
+      finalUrl: initialUrl,
       externalRedirect: false,
-      failure: null,
+      failure: 'Requested URL is outside the approved origin.',
+    };
+  if (!robots.allows(parsed.pathname + parsed.search))
+    return {
+      response: null,
+      metadata: makeMetadata(null, [], startedAt, true),
+      finalUrl: initialUrl,
+      externalRedirect: false,
+      failure: 'Requested URL is disallowed by robots.txt.',
+    };
+  if (!firstRequestAlreadyPaced) await context.runner.pace();
+  if (!(await context.hasPermission(session.origin)))
+    return {
+      response: null,
+      metadata: makeMetadata(null, [], startedAt, true),
+      finalUrl: initialUrl,
+      externalRedirect: false,
+      failure: 'Origin permission was revoked before a response fetch.',
+    };
+  if (await shouldStop(context.sessionId))
+    return {
+      response: null,
+      metadata: makeMetadata(null, [], startedAt, true),
+      finalUrl: initialUrl,
+      externalRedirect: false,
+      failure: 'Crawl cancelled before response fetch.',
+    };
+  let response: Response;
+  try {
+    response = await context.fetchImpl(initialUrl, {
+      method: 'GET',
+      credentials: 'omit',
+      redirect: 'follow',
+    });
+  } catch (error) {
+    return {
+      response: null,
+      metadata: makeMetadata(null, [], startedAt, true),
+      finalUrl: initialUrl,
+      externalRedirect: false,
+      failure: `Response fetch failed (the browser may have rejected a redirect loop): ${error instanceof Error ? error.message : String(error)}`,
     };
   }
+  const redirected = response.redirected === true;
+  const finalUrl = redirected && response.url ? response.url.slice(0, 2048) : initialUrl;
+  let offOrigin = false;
+  try {
+    offOrigin = new URL(finalUrl).origin !== new URL(session.origin).origin;
+  } catch {
+    offOrigin = true;
+  }
+  const metadata = {
+    ...makeMetadata(response, [], startedAt, redirected),
+    redirected,
+    redirectOffOrigin: offOrigin,
+    redirectFinalUrl: redirected ? finalUrl : null,
+  };
   return {
-    response: null,
-    metadata: makeMetadata(null, redirectChain, startedAt, false),
-    finalUrl: currentUrl,
-    externalRedirect: false,
-    failure: 'Redirect hop limit exceeded.',
+    response: offOrigin ? null : response,
+    metadata,
+    finalUrl,
+    externalRedirect: offOrigin,
+    failure: null,
   };
 }
 
@@ -814,6 +765,9 @@ function makeMetadata(
     finalStatus: response?.status ?? null,
     redirectChain,
     redirectObservationUnavailable,
+    redirected: false,
+    redirectOffOrigin: false,
+    redirectFinalUrl: null,
     contentType: header('content-type'),
     contentLength,
     contentEncoding: header('content-encoding', 256),
@@ -890,6 +844,7 @@ async function processUrl(
           finalUrl: safe.finalUrl,
           httpStatus: safe.metadata.finalStatus,
           responseMetadata: safe.metadata,
+          responseFindings: analyzeResponseMetadata(null, safe.metadata),
         });
         await syncCounters(sessionId);
         onProgress();
@@ -932,7 +887,16 @@ async function processUrl(
       const { html, truncated: bodyTruncated } = await readBodyCapped(response);
       const metadata = { ...safe.metadata, bodyTruncated };
       const snapshot = parsePageSnapshot(html, finalUrl, EXTRACTOR_LIMITS);
-      const result = analyzeSnapshot(snapshot, { responseMetadata: metadata });
+      const visibleText = extractVisibleTextForSimilarity(html, 50_000);
+      const similarityTokens = visibleText.match(/[\p{L}\p{N}]+/gu) ?? [];
+      const result = analyzeSnapshot(snapshot, {
+        responseMetadata: metadata,
+        profileId: session.profileId as
+          'standard' | 'content-site' | 'e-commerce' | 'developer-staging',
+        ignoredRuleIds: session.ignoredRuleIds,
+        unignoredRuleIds: session.unignoredRuleIds,
+        severityOverrides: session.severityOverrides,
+      });
       if (bodyTruncated) result.truncated = true;
 
       await updateSitePage(pageId, {
@@ -943,6 +907,9 @@ async function processUrl(
         snapshot,
         result,
         responseMetadata: metadata,
+        normalizedTextHash: normalizedTextHash(visibleText),
+        simhash64: simhash64(visibleText),
+        similarityWordCount: similarityTokens.length,
       });
       await syncCounters(sessionId);
       onProgress();

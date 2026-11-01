@@ -1,6 +1,15 @@
 import { escapeReportHtml, escapeReportMarkdown, type AuditReportOptions } from './report.js';
 
 export interface SiteReportInput {
+  comparison?: {
+    comparable: boolean;
+    reason: string;
+    partial: boolean;
+    regressions: { severity: string; kind: string; url?: string; detail: string }[];
+    resolvedIssues: { url: string; ruleId: string }[];
+    addedPages: string[];
+    removedPages: string[];
+  } | null;
   session: {
     origin: string;
     status: string;
@@ -34,6 +43,7 @@ export interface SiteReportInput {
     incomplete: boolean;
     pages: {
       url: string;
+      finalUrl?: string | null;
       status: string;
       score: number | null;
       errorCount: number;
@@ -42,6 +52,8 @@ export interface SiteReportInput {
       contentType?: string | null;
       responseTimeMs?: number | null;
       redirectCount?: number | null;
+      redirected?: boolean;
+      redirectOffOrigin?: boolean;
       xRobotsTag?: string | null;
     }[];
     sitemap?: {
@@ -60,6 +72,27 @@ export interface SiteReportInput {
       warnings: string[];
       checked: boolean;
     };
+    duplicateClusters?: { kind: string; urls: string[]; disposition: string; similarity: number }[];
+    linkGraph?: {
+      orphanStatus: string;
+      nodes: {
+        url: string;
+        depth: number | null;
+        inbound: number;
+        outbound: number;
+        anchorDiversity: number;
+        orphanCandidate: boolean | null;
+      }[];
+      edges: { from: string; to: string; anchorText: string; nofollow: boolean }[];
+      depthHistogram: Record<string, number>;
+    };
+    siteFindings?: {
+      ruleId: string;
+      severity: string;
+      title: string;
+      detail: string;
+      evidence?: string;
+    }[];
   };
   profileId?: string;
   ignoredRuleIds?: string[];
@@ -107,6 +140,7 @@ function buildSiteAuditReportHtmlBase(
   const pages = summary.pages.slice(0, 200);
   const rows = pages.map((page) => [
     page.url,
+    page.finalUrl ?? '—',
     page.status,
     page.score ?? '—',
     page.errorCount,
@@ -115,6 +149,8 @@ function buildSiteAuditReportHtmlBase(
     page.contentType ?? 'Unavailable',
     page.responseTimeMs == null ? 'Unavailable' : Math.round(page.responseTimeMs),
     page.redirectCount == null ? 'Unavailable' : page.redirectCount,
+    page.redirected ? 'Yes' : 'No',
+    page.redirectOffOrigin ? 'Off-origin' : 'Same-origin / none',
     page.xRobotsTag ?? '—',
   ]);
   const issues = [
@@ -165,6 +201,22 @@ function buildSiteAuditReportHtmlBase(
   const topRows = tableRows(issues);
   const pageRows = tableRows(rows);
   const sitemap = summary.sitemap;
+  const duplicateHeuristicsHtml = `<section><h2>Duplicate similarity heuristics</h2><p>Similarity heuristic only; this is not a Google duplicate verdict. Body similarity skips pages under 50 words.</p>${summary.duplicateClusters?.length ? `<ul>${summary.duplicateClusters.map((cluster) => `<li>${escapeReportHtml(cluster.kind)} — ${cluster.urls.map(escapeReportHtml).join(', ')}; ${escapeReportHtml(cluster.disposition)}; similarity ${Math.round(cluster.similarity * 100)}%</li>`).join('')}</ul>` : '<p>No clusters recorded by these heuristics.</p>'}</section>`;
+  const comparisonHtml = input.comparison?.comparable
+    ? `<section><h2>Regression comparison</h2><p>${input.comparison.partial ? 'Partial: coverage differed; removed pages withheld.' : 'Comparable stored audits.'}</p><ul>${input.comparison.regressions.map((item) => `<li>${escapeReportHtml(item.severity)} ${escapeReportHtml(item.kind)} ${escapeReportHtml(item.url ?? '')}: ${escapeReportHtml(item.detail)}</li>`).join('')}</ul><p>Resolved issues: ${input.comparison.resolvedIssues.length}; added pages: ${input.comparison.addedPages.length}; removed pages: ${input.comparison.removedPages.length}.</p></section>`
+    : '';
+  const graphHtml = summary.linkGraph
+    ? `<section><h2>Internal link graph summary</h2><p>Orphan analysis: ${escapeReportHtml(summary.linkGraph.orphanStatus)}. Nodes: ${summary.linkGraph.nodes.length}; edges: ${summary.linkGraph.edges.length}.</p><table><thead><tr><th scope="col">Page</th><th scope="col">Depth</th><th scope="col">Inbound</th><th scope="col">Outbound</th><th scope="col">Anchor diversity</th></tr></thead><tbody>${summary.linkGraph.nodes
+        .slice(0, 200)
+        .map(
+          (n) =>
+            `<tr><td>${escapeReportHtml(n.url)}</td><td>${n.depth ?? 'Unreachable'}</td><td>${n.inbound}</td><td>${n.outbound}</td><td>${Math.round(n.anchorDiversity * 100)}%</td></tr>`,
+        )
+        .join('')}</tbody></table></section>`
+    : '';
+  const siteFindingHtml = summary.siteFindings?.length
+    ? `<section><h2>Site-level findings</h2><ul>${summary.siteFindings.map((f) => `<li><strong>${escapeReportHtml(f.severity)}: ${escapeReportHtml(f.title)}</strong> — ${escapeReportHtml(f.detail)}${f.evidence ? ` Evidence: ${escapeReportHtml(f.evidence)}` : ''}</li>`).join('')}</ul></section>`
+    : '';
   const sitemapHtml = sitemap
     ? `<section><h2>Sitemap discovery</h2><p>${sitemap.checked ? 'Checked: sitemap set was fully read.' : 'Unchecked: sitemap set was incomplete or unavailable.'} ${sitemap.invalidLastmodCount} invalid lastmod values; ${sitemap.duplicateCount} duplicate entries; ${sitemap.crossOriginCount} cross-origin entries ignored.</p>${sitemap.warnings.length ? `<ul>${sitemap.warnings.map((warning) => `<li>${escapeReportHtml(warning)}</li>`).join('')}</ul>` : ''}<h3>Sitemap URLs not crawled</h3>${
         sitemap.notCrawled.length
@@ -187,9 +239,13 @@ function buildSiteAuditReportHtmlBase(
     .replace('<main>', `<main>${brandHtml}`)
     .replace(
       '<th scope="col">Truncated</th>',
-      '<th scope="col">Truncated</th><th scope="col">Content type</th><th scope="col">Response ms</th><th scope="col">Redirects</th><th scope="col">X-Robots-Tag</th>',
+      '<th scope="col">Truncated</th><th scope="col">Final URL</th><th scope="col">Content type</th><th scope="col">Response ms</th><th scope="col">Redirects (unavailable)</th><th scope="col">Redirect present</th><th scope="col">Redirect destination</th><th scope="col">X-Robots-Tag</th>',
     )
-    .replace('</footer>', `${sitemapHtml}</footer>`);
+    .replace('</footer>', `${sitemapHtml}</footer>`)
+    .replace(
+      '<section><h2>Top issues by page count',
+      `${comparisonHtml}${duplicateHeuristicsHtml}${graphHtml}${siteFindingHtml}<section><h2>Top issues by page count`,
+    );
 }
 
 /** Add excerpt/keyword content only when the export dialog explicitly opts in. */
@@ -362,6 +418,33 @@ export function buildSiteAuditMarkdown(
   );
   lines.push(
     '',
+    '## Duplicate similarity heuristics',
+    '',
+    'Similarity heuristics only; these are not Google duplicate verdicts. Body similarity skips pages under 50 words.',
+    ...(summary.duplicateClusters?.length
+      ? summary.duplicateClusters.map(
+          (cluster) =>
+            `- ${escapeReportMarkdown(cluster.kind)}: ${cluster.urls.map(escapeReportMarkdown).join(', ')}; ${escapeReportMarkdown(cluster.disposition)}; ${Math.round(cluster.similarity * 100)}%`,
+        )
+      : ['No duplicate clusters recorded by these heuristics.']),
+  );
+  if (summary.linkGraph)
+    lines.push(
+      '',
+      '## Internal link graph summary',
+      '',
+      `Orphan analysis: ${escapeReportMarkdown(summary.linkGraph.orphanStatus)}; ${summary.linkGraph.nodes.length} pages and ${summary.linkGraph.edges.length} edges.`,
+      '| Page | Depth | Inbound | Outbound | Anchor diversity |',
+      '| --- | ---: | ---: | ---: | ---: |',
+      ...summary.linkGraph.nodes
+        .slice(0, 200)
+        .map(
+          (n) =>
+            `| ${escapeReportMarkdown(n.url)} | ${n.depth ?? 'Unreachable'} | ${n.inbound} | ${n.outbound} | ${Math.round(n.anchorDiversity * 100)}% |`,
+        ),
+    );
+  lines.push(
+    '',
     '## Top issues by page count',
     '',
     '| Issue | Pages/groups |',
@@ -378,11 +461,11 @@ export function buildSiteAuditMarkdown(
     '',
     '## Pages (first 200)',
     '',
-    '| URL | Status | Score | Errors | Warnings | Content type | Response ms | Redirects | X-Robots-Tag |',
-    '| --- | --- | ---: | ---: | ---: | --- | ---: | ---: | --- |',
+    '| URL | Final URL | Status | Score | Errors | Warnings | Content type | Response ms | Redirect hops | Redirect present | Redirect destination | X-Robots-Tag |',
+    '| --- | --- | --- | ---: | ---: | ---: | --- | ---: | ---: | --- | --- | --- |',
     ...pages.map(
       (page) =>
-        `| ${escapeReportMarkdown(page.url)} | ${escapeReportMarkdown(page.status)} | ${page.score ?? '—'} | ${page.errorCount} | ${page.warnCount} | ${escapeReportMarkdown(page.contentType ?? 'Unavailable')} | ${page.responseTimeMs == null ? '—' : Math.round(page.responseTimeMs)} | ${page.redirectCount == null ? '—' : page.redirectCount} | ${escapeReportMarkdown(page.xRobotsTag ?? '—')} |`,
+        `| ${escapeReportMarkdown(page.url)} | ${escapeReportMarkdown(page.finalUrl ?? '—')} | ${escapeReportMarkdown(page.status)} | ${page.score ?? '—'} | ${page.errorCount} | ${page.warnCount} | ${escapeReportMarkdown(page.contentType ?? 'Unavailable')} | ${page.responseTimeMs == null ? '—' : Math.round(page.responseTimeMs)} | Unavailable | ${page.redirected ? 'Yes' : 'No'} | ${page.redirectOffOrigin ? 'Off-origin' : 'Same-origin / none'} | ${escapeReportMarkdown(page.xRobotsTag ?? '—')} |`,
     ),
   );
   if (summary.pages.length > 200) lines.push('', 'See CSV for the full page list.');
@@ -394,6 +477,20 @@ export function buildSiteAuditMarkdown(
       lines.push(
         `- ${escapeReportMarkdown(page.url)}: ${stats?.wordCount ?? 'Unavailable'} words, ${summaryForPage?.sentenceCount ?? 'Unavailable'} sentences, ${summaryForPage?.paragraphCount ?? 'Unavailable'} paragraphs${options.includeKeyword ? `; target keyword: ${escapeReportMarkdown(page.targetKeyword ?? 'Not set')}` : ''}`,
       );
+      if (input.comparison?.comparable)
+        lines.push(
+          '',
+          '## Regression comparison',
+          '',
+          input.comparison.partial
+            ? 'Partial: coverage differed; removed-page conclusions are withheld.'
+            : 'Comparable stored audits.',
+          ...input.comparison.regressions.map(
+            (item) =>
+              `- ${escapeReportMarkdown(item.severity)} ${escapeReportMarkdown(item.kind)} ${escapeReportMarkdown(item.url ?? '')}: ${escapeReportMarkdown(item.detail)}`,
+          ),
+          `Resolved issues: ${input.comparison.resolvedIssues.length}; added pages: ${input.comparison.addedPages.length}; removed pages: ${input.comparison.removedPages.length}.`,
+        );
       if (options.includePageTextExcerpt && summaryForPage?.leadText)
         lines.push(`  - Page excerpt: ${escapeReportMarkdown(summaryForPage.leadText)}`);
     }
@@ -404,6 +501,16 @@ export function buildSiteAuditMarkdown(
       '## Score cap reasons',
       '',
       ...capReasons.map((reason) => `- ${escapeReportMarkdown(reason)}`),
+    );
+  if (summary.siteFindings?.length)
+    lines.push(
+      '',
+      '## Site-level findings',
+      '',
+      ...summary.siteFindings.map(
+        (f) =>
+          `- ${escapeReportMarkdown(f.severity)} ${escapeReportMarkdown(f.title)}: ${escapeReportMarkdown(f.detail)}${f.evidence ? ` Evidence: ${escapeReportMarkdown(f.evidence)}` : ''}`,
+      ),
     );
   if (options.includeIgnoredRules !== false)
     lines.push(

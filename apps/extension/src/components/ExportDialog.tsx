@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, X } from 'lucide-react';
-import { siteAuditToJson, sitePagesToCsv, type SiteReportInput } from '@vittix/seo-core';
+import {
+  siteAuditToJson,
+  sitePagesToCsv,
+  type SiteReportInput,
+  type SiteComparison,
+} from '@vittix/seo-core';
 import type { AuditRecord, AnalysisResult, SitePageRecord, SiteSession } from '@vittix/shared';
 import type { SiteSummary } from '@/src/storage/site';
 import {
@@ -15,12 +20,12 @@ import {
 } from '@/src/export/download';
 import { getTargetKeyword } from '@/src/storage/keywords';
 import { getSettings } from '@/src/storage/settings';
-import { getOriginRuleSettings } from '@/src/storage/rule-settings';
 
 export type SiteExportSource = {
   session: SiteSession;
   pages: SitePageRecord[];
   summary: SiteSummary;
+  comparison?: SiteComparison | null;
 };
 
 type Props =
@@ -79,8 +84,9 @@ export function ExportDialog(props: Props) {
     return {
       session: props.site.session,
       summary: props.site.summary,
-      profileId: 'standard',
-      ignoredRuleIds: [],
+      profileId: props.site.session.profileId,
+      ignoredRuleIds: props.site.session.ignoredRuleIds,
+      comparison: props.site.comparison,
       pages: props.site.pages.map((page) => ({
         url: page.url,
         result: page.result as AnalysisResult | null,
@@ -91,7 +97,6 @@ export function ExportDialog(props: Props) {
 
   async function siteInputWithOptions(): Promise<SiteReportInput | null> {
     if (!siteInput || !props.site) return siteInput;
-    const rules = await getOriginRuleSettings(props.site.session.origin);
     const values = includeKeyword
       ? Object.fromEntries(
           await Promise.all(
@@ -103,8 +108,9 @@ export function ExportDialog(props: Props) {
       : {};
     return {
       ...siteInput,
-      profileId: rules.profileId,
-      ignoredRuleIds: rules.ignoredRuleIds,
+      profileId: props.site.session.profileId,
+      ignoredRuleIds: props.site.session.ignoredRuleIds,
+      comparison: props.site.comparison,
       pages: siteInput.pages?.map((page) => ({
         ...page,
         targetKeyword: values[page.url],
@@ -114,7 +120,6 @@ export function ExportDialog(props: Props) {
 
   async function reportOptions() {
     const settings = await getSettings();
-    const siteRules = props.site ? await getOriginRuleSettings(props.site.session.origin) : null;
     const keyword =
       !props.site && includeKeyword ? await getTargetKeyword(props.audit.url) : undefined;
     return {
@@ -123,8 +128,8 @@ export function ExportDialog(props: Props) {
       includeIgnoredRules,
       includePageTextExcerpt: includeExcerpt,
       includeKeyword,
-      profileId: siteRules?.profileId,
-      ignoredRuleIds: siteRules?.ignoredRuleIds,
+      profileId: props.site?.session.profileId,
+      ignoredRuleIds: props.site?.session.ignoredRuleIds,
       targetKeyword: keyword,
       branding: includeBranding
         ? {
@@ -137,7 +142,6 @@ export function ExportDialog(props: Props) {
 
   async function json() {
     if (props.site) {
-      const ruleSettings = await getOriginRuleSettings(props.site.session.origin);
       const targetKeywords = includeKeyword
         ? Object.fromEntries(
             await Promise.all(
@@ -153,8 +157,9 @@ export function ExportDialog(props: Props) {
           includePageTextExcerpt: includeExcerpt,
           includeKeyword,
           targetKeywords,
-          profileId: ruleSettings.profileId,
-          ignoredRuleIds: ruleSettings.ignoredRuleIds,
+          profileId: props.site.session.profileId,
+          ignoredRuleIds: props.site.session.ignoredRuleIds,
+          comparison: props.site.comparison ?? undefined,
         }),
       );
       return;

@@ -24,26 +24,24 @@ export function analyzeResponseMetadata(
       ...(evidence ? { evidence } : {}),
     });
 
-  if (!metadata.redirectObservationUnavailable) {
-    const hops = metadata.redirectChain;
+  if (metadata.redirected) {
     push(
-      'redirect-chain-long',
-      hops.length > 2 ? 'warn' : 'pass',
-      hops.length > 2 ? 'Redirect chain is long' : 'Redirect chain is short',
-      `${hops.length} redirect hop(s) were observed for this page.`,
-      'Update internal links to point directly to the final URL and remove unnecessary redirects.',
-      hops.map((hop) => `${hop.status ?? 'unknown'} ${hop.url}`).join(' → ') || undefined,
+      'redirect-present',
+      'info',
+      'URL redirects to another URL',
+      'The browser followed a redirect and returned a final URL. Individual hops and status codes are not observable.',
+      'Update internal links to point directly to the final URL when practical.',
+      metadata.redirectFinalUrl ?? undefined,
     );
-    const temporary = hops.filter((hop) => hop.status === 302 || hop.status === 307);
+  }
+  if (metadata.redirectOffOrigin) {
     push(
-      'redirect-temporary',
-      temporary.length ? 'info' : 'pass',
-      temporary.length ? 'Temporary redirect observed' : 'No temporary redirect observed',
-      temporary.length
-        ? `${temporary.length} temporary redirect response(s) used 302 or 307.`
-        : 'No 302 or 307 redirect response was observed.',
-      'Use a permanent redirect when the URL change is intended to last.',
-      temporary.map((hop) => `${hop.status} ${hop.url}`).join(' → ') || undefined,
+      'redirect-off-origin',
+      'warn',
+      'URL redirected off-origin',
+      'The browser followed a redirect to another origin. Its response body was discarded and not parsed.',
+      'Check the redirect destination and update internal links to a same-origin URL when appropriate.',
+      metadata.redirectFinalUrl ?? undefined,
     );
   }
 

@@ -73,6 +73,7 @@ vi.mock('@/src/storage/site', (): unknown => {
 });
 
 vi.mock('@/src/site/extract-html', () => ({
+  extractVisibleTextForSimilarity: (html: string) => html,
   parsePageSnapshot: (html: string, url: string): PageSnapshot => ({
     schemaVersion: 3,
     url,
@@ -149,11 +150,12 @@ import { createSiteSession, updateSiteSession, listSitePages } from '@/src/stora
 
 const ORIGIN = 'https://site.test';
 
-function htmlResponse(body: string, finalUrl?: string, status = 200): Response {
+function htmlResponse(body: string, finalUrl?: string, status = 200, redirected = false): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
     url: finalUrl ?? 'irrelevant-placeholder',
+    redirected,
     headers: new Headers({ 'content-type': 'text/html; charset=utf-8' }),
     blob: async () => new Blob([body]),
     text: async () => body,
@@ -191,6 +193,63 @@ async function seedSession(overrides: Partial<SiteSessionInput> = {}): Promise<n
 // session with a unique origin to avoid interference.
 
 describe('runSiteAudit', () => {
+  it('follows same-origin redirects and records requested and final URLs', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt'))
+        return Promise.resolve(new Response('', { status: 404 }) as unknown as Response);
+      if (url === `${ORIGIN}/`)
+        return Promise.resolve(htmlResponse('<a href="https://site.test/about">About</a>', url));
+      if (url === `${ORIGIN}/about`)
+        return Promise.resolve(
+          htmlResponse('<title>About final page</title>', `${ORIGIN}/about/`, 200, true),
+        );
+      return Promise.resolve(htmlResponse('', url));
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+    const pages = await listSitePages(sessionId);
+    const about = pages.find((page) => page.url === `${ORIGIN}/about`);
+    expect(about).toMatchObject({
+      url: `${ORIGIN}/about`,
+      finalUrl: `${ORIGIN}/about/`,
+      status: 'ok',
+    });
+    expect((about?.snapshot as { url?: string } | null)?.url).toBe(`${ORIGIN}/about/`);
+    expect(about?.responseMetadata).toMatchObject({ redirected: true, finalStatus: 200 });
+    expect(
+      fetchImpl.mock.calls.find(([input]) => String(input) === `${ORIGIN}/about`)?.[1],
+    ).toMatchObject({ redirect: 'follow', method: 'GET', credentials: 'omit' });
+  });
+
+  it('records browser redirect-loop network failures against the requested URL', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt'))
+        return Promise.resolve(new Response('', { status: 404 }) as unknown as Response);
+      if (url === `${ORIGIN}/`)
+        return Promise.resolve(htmlResponse('<a href="https://site.test/loop">loop</a>', url));
+      if (url === `${ORIGIN}/loop`)
+        return Promise.reject(new TypeError('Failed to fetch after redirect loop'));
+      return Promise.resolve(htmlResponse('', url));
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+    const page = (await listSitePages(sessionId)).find((item) => item.url === `${ORIGIN}/loop`);
+    expect(page).toMatchObject({
+      status: 'failed',
+      error: expect.stringContaining('redirect loop'),
+    });
+  });
+
   it('does not fetch a sitemap URL disallowed by robots.txt', async () => {
     const sitemap = 'https://site.test/private.xml';
     const fetchImpl = vi.fn((input: string | URL) => {
@@ -341,7 +400,7 @@ describe('runSiteAudit', () => {
     );
     expect(fetched).toHaveLength(2);
     for (const [, init] of fetched) {
-      expect(init).toMatchObject({ method: 'GET', credentials: 'omit', redirect: 'manual' });
+      expect(init).toMatchObject({ method: 'GET', credentials: 'omit', redirect: 'follow' });
     }
   });
 
@@ -404,10 +463,7 @@ describe('runSiteAudit', () => {
       if (url.endsWith('/robots.txt')) return Promise.resolve(jsonResponse(404));
       if (url === `${ORIGIN}/redirect`) {
         return Promise.resolve(
-          new Response('', {
-            status: 302,
-            headers: { location: 'https://elsewhere.test/final' },
-          }) as unknown as Response,
+          htmlResponse('<title>must not parse</title>', 'https://elsewhere.test/final', 200, true),
         );
       }
       return Promise.resolve(htmlResponse('<a href="https://site.test/redirect">r</a>', url));
@@ -423,6 +479,10 @@ describe('runSiteAudit', () => {
     const redirected = pages.find((page) => page.url === `${ORIGIN}/redirect`);
     expect(redirected?.status).toBe('skipped-external-redirect');
     expect(redirected?.finalUrl).toBe('https://elsewhere.test/final');
+    expect(redirected?.responseMetadata).toMatchObject({
+      redirectOffOrigin: true,
+      redirected: true,
+    });
     expect(fetchImpl.mock.calls.map(([input]) => String(input))).not.toContain(
       'https://elsewhere.test/final',
     );

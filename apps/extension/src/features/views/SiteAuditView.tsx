@@ -39,7 +39,9 @@ export function SiteAuditView() {
           <strong>Site mode performs network activity</strong>, unlike single-page mode: it fetches
           pages and <span className="font-mono">/robots.txt</span> from the one origin you approve
           (GET only, without cookies or credentials). Everything found is stored and analyzed
-          locally. Discovery never leaves that origin, and robots rules are honored.
+          locally. Robots rules are honored for discovered URLs. Redirects are followed by the
+          browser so canonical URLs can be inspected; a redirect may issue a request to another
+          origin before its final URL can be checked. Off-origin response bodies are discarded.
         </p>
       </div>
 
@@ -253,8 +255,13 @@ export function SiteAuditView() {
               >
                 <strong>Compared with previous audit of this origin:</strong>{' '}
                 {site.comparison.reason}{' '}
+                {site.comparison.partial ? (
+                  <strong className="block">
+                    Partial: coverage differed; removed-page conclusions are withheld.
+                  </strong>
+                ) : null}
                 {site.comparison.comparable ? (
-                  <span className="tabular-nums">
+                  <span className="block tabular-nums">
                     Pages {site.comparison.before.auditedPages}→{site.comparison.after.auditedPages}{' '}
                     ({site.comparison.deltas.auditedPages >= 0 ? '+' : ''}
                     {site.comparison.deltas.auditedPages}) · Errors{' '}
@@ -265,6 +272,28 @@ export function SiteAuditView() {
                     {site.comparison.deltas.totalWarnings >= 0 ? '+' : ''}
                     {site.comparison.deltas.totalWarnings})
                   </span>
+                ) : null}
+                {site.comparison.comparable ? (
+                  <div className="mt-2">
+                    <strong>Regressions ({site.comparison.regressions.length})</strong>
+                    {site.comparison.regressions.length ? (
+                      <ul className="list-inside list-disc">
+                        {site.comparison.regressions.map((item, index) => (
+                          <li key={`${item.kind}-${item.url ?? ''}-${index}`}>
+                            <span className="font-semibold">{item.severity}</span> {item.kind}:{' '}
+                            {item.url ?? ''} {item.detail}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>No regressions detected in comparable stored data.</p>
+                    )}
+                    <p>
+                      Resolved issues: {site.comparison.resolvedIssues.length}; added pages:{' '}
+                      {site.comparison.addedPages.length}; removed pages:{' '}
+                      {site.comparison.removedPages.length}.
+                    </p>
+                  </div>
                 ) : null}
               </div>
             ) : null}
@@ -312,7 +341,12 @@ export function SiteAuditView() {
               </button>
               {exportOpen && site.session && site.summary ? (
                 <ExportDialog
-                  site={{ session: site.session, pages: site.pages, summary: site.summary }}
+                  site={{
+                    session: site.session,
+                    pages: site.pages,
+                    summary: site.summary,
+                    comparison: site.comparison,
+                  }}
                   onClose={() => setExportOpen(false)}
                 />
               ) : null}
@@ -322,12 +356,14 @@ export function SiteAuditView() {
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50/60 text-left text-xs uppercase tracking-wide text-slate-500">
                     <th className="px-4 py-2 font-medium">URL</th>
+                    <th className="px-4 py-2 font-medium">Final URL</th>
                     <th className="px-4 py-2 font-medium">Status</th>
                     <th className="px-4 py-2 font-medium">Score</th>
                     <th className="px-4 py-2 font-medium">Err/Warn</th>
                     <th className="px-4 py-2 font-medium">Content type</th>
                     <th className="px-4 py-2 font-medium">Response ms</th>
                     <th className="px-4 py-2 font-medium">Redirects</th>
+                    <th className="px-4 py-2 font-medium">Redirect status</th>
                     <th className="px-4 py-2 font-medium">X-Robots-Tag</th>
                   </tr>
                 </thead>
@@ -337,7 +373,7 @@ export function SiteAuditView() {
                   ))}
                   {site.filteredPages.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-6 text-center text-sm text-slate-400">
+                      <td colSpan={10} className="px-4 py-6 text-center text-sm text-slate-400">
                         No pages {site.urlFilter ? 'match the filter' : 'yet'}.
                       </td>
                     </tr>
@@ -403,6 +439,14 @@ function PageRow({ page }: { page: SitePageRecord }) {
           {page.url}
         </span>
       </td>
+      <td className="max-w-96 px-4 py-2">
+        <span
+          className="block truncate font-mono text-xs text-slate-700"
+          title={page.finalUrl ?? ''}
+        >
+          {page.finalUrl ?? '—'}
+        </span>
+      </td>
       <td className="px-4 py-2">
         <span
           className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -440,6 +484,13 @@ function PageRow({ page }: { page: SitePageRecord }) {
         {page.responseMetadata?.redirectObservationUnavailable
           ? 'Unavailable'
           : (page.responseMetadata?.redirectChain.length ?? '—')}
+      </td>
+      <td className="px-4 py-2 text-xs text-slate-600">
+        {page.responseMetadata?.redirected
+          ? page.responseMetadata.redirectOffOrigin
+            ? 'Followed off-origin; body discarded'
+            : 'Redirect followed'
+          : 'No redirect observed'}
       </td>
       <td
         className="max-w-40 truncate px-4 py-2 text-xs text-slate-600"
@@ -566,6 +617,46 @@ function SiteSummaryPanel({ summary }: { summary: ReturnType<typeof useSiteAudit
           entries={(summary.orphanPages ?? []).map((url) => ({ key: url, label: url, detail: '' }))}
         />
         <section
+          className="rounded-lg border border-slate-200 p-4 md:col-span-2"
+          aria-labelledby="similarity-title"
+        >
+          <h3 id="similarity-title" className="font-semibold">
+            Duplicate similarity heuristics
+          </h3>
+          <p className="text-xs text-slate-600">
+            Similarity heuristic only, not a Google duplicate verdict. Body comparison skips pages
+            under 50 words.
+          </p>
+          {summary.duplicateClusters.length ? (
+            <ul className="mt-2 space-y-1 text-sm">
+              {summary.duplicateClusters.map((cluster, index) => (
+                <li key={`${cluster.kind}-${index}`}>
+                  <strong>{cluster.kind}</strong>: {cluster.urls.join(', ')} — {cluster.disposition}{' '}
+                  ({Math.round(cluster.similarity * 100)}%)
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm">No duplicate clusters found by these heuristics.</p>
+          )}
+        </section>
+        {summary.siteFindings.map((finding) => (
+          <section
+            key={finding.ruleId}
+            className="rounded-lg border border-sky-200 bg-sky-50 p-4 md:col-span-2"
+            aria-label={`${finding.severity}: ${finding.title}`}
+          >
+            <p className="text-sm font-semibold">
+              {finding.severity}: {finding.title}
+            </p>
+            <p className="mt-1 text-sm">{finding.detail}</p>
+            {finding.evidence ? (
+              <p className="mt-1 break-all text-xs">Evidence: {finding.evidence}</p>
+            ) : null}
+          </section>
+        ))}
+        <InternalLinkGraphPanel graph={summary.linkGraph} />
+        <section
           className="rounded-lg border border-slate-200 p-4"
           aria-labelledby="sitemap-results-title"
         >
@@ -643,6 +734,120 @@ function DistributionCell({
       <div className="text-sm font-bold tabular-nums">{value}</div>
       <div>{label}</div>
     </div>
+  );
+}
+
+function InternalLinkGraphPanel({ graph }: { graph: import('@vittix/seo-core').LinkGraph }) {
+  const [query, setQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'depth' | 'inbound' | 'outbound' | 'anchorDiversity'>(
+    'depth',
+  );
+  const nodes = graph.nodes
+    .filter((node) => node.url.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+    .slice()
+    .sort(
+      (a, b) =>
+        ((a[sortBy] ?? Number.MAX_SAFE_INTEGER) as number) -
+        ((b[sortBy] ?? Number.MAX_SAFE_INTEGER) as number),
+    );
+  const depths = Object.entries(graph.depthHistogram).sort(([a], [b]) => Number(a) - Number(b));
+  const max = Math.max(1, ...depths.map(([, count]) => count));
+  return (
+    <section
+      className="rounded-lg border border-slate-200 p-4 md:col-span-2"
+      aria-labelledby="link-graph-title"
+    >
+      <h3 id="link-graph-title" className="font-semibold">
+        Internal link graph
+      </h3>
+      <p className="text-xs text-slate-600">
+        Orphan analysis: {graph.orphanStatus}. An unchecked result means the crawl did not read
+        enough complete sources.
+      </p>
+      <svg
+        role="img"
+        aria-label="Pages by click depth"
+        viewBox={`0 0 ${Math.max(120, depths.length * 64)} 120`}
+        className="mt-2 h-28 w-full"
+        preserveAspectRatio="xMinYMid meet"
+      >
+        {depths.map(([depth, count], index) => (
+          <g key={depth}>
+            <rect
+              x={index * 64 + 8}
+              y={90 - (count / max) * 68}
+              width="36"
+              height={(count / max) * 68}
+              fill="#2563eb"
+            />
+            <text x={index * 64 + 26} y="108" textAnchor="middle" fontSize="11" fill="currentColor">
+              Depth {depth}
+            </text>
+            <text
+              x={index * 64 + 26}
+              y={82 - (count / max) * 68}
+              textAnchor="middle"
+              fontSize="11"
+              fill="currentColor"
+            >
+              {count}
+            </text>
+          </g>
+        ))}
+      </svg>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <label className="text-xs">
+          Filter pages{' '}
+          <input
+            className="ml-1 rounded border px-2 py-1"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </label>
+        <label className="text-xs">
+          Sort by{' '}
+          <select
+            className="ml-1 rounded border px-2 py-1"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+          >
+            <option value="depth">Depth</option>
+            <option value="inbound">Inbound links</option>
+            <option value="outbound">Outbound links</option>
+            <option value="anchorDiversity">Anchor diversity</option>
+          </select>
+        </label>
+      </div>
+      <div className="mt-2 overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <thead>
+            <tr>
+              <th scope="col">Page</th>
+              <th scope="col">Depth</th>
+              <th scope="col">Inbound</th>
+              <th scope="col">Outbound</th>
+              <th scope="col">Anchor diversity</th>
+            </tr>
+          </thead>
+          <tbody>
+            {nodes.slice(0, 200).map((node) => (
+              <tr key={node.url}>
+                <td className="max-w-80 truncate" title={node.url}>
+                  {node.url}
+                </td>
+                <td>{node.depth ?? 'Unreachable'}</td>
+                <td>{node.inbound}</td>
+                <td>{node.outbound}</td>
+                <td>{Math.round(node.anchorDiversity * 100)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-xs">
+        {graph.edges.length} internal edges. CSV includes nodes and up to 5,000 edges.
+      </p>
+    </section>
   );
 }
 

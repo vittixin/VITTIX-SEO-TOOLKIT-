@@ -78,6 +78,9 @@ describe('sitePagesToCsv', () => {
       result: null,
       responseMetadata: null,
       responseFindings: [],
+      normalizedTextHash: null,
+      simhash64: null,
+      similarityWordCount: 0,
       ...overrides,
     };
   }
@@ -99,10 +102,8 @@ describe('sitePagesToCsv', () => {
       makePage({ url: 'https://site.test/dead', status: 'failed', httpStatus: 404 }),
     ]);
     const lines = csv.split('\r\n');
-    expect(lines[0]).toBe(
-      'url,finalUrl,status,httpStatus,depth,score,errors,warnings,incomplete,contentType,contentLength,contentEncoding,durationMs,redirectCount,redirectObservationUnavailable,xRobotsTag,cacheControl,hasHsts,hasCsp,hasXContentTypeOptions,hasReferrerPolicy,hasFrameProtection,sitemapStatus,sitemapLastmod,sitemapChecked,sitemapNotCrawledCount,sitemapCrawledAbsentCount,sitemapAbsentStatus,sitemapInvalidLastmodCount,sitemapDuplicateCount,sitemapCrossOriginIgnored,sitemapWarnings,recordType,sitemapUrl',
-    );
-    expect(lines).toHaveLength(4); // header + 2 rows + trailing CRLF
+    expect(lines[0]).toContain('graphFrom,graphTo,graphAnchor,graphNofollow');
+    expect(lines).toHaveLength(5); // header + 2 page rows + one graph node + trailing CRLF
     expect(lines[1]).toContain('https://site.test/a,https://site.test/a,ok,200,0,88,0,0,no');
     // A failed page has no finalUrl (empty field) and no score.
     expect(lines[2]).toContain('https://site.test/dead,,failed,404,0,,0,0,no');

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { extensionPageUrl, loadExtension } from './helpers/extension';
 
 /**
@@ -308,6 +308,107 @@ test('site audit: consent → crawl → summary → export', async () => {
     await expect(dashboard.getByTestId('site-url-filter')).toBeVisible();
     await expect(dashboard.locator('text=skipped-robots').first()).toBeVisible();
     await expect(dashboard.locator('text=failed-auth').first()).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+
+test('site audit against a real local HTTPS server: robots, gzip sitemap, redirect, headers and slow response', async () => {
+  test.setTimeout(120_000);
+  const { port } = JSON.parse(
+    readFileSync(resolve(import.meta.dirname, '../test-results/local-server/state.json'), 'utf8'),
+  ) as { port: number };
+  const origin = `https://fixture.test:${port}`;
+  const { context, extensionId } = await loadExtension('e2e', [
+    '--use-fake-ui-for-permission-flow',
+    '--host-resolver-rules=MAP fixture.test 127.0.0.1',
+    '--ignore-certificate-errors',
+  ]);
+  try {
+    const dashboard = await context.newPage();
+    await dashboard.goto(extensionPageUrl(extensionId, 'dashboard.html'));
+    await dashboard.getByTestId('nav-site').click();
+    await dashboard.getByTestId('site-origin-input').fill(origin);
+    await dashboard.getByTestId('site-grant').click();
+    await expect(dashboard.getByTestId('site-consent')).toBeVisible({ timeout: 10000 });
+    const readableHeaders = await dashboard.evaluate(async (base) => {
+      const response = await fetch(`${base}/about/`, { method: 'GET', credentials: 'omit' });
+      return [
+        'content-type',
+        'content-length',
+        'content-encoding',
+        'x-robots-tag',
+        'cache-control',
+        'strict-transport-security',
+        'content-security-policy',
+        'x-content-type-options',
+        'referrer-policy',
+        'x-frame-options',
+      ].map((name) => [name, response.headers.get(name)]);
+    }, origin);
+    expect(Object.fromEntries(readableHeaders)).toMatchObject({
+      'content-type': 'text/html',
+      'content-encoding': 'identity',
+      'x-robots-tag': 'noindex',
+      'cache-control': 'no-cache',
+      'strict-transport-security': 'max-age=31536000',
+      'content-security-policy': "default-src 'self'",
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer',
+      'x-frame-options': 'DENY',
+    });
+    await dashboard.getByTestId('site-start').click();
+    await expect(dashboard.getByTestId('site-summary')).toBeVisible({ timeout: 45000 });
+    await expect(dashboard.getByTestId('site-cancel')).toHaveCount(0, { timeout: 45000 });
+    const state = await dashboard.evaluate(async () => {
+      const request = indexedDB.open('vittix-seo');
+      const database = await new Promise<IDBDatabase>((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const [pages, sessions] = await Promise.all([
+        new Promise<Record<string, unknown>[]>((resolve, reject) => {
+          const get = database.transaction('sitePages').objectStore('sitePages').getAll();
+          get.onsuccess = () => resolve(get.result);
+          get.onerror = () => reject(get.error);
+        }),
+        new Promise<Record<string, unknown>[]>((resolve, reject) => {
+          const get = database.transaction('siteAudits').objectStore('siteAudits').getAll();
+          get.onsuccess = () => resolve(get.result);
+          get.onerror = () => reject(get.error);
+        }),
+      ]);
+      database.close();
+      return { pages, sessions };
+    });
+    expect(
+      state.pages.some(
+        (row) => String(row.url).endsWith('/about') && String(row.finalUrl).endsWith('/about/'),
+      ),
+    ).toBe(true);
+    const about = state.pages.find(
+      (row) => String(row.url).endsWith('/about') && row.status === 'ok',
+    ) as { responseMetadata?: Record<string, unknown> } | undefined;
+    expect(about?.responseMetadata).toMatchObject({
+      xRobotsTag: 'noindex',
+      hasHsts: true,
+      hasCsp: true,
+      hasXContentTypeOptions: true,
+      hasReferrerPolicy: true,
+      hasFrameProtection: true,
+    });
+    const slow = state.pages.find((row) => String(row.url).endsWith('/slow')) as
+      { responseMetadata?: { durationMs?: number | null } } | undefined;
+    expect(slow?.responseMetadata?.durationMs).toBeGreaterThanOrEqual(2000);
+    const sitemap = (state.sessions[0]?.sitemap ?? {}) as {
+      fullyRead?: boolean;
+      entries?: { url: string }[];
+    };
+    expect(sitemap.fullyRead).toBe(true);
+    expect(sitemap.entries?.some((entry) => entry.url.endsWith('/about/'))).toBe(true);
+    expect(
+      state.pages.some((row) => String(row.url).endsWith('/loop-a') && row.status === 'failed'),
+    ).toBe(true);
   } finally {
     await context.close();
   }

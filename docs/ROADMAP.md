@@ -1,5 +1,14 @@
 # Roadmap
 
+## Phase C status update (2026-11-01)
+
+Phase C part 1 and the requested part 2 features cover response metadata,
+sitemap discovery, bounded duplicate similarity heuristics, an internal link
+graph, and stored site-audit regressions. Browser-follow redirect behavior
+weakens the prior strict same-origin network guarantee: a redirected
+destination can receive a request before the extension can inspect it. See
+SITE_AUDIT.md for the threat-model details.
+
 ## Snapshot schema v5 (Phase A follow-up, 2026-11-01)
 
 - Added defaulted `textSummary.syllableCount` and `textSummary.leadText` for

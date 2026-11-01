@@ -7,13 +7,13 @@ blockers, not config options).
 
 ## Trust boundary summary
 
-| Property                          | Single-page mode (default)           | Site mode (opt-in)                                                               |
-| --------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------- |
-| Network requests by the extension | **zero**                             | **only to the approved origin** (page fetches + that origin's `/robots.txt`)     |
-| Permissions granted at install    | `activeTab`, `scripting`             | unchanged                                                                        |
-| Additional grants                 | none                                 | one exact origin, requested at runtime (`chrome.permissions.request`), revocable |
-| Where the crawl runs              | background service worker (one-shot) | **the dashboard page** (must stay open)                                          |
-| Durable state                     | audits table                         | site sessions + pages tables (IndexedDB)                                         |
+| Property                          | Single-page mode (default)           | Site mode (opt-in)                                                                                        |
+| --------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| Network requests by the extension | **zero**                             | Starts at the approved origin; browser-follow redirects may issue cross-origin requests before inspection |
+| Permissions granted at install    | `activeTab`, `scripting`             | unchanged                                                                                                 |
+| Additional grants                 | none                                 | one exact origin, requested at runtime (`chrome.permissions.request`), revocable                          |
+| Where the crawl runs              | background service worker (one-shot) | **the dashboard page** (must stay open)                                                                   |
+| Durable state                     | audits table                         | site sessions + pages tables (IndexedDB)                                                                  |
 
 ## Permission request and revocation lifecycle
 
@@ -53,14 +53,13 @@ blockers, not config options).
 - The normalized URL is the dedup key; each URL is fetched at most once per
   session. A URL discovered again is recorded as `skipped-duplicate`.
 
-## Same-origin restrictions
+## Same-origin URL queue
 
 - Only URLs whose scheme+host+port equal the approved origin are enqueued.
-- Redirects are followed by the browser, but the **final URL** is checked:
-  a redirect that leaves the origin is recorded (`skipped-external-redirect`)
-  and its content is not parsed.
-- Sub-origin links (`cdn.example.com`, other schemes) are recorded in the
-  internal-link summary but never fetched.
+- Redirects are browser-followed as described below. This means the strict
+  same-origin network property does not hold across redirect destinations.
+- Sub-origin links (`cdn.example.com`, other schemes) discovered in page links
+  are not enqueued.
 
 ## Page-count, depth and size limits
 
@@ -80,27 +79,33 @@ blockers, not config options).
   `Crawl-delay`, whichever is larger) is enforced in the crawler loop.
 - No parallel burst behavior: requests are paced from a single loop.
 
-## Redirect behavior
+## Redirect behavior and threat-model change
 
-- In the E2E Chromium extension-page probe, a 302 requested with
-  `redirect: "manual"` produced `type: "opaqueredirect"`, `status: 0`, and
-  no readable `Location` header. The crawler therefore uses manual redirect
-  mode, records an opaque redirect observation, and does **not** follow it.
-  It cannot truthfully report a final URL or hop status in this browser. The
-  page is marked failed with an explicit observation-unavailable reason.
-  This deliberately sacrifices redirect traversal to ensure the browser
-  never fetches an unchecked cross-origin redirect target.
-- Redirect metadata can still be recorded when a browser exposes a basic
-  same-origin redirect response: up to 10 hops, each path is rechecked against
-  robots, the exact origin permission is rechecked, the request is paced, and
-  cross-origin destinations are recorded but never fetched.
+- The extension-page probe confirmed `redirect: "manual"` produces an opaque
+  response (`opaqueredirect`, status 0, no readable `Location`) for a redirect.
+  To crawl canonical trailing-slash and scheme redirects, page requests now use
+  `redirect: "follow"`. The browser exposes `response.redirected` and
+  `response.url`, but not individual hop statuses, chain length, or intermediate
+  destinations.
+- **Important threat-model limitation:** with `redirect: "follow"`, Chromium
+  has already issued the request to the redirect destination before the
+  extension can inspect the final URL. A redirect can therefore cause a
+  cross-origin request that this crawler could not independently re-check
+  against the origin permission, robots policy, or pacing gate. The final
+  response body is discarded without parsing when `response.url` is off-origin,
+  but that does not undo the request. Use this mode only with that limitation
+  understood; it weakens the previous same-origin-only network guarantee.
+- Browser redirect-loop/network errors are recorded as failed page fetches.
+  The browser controls its own redirect limit; Fetch does not offer a setting
+  for a crawler-specific 10-hop limit. The final URL and redirect presence are
+  recorded when observable; hop count and temporary/permanent status are not.
 
 ### Response-header readability probe
 
 Verified with `e2e/siteaudit.spec.ts` on Chromium 2026-11-01. The probe
-fetches a routed local fixture from the extension dashboard after granting
-that exact fixture origin. It returns a normal `basic` 200 response. The
-following response headers were readable through `Response.headers.get()`:
+fetches a real local HTTPS server from the extension dashboard after
+granting that exact fixture origin. It returns a normal `basic` 200 response.
+The following response headers were readable through `Response.headers.get()`:
 
 | Header                                                      | Readable in extension page |
 | ----------------------------------------------------------- | -------------------------- |
@@ -252,3 +257,9 @@ and equally affects any browser fetch. No proxying of any kind exists.
 ## Sitemap discovery and bounds
 
 Sitemap discovery reads same-origin Sitemap: declarations from robots.txt and falls back to /sitemap.xml. It parses XML in the extension dashboard only; XML parse failures are stored as warnings. Index recursion is capped at depth 2, entries at 50,000, each decompressed sitemap at 10 MB, and aggregate decompressed data at 50 MB. Gzip is decompressed as a stream and stopped at the same caps. Cross-origin sitemap URLs are counted and ignored. Redirects are requested manually and never followed when location is opaque or off-origin. Every sitemap request is GET-only, credential-free, paced, robots-checked, and preceded by an origin permission check. Sitemap URLs are only added to the crawl queue when the operator selects Seed crawl from sitemap; discovery itself is still reported. Partial reads never claim crawled URLs are absent from the sitemap.
+
+## Phase C3/C4 bounded analysis
+
+Duplicate heuristics use only the first 50,000 characters of visible text at crawl time. A normalized text hash identifies exact normalized matches; a 64-bit SimHash over word trigrams uses Hamming distance <= 3 for near-body similarity. Pages below 50 words are skipped for body comparison. Titles and descriptions use token Jaccard >= 0.9. Clusters are deterministic and bounded to 50 pages (O(n^2)); the selected primary is the lexically first URL. A non-primary canonical pointing to that primary is labeled properly consolidated; otherwise the cluster is a warning candidate. Noindex pages are excluded. These are similarity heuristics, not a Google duplicate verdict.
+
+The internal link graph is derived from stored crawled pages, follows final URLs for redirected pages, and caps anchor text at 2,048 characters. Orphan results are unchecked unless the crawl completed and sitemap evidence was fully read. Nodes and edges are available in CSV; edge export is capped at 5,000 with a truncation note. Site comparisons use stored records only and require matching rule-set and profile identifiers. Incomplete/capped audits are labeled partial and never claim removed pages.

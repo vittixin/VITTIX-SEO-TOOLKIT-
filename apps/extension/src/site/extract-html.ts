@@ -13,6 +13,41 @@ import {
 
 export type SiteExtractorLimits = ExtractorLimits;
 
+/** Visible text used only to compute bounded hashes; raw text is not persisted. */
+export function extractVisibleTextForSimilarity(html: string, charLimit = 50_000): string {
+  const doc = new DOMParser().parseFromString(html.slice(0, 2_000_000), 'text/html');
+  const parts: string[] = [];
+  const hidden = (el: Element): boolean => {
+    if (el.closest('[hidden], [aria-hidden="true"]')) return true;
+    const style = (el.getAttribute('style') ?? '').toLowerCase();
+    return (
+      /(^|;)\s*display\s*:\s*none/.test(style) || /(^|;)\s*visibility\s*:\s*hidden/.test(style)
+    );
+  };
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  let size = 0;
+  while (node && size < charLimit) {
+    let parent = node.parentElement;
+    let skip = false;
+    while (parent) {
+      if (hidden(parent) || ['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(parent.tagName)) {
+        skip = true;
+        break;
+      }
+      parent = parent.parentElement;
+    }
+    const chunk = (node.nodeValue ?? '').replace(/\s+/g, ' ').trim();
+    if (!skip && chunk) {
+      const clipped = chunk.slice(0, charLimit - size);
+      parts.push(clipped);
+      size += clipped.length + 1;
+    }
+    node = walker.nextNode();
+  }
+  return parts.join(' ').replace(/\s+/g, ' ').trim().slice(0, charLimit);
+}
+
 /**
  * Snapshot extraction for FETCHED HTML (site mode).
  *

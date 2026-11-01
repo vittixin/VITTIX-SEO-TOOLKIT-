@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — Phase C redirect observations, duplicate heuristics, link graph, and comparisons
+
+- Page fetches now follow browser redirects, record requested/final URLs, discard off-origin response bodies, and report redirect presence, off-origin destinations, and internal-link hygiene. Individual redirect hops remain unobservable; Chromium may issue a cross-origin destination request before the extension can inspect it.
+- Added Dexie v7 redirect outcome fields, v8 bounded duplicate hashes (normalized text hash, 64-bit SimHash, word count), and v9 session-frozen profile/rule settings. Legacy rows validate with defaults.
+- Added deterministic duplicate similarity heuristics and an internal link graph with click depth, inbound/outbound counts, anchor diversity, and evidence-gated orphan status. Site reports and CSV include these summaries.
+- Site comparisons now gate by rule-set and scoring profile and expose stored-data regressions with incomplete-coverage labeling.
+- Rule set bumped to v0.8.0; removed `redirect-chain-long` and `redirect-temporary`, added `redirect-present`, `redirect-off-origin`, and `redirect-in-internal-links`.
+
 ### Added — Phase C Part 1 response metadata (rule set v0.6.0)
 
 - Site crawls capture bounded response headers, status, redirects when

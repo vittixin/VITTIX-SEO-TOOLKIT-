@@ -35,6 +35,10 @@ function makeSession(overrides: Partial<SiteSession> = {}): SiteSession {
     },
     seedFromSitemap: false,
     ruleSetVersion: RULE_SET_VERSION,
+    profileId: 'standard',
+    ignoredRuleIds: [],
+    unignoredRuleIds: [],
+    severityOverrides: {},
     stopReason: null,
     ...overrides,
   };
@@ -55,6 +59,9 @@ function makePage(overrides: Partial<SitePageRecord>): SitePageRecord {
     result: null,
     responseMetadata: null,
     responseFindings: [],
+    normalizedTextHash: null,
+    simhash64: null,
+    similarityWordCount: 0,
     ...overrides,
   };
 }

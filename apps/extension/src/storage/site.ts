@@ -12,6 +12,11 @@ import {
 } from '@vittix/shared';
 import { db } from './db';
 import { diffSitemap } from '@vittix/seo-core';
+import {
+  detectDuplicateClusters,
+  buildInternalLinkGraph,
+  analyzeInternalRedirectLinks,
+} from '@vittix/seo-core';
 
 /**
  * Durable site-audit state (crawl state lives in IndexedDB — never in a
@@ -137,6 +142,8 @@ export interface SitePageSummary {
   contentType: string | null;
   responseTimeMs: number | null;
   redirectCount: number | null;
+  redirected: boolean;
+  redirectOffOrigin: boolean;
   xRobotsTag: string | null;
 }
 
@@ -174,6 +181,9 @@ export interface SiteSummary {
   incomplete: boolean;
   pages: SitePageSummary[];
   sitemap: ReturnType<typeof diffSitemap>;
+  duplicateClusters: ReturnType<typeof detectDuplicateClusters>;
+  linkGraph: ReturnType<typeof buildInternalLinkGraph>;
+  siteFindings: ReturnType<typeof analyzeInternalRedirectLinks>;
 }
 
 /**
@@ -182,6 +192,51 @@ export interface SiteSummary {
  */
 export function buildSiteSummary(session: SiteSession, pages: SitePageRecord[]): SiteSummary {
   const okPages = pages.filter((page) => page.status === 'ok' && page.snapshot && page.result);
+  const similarityPages = okPages.map((page) => {
+    const snapshot = page.snapshot as PageSnapshot;
+    const robots =
+      `${snapshot.meta.robots ?? ''} ${page.responseMetadata?.xRobotsTag ?? ''}`.toLowerCase();
+    return {
+      url: page.finalUrl ?? page.url,
+      title: snapshot.title,
+      description: snapshot.meta.description,
+      canonical: snapshot.meta.canonical,
+      noindex: /\b(?:noindex|none)\b/.test(robots),
+      normalizedTextHash: page.normalizedTextHash,
+      simhash64: page.simhash64,
+      wordCount: page.similarityWordCount,
+    };
+  });
+  const duplicateClusters = detectDuplicateClusters(similarityPages);
+  const linkGraph = buildInternalLinkGraph(
+    okPages.map((page) => ({
+      url: page.url,
+      finalUrl: page.finalUrl,
+      depth: page.depth,
+      links: (page.snapshot as PageSnapshot).links.map((link) => ({
+        url: resolveDiscoveredLink(link.href, page.finalUrl ?? page.url),
+        text: link.text,
+        rel: link.rel,
+      })),
+    })),
+    normalizeDiscoveredLink(session.origin) ?? session.origin,
+    session.status === 'completed' &&
+      pages.length < session.maxPages &&
+      !pages.some((page) => page.status === 'pending') &&
+      Boolean(session.sitemap?.fullyRead),
+  );
+  const redirectedUrls = new Set(
+    okPages.filter((page) => page.finalUrl && page.finalUrl !== page.url).map((page) => page.url),
+  );
+  const siteFindings = analyzeInternalRedirectLinks(
+    okPages.map((page) => ({
+      url: page.url,
+      links: (page.snapshot as PageSnapshot).links.map((link) => ({
+        url: resolveDiscoveredLink(link.href, page.finalUrl ?? page.url),
+      })),
+    })),
+    redirectedUrls,
+  );
   const titleMap = new Map<string, string[]>();
   const descriptionMap = new Map<string, string[]>();
   const missingTitle: string[] = [];
@@ -344,6 +399,8 @@ export function buildSiteSummary(session: SiteSession, pages: SitePageRecord[]):
         redirectCount: page.responseMetadata?.redirectObservationUnavailable
           ? null
           : (page.responseMetadata?.redirectChain.length ?? 0),
+        redirected: page.responseMetadata?.redirected ?? false,
+        redirectOffOrigin: page.responseMetadata?.redirectOffOrigin ?? false,
         xRobotsTag: page.responseMetadata?.xRobotsTag ?? null,
       };
     }),
@@ -370,6 +427,9 @@ export function buildSiteSummary(session: SiteSession, pages: SitePageRecord[]):
           };
         }),
     }),
+    duplicateClusters,
+    linkGraph,
+    siteFindings,
   };
 }
 
@@ -382,5 +442,13 @@ function normalizeDiscoveredLink(href: string): string | null {
     return parsed.href;
   } catch {
     return null;
+  }
+}
+
+function resolveDiscoveredLink(href: string, base: string): string {
+  try {
+    return normalizeDiscoveredLink(new URL(href, base).href) ?? href;
+  } catch {
+    return href;
   }
 }

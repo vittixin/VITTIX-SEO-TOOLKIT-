@@ -35,6 +35,9 @@ export const SiteResponseMetadataSchema = z.object({
   finalStatus: z.number().int().min(100).max(599).nullable().default(null),
   redirectChain: z.array(RedirectHopSchema).max(10).default([]),
   redirectObservationUnavailable: z.boolean().default(false),
+  redirected: z.boolean().default(false),
+  redirectOffOrigin: z.boolean().default(false),
+  redirectFinalUrl: z.string().max(2048).nullable().default(null),
   contentType: z.string().max(2048).nullable().default(null),
   contentLength: z.number().int().nonnegative().nullable().default(null),
   contentEncoding: z.string().max(256).nullable().default(null),
@@ -86,6 +89,10 @@ export const SiteSessionSchema = z.object({
   stopRequested: z.boolean().default(false),
   /** Rule set in effect when the session started (comparison gate). */
   ruleSetVersion: z.string().optional(),
+  profileId: z.string().default('standard'),
+  ignoredRuleIds: z.array(z.string()).max(200).default([]),
+  unignoredRuleIds: z.array(z.string()).max(200).default([]),
+  severityOverrides: z.record(z.string(), z.enum(['error', 'warn', 'info'])).default({}),
   sitemap: SitemapStateSchema.default({
     entries: [],
     fullyRead: false,
@@ -123,6 +130,18 @@ export const SitePageRecordSchema = z.object({
   responseMetadata: SiteResponseMetadataSchema.nullable().default(null),
   /** Site-only response rules for pages that cannot be parsed as HTML. */
   responseFindings: z.array(FindingSchema).default([]),
+  /** Hashes only; raw page text is never retained for duplicate analysis. */
+  normalizedTextHash: z
+    .string()
+    .regex(/^[0-9a-f]{16}$/)
+    .nullable()
+    .default(null),
+  simhash64: z
+    .string()
+    .regex(/^[0-9a-f]{16}$/)
+    .nullable()
+    .default(null),
+  similarityWordCount: z.number().int().nonnegative().default(0),
 });
 export type SitePageRecord = z.infer<typeof SitePageRecordSchema>;
 /** Input shape: fields with schema defaults may be omitted on write. */

@@ -17,6 +17,7 @@ import {
   deleteSiteSession,
 } from '@/src/storage/site';
 import { getSettings as loadSettings } from '@/src/storage/settings';
+import { getOriginRuleSettings } from '@/src/storage/rule-settings';
 
 type Phase = 'setup' | 'running' | 'finished';
 
@@ -175,6 +176,7 @@ export function useSiteAudit() {
     setError(null);
     try {
       const settings = await loadSettings();
+      const ruleSettings = await getOriginRuleSettings(grantedOrigin);
       const sessionId = await createSiteSession({
         origin: grantedOrigin,
         status: 'running',
@@ -184,6 +186,10 @@ export function useSiteAudit() {
         concurrency: SITE_LIMITS.concurrencyDefault,
         delayMs: Math.max(settings.siteAuditDelayMs, SITE_LIMITS.delayMsFloor),
         ruleSetVersion: RULE_SET_VERSION,
+        profileId: ruleSettings.profileId,
+        ignoredRuleIds: ruleSettings.ignoredRuleIds,
+        unignoredRuleIds: ruleSettings.unignoredRuleIds,
+        severityOverrides: ruleSettings.severityOverrides,
         seedFromSitemap,
       });
       setPhase('running');

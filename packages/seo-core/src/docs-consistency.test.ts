@@ -34,6 +34,7 @@ describe('PRE-STEP: documentation consistency', () => {
     'analyzers/technical.ts',
     'analyzers/structured-data.ts',
     'analyzers/response.ts',
+    'analyzers/site-graph.ts',
   ].map((relative) => readFileSync(resolve(SEO_CORE_ROOT, 'src', relative), 'utf8'));
 
   it('documents every RULE_IDS entry in docs/SEO_RULES.md', () => {
@@ -61,7 +62,7 @@ describe('PRE-STEP: documentation consistency', () => {
   });
 
   it('keeps documented verification counts aligned with the last real run', () => {
-    expect(productSpec).toContain('353 unit tests');
+    expect(productSpec).toContain('376 unit tests');
     expect(productSpec).toContain('11 Playwright E2E tests');
   });
 

@@ -112,9 +112,13 @@ Verified against the final production build (`pnpm build:chrome`, 2026-10-31):
   which the extension never renders — zero requests are made. (Strings
   like `tinyurl.com`/`bit.ly` in the bundle are Dexie/React error-message
   documentation links, never fetched.)
-- **Site-mode requests**: only `GET <approved-origin>/…` and
-  `GET <approved-origin>/robots.txt`, credentials omitted; enforced by the
-  per-fetch origin gate and verified by unit + E2E tests.
+- **Site-mode requests**: requests start at approved-origin URLs and use
+  `GET` with credentials omitted. Page fetches use browser-managed redirect
+  following because extension-page Fetch returns opaque manual redirects.
+  The browser can issue a cross-origin destination request before Vittix can
+  inspect `response.url`; off-origin bodies are discarded without parsing.
+  The extension cannot re-check permission, robots, or pacing for those
+  browser-followed destinations. Robots and sitemap redirects fail closed.
 - **Permissions**: install-time grants remain exactly `activeTab` +
   `scripting` (CI-verified); `optional_host_permissions` is a grant
   catalog — one exact origin per user approval, revocable, re-verified
@@ -126,3 +130,11 @@ Verified against the final production build (`pnpm build:chrome`, 2026-10-31):
 ### Site audit sitemaps
 
 When site audit runs, same-origin robots.txt sitemap declarations (or /sitemap.xml fallback) may be fetched and stored locally. The locally stored sitemap state is bounded to 50,000 entries and contains URLs, lastmod values, alternates, counts, and truncation warnings. Cross-origin entries are counted and discarded. No sitemap data is sent elsewhere.
+
+### Duplicate and link-graph data
+
+Site pages retain a normalized text hash, a 64-bit SimHash, and a word count
+for bounded duplicate heuristics. The crawler computes these from at most the
+first 50,000 characters of visible body text and does not persist the body
+text for this feature. Reports and exports may include cluster URLs and link
+edges; page-derived strings are escaped and CSV values are formula guarded.

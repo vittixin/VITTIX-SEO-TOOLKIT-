@@ -8,6 +8,9 @@ const metadata = (overrides: Partial<SiteResponseMetadata> = {}): SiteResponseMe
   finalStatus: 200,
   redirectChain: [],
   redirectObservationUnavailable: false,
+  redirected: false,
+  redirectOffOrigin: false,
+  redirectFinalUrl: null,
   contentType: 'text/html; charset=utf-8',
   contentLength: 100,
   contentEncoding: null,
@@ -30,8 +33,9 @@ describe('site-only response metadata rules', () => {
   it('does not add response rules to single-page analysis', () => {
     const ids = analyzeSnapshot(buildSnapshot()).findings.map((finding) => finding.ruleId);
     for (const id of [
-      'redirect-chain-long',
-      'redirect-temporary',
+      'redirect-present',
+      'redirect-off-origin',
+      'redirect-in-internal-links',
       'x-robots-noindex-header',
       'non-html-content-type',
       'slow-response',
@@ -40,16 +44,24 @@ describe('site-only response metadata rules', () => {
       expect(ids).not.toContain(id);
   });
 
-  it('warns only when more than two redirects are observable and reports temporary redirects as info', () => {
-    const hops = [301, 302, 307].map((status, index) => ({
-      url: `https://example.test/${index}`,
-      status,
-      location: `/${index + 1}`,
-      opaque: false,
-    }));
-    const findings = analyzeResponseMetadata(null, metadata({ redirectChain: hops }));
-    expect(find(findings, 'redirect-chain-long')?.severity).toBe('warn');
-    expect(find(findings, 'redirect-temporary')?.severity).toBe('info');
+  it('reports the observable final URL and off-origin destination without hop claims', () => {
+    const findings = analyzeResponseMetadata(
+      null,
+      metadata({ redirected: true, redirectFinalUrl: 'https://example.test/about/' }),
+    );
+    expect(find(findings, 'redirect-present')?.severity).toBe('info');
+    expect(find(findings, 'redirect-present')?.evidence).toBe('https://example.test/about/');
+    expect(find(findings, 'redirect-chain-long')).toBeUndefined();
+    expect(find(findings, 'redirect-temporary')).toBeUndefined();
+    const offOrigin = analyzeResponseMetadata(
+      null,
+      metadata({
+        redirected: true,
+        redirectOffOrigin: true,
+        redirectFinalUrl: 'https://elsewhere.test/',
+      }),
+    );
+    expect(find(offOrigin, 'redirect-off-origin')?.severity).toBe('warn');
   });
 
   it('omits redirect results when extension fetch exposes an opaque redirect', () => {

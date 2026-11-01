@@ -6,6 +6,7 @@ export class PacedRunner {
   private readonly queue: (() => void)[] = [];
   private inFlight = 0;
   private lastStart = 0;
+  private paceQueue: Promise<void> = Promise.resolve();
   private stopped = false;
 
   constructor(
@@ -23,6 +24,18 @@ export class PacedRunner {
 
   get isStopped(): boolean {
     return this.stopped;
+  }
+
+  /** Pace an additional HTTP request such as a manually observed redirect hop. */
+  async pace(): Promise<void> {
+    const task = this.paceQueue.then(async () => {
+      const elapsed = Date.now() - this.lastStart;
+      if (this.lastStart > 0 && elapsed < this.minIntervalMs)
+        await this.delay(this.minIntervalMs - elapsed);
+      this.lastStart = Date.now();
+    });
+    this.paceQueue = task.catch(() => {});
+    await task;
   }
 
   /**
@@ -48,11 +61,7 @@ export class PacedRunner {
       await new Promise<void>((resolve) => this.queue.push(resolve));
     }
     this.inFlight += 1;
-    const elapsed = Date.now() - this.lastStart;
-    if (elapsed < this.minIntervalMs) {
-      await this.delay(this.minIntervalMs - elapsed);
-    }
-    this.lastStart = Date.now();
+    await this.pace();
   }
 
   private release(): void {

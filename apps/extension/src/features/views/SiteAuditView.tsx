@@ -276,6 +276,23 @@ export function SiteAuditView() {
                 aria-label="Filter audited URLs"
                 className="min-w-56 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
               />
+              <label className="sr-only" htmlFor="site-response-filter">
+                Filter response metadata
+              </label>
+              <select
+                id="site-response-filter"
+                aria-label="Filter response metadata"
+                value={site.responseFilter}
+                onChange={(event) =>
+                  site.setResponseFilter(event.target.value as typeof site.responseFilter)
+                }
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
+              >
+                <option value="all">All responses</option>
+                <option value="slow">Slow responses (≥2 s)</option>
+                <option value="non-html">Non-HTML</option>
+                <option value="redirected">Redirects</option>
+              </select>
               <button
                 type="button"
                 data-testid="site-open-export-dialog"
@@ -299,6 +316,10 @@ export function SiteAuditView() {
                     <th className="px-4 py-2 font-medium">Status</th>
                     <th className="px-4 py-2 font-medium">Score</th>
                     <th className="px-4 py-2 font-medium">Err/Warn</th>
+                    <th className="px-4 py-2 font-medium">Content type</th>
+                    <th className="px-4 py-2 font-medium">Response ms</th>
+                    <th className="px-4 py-2 font-medium">Redirects</th>
+                    <th className="px-4 py-2 font-medium">X-Robots-Tag</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -307,7 +328,7 @@ export function SiteAuditView() {
                   ))}
                   {site.filteredPages.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-400">
+                      <td colSpan={8} className="px-4 py-6 text-center text-sm text-slate-400">
                         No pages {site.urlFilter ? 'match the filter' : 'yet'}.
                       </td>
                     </tr>
@@ -393,6 +414,29 @@ function PageRow({ page }: { page: SitePageRecord }) {
             ⚠
           </span>
         ) : null}
+      </td>
+      <td
+        className="max-w-48 truncate px-4 py-2 text-xs text-slate-600"
+        title={page.responseMetadata?.contentType ?? ''}
+      >
+        {page.responseMetadata?.contentType ?? '—'}
+      </td>
+      <td className="px-4 py-2 text-xs tabular-nums text-slate-600">
+        {page.responseMetadata?.durationMs === null ||
+        page.responseMetadata?.durationMs === undefined
+          ? '—'
+          : Math.round(page.responseMetadata.durationMs)}
+      </td>
+      <td className="px-4 py-2 text-xs tabular-nums text-slate-600">
+        {page.responseMetadata?.redirectObservationUnavailable
+          ? 'Unavailable'
+          : (page.responseMetadata?.redirectChain.length ?? '—')}
+      </td>
+      <td
+        className="max-w-40 truncate px-4 py-2 text-xs text-slate-600"
+        title={page.responseMetadata?.xRobotsTag ?? ''}
+      >
+        {page.responseMetadata?.xRobotsTag ?? '—'}
       </td>
     </tr>
   );

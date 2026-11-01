@@ -1,5 +1,16 @@
 # Changelog
 
+### Added — Phase C Part 1 response metadata (rule set v0.6.0)
+
+- Site crawls capture bounded response headers, status, redirects when
+  observable, response duration, and body truncation state; single-page audits
+  remain header-blind.
+- Added site-only response findings, including a blocking X-Robots-Tag noindex
+  finding reconciled with meta robots.
+- Chromium manual redirects are opaque (`opaqueredirect`, status 0, no
+  Location); the crawler stops and records that limitation instead of following
+  the redirect.
+
 All notable changes to the Vittix SEO Toolkit extension. Versions follow the
 manifest version; the SEO rule set has its own `RULE_SET_VERSION` documented
 in [docs/SEO_RULES.md](docs/SEO_RULES.md).

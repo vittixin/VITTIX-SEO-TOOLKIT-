@@ -87,6 +87,17 @@ CSP, no remote code).
 - History retention pruning removes expired audits and their orphaned target keywords, and clears stored logo image data. “Clear all data” deletes audits, site audit rows, target keywords, and per-origin rule settings, and resets export branding. Retention preferences remain available after clearing.
 - Exports are generated in the extension and downloaded through the browser. HTML reports have no remote resources or executable scripts. Page-derived text is escaped before it is rendered in HTML or Markdown.
 
+## Site-audit response metadata
+
+Site audits now keep bounded response headers and timing locally alongside
+each crawled page, including content type/length/encoding, X-Robots-Tag,
+cache-control, security-header presence flags, redirect observations, and
+browser/network response duration. Sitemap URLs, last-modified strings, and
+alternate-language URLs are also local site-audit data. These values appear
+in site reports/exports, where text fields are escaped and CSV formula-safe.
+The export contains only the data stored for the audit; no page data is sent
+to a server by the extension.
+
 ## Release-candidate verification (Phase 6)
 
 Verified against the final production build (`pnpm build:chrome`, 2026-10-31):

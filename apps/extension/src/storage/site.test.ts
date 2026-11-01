@@ -43,6 +43,8 @@ function makePage(overrides: Partial<SitePageRecord>): SitePageRecord {
     analyzedAt: null,
     snapshot: null,
     result: null,
+    responseMetadata: null,
+    responseFindings: [],
     ...overrides,
   };
 }

@@ -6,7 +6,7 @@
  * target keyword): same input in, same findings out. Each finding carries a
  * remediation hint ("how to fix").
  */
-export const RULE_SET_VERSION = '0.5.0';
+export const RULE_SET_VERSION = '0.6.0';
 
 /** Rule ids implemented by the analyzers. */
 export const RULE_IDS = [
@@ -75,6 +75,13 @@ export const RULE_IDS = [
   'structured-data-type-detected',
   'structured-data-required-props',
   'structured-data-recommended-props',
+  // Site-audit response observations; never emitted without response metadata.
+  'redirect-chain-long',
+  'redirect-temporary',
+  'x-robots-noindex-header',
+  'non-html-content-type',
+  'slow-response',
+  'missing-security-headers',
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];

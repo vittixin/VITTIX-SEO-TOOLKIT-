@@ -99,6 +99,19 @@ const SITE_CSV_COLUMNS = [
   'errors',
   'warnings',
   'incomplete',
+  'contentType',
+  'contentLength',
+  'contentEncoding',
+  'durationMs',
+  'redirectCount',
+  'redirectObservationUnavailable',
+  'xRobotsTag',
+  'cacheControl',
+  'hasHsts',
+  'hasCsp',
+  'hasXContentTypeOptions',
+  'hasReferrerPolicy',
+  'hasFrameProtection',
 ] as const;
 
 /**
@@ -127,6 +140,25 @@ export function sitePagesToCsv(session: SiteSession, pages: SitePageRecord[]): s
       String(findings.filter((f) => f.severity === 'error').length),
       String(findings.filter((f) => f.severity === 'warn').length),
       result?.truncated === true ? 'yes' : 'no',
+      page.responseMetadata?.contentType ?? '',
+      page.responseMetadata?.contentLength == null
+        ? ''
+        : String(page.responseMetadata.contentLength),
+      page.responseMetadata?.contentEncoding ?? '',
+      page.responseMetadata?.durationMs == null
+        ? ''
+        : String(Math.round(page.responseMetadata.durationMs)),
+      page.responseMetadata?.redirectObservationUnavailable
+        ? ''
+        : String(page.responseMetadata?.redirectChain.length ?? 0),
+      page.responseMetadata?.redirectObservationUnavailable ? 'yes' : 'no',
+      page.responseMetadata?.xRobotsTag ?? '',
+      page.responseMetadata?.cacheControl ?? '',
+      page.responseMetadata?.hasHsts ? 'yes' : 'no',
+      page.responseMetadata?.hasCsp ? 'yes' : 'no',
+      page.responseMetadata?.hasXContentTypeOptions ? 'yes' : 'no',
+      page.responseMetadata?.hasReferrerPolicy ? 'yes' : 'no',
+      page.responseMetadata?.hasFrameProtection ? 'yes' : 'no',
     ]);
   }
   void session; // session metadata is in the JSON export

@@ -29,6 +29,7 @@ export {
   type KeywordProminence,
 } from './text-summary.js';
 export { analyzeStructuredData } from './analyzers/structured-data.js';
+export { analyzeResponseMetadata } from './analyzers/response.js';
 export { CATEGORY_WEIGHTS, SEVERITY_PENALTIES, computeScore, scoreLabel } from './scoring.js';
 export {
   ALT_MIN_MEANINGFUL_LENGTH,

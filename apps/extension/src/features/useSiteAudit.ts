@@ -38,6 +38,9 @@ export function useSiteAudit() {
   const [summary, setSummary] = useState<SiteSummary | null>(null);
   const [comparison, setComparison] = useState<SiteComparison | null>(null);
   const [urlFilter, setUrlFilter] = useState('');
+  const [responseFilter, setResponseFilter] = useState<'all' | 'slow' | 'non-html' | 'redirected'>(
+    'all',
+  );
   const runTokenRef = useRef(0);
 
   const checkPermission = useCallback(async (origin: string | null): Promise<boolean | null> => {
@@ -229,10 +232,19 @@ export function useSiteAudit() {
     setPhase('setup');
   }
 
-  const filteredPages =
-    urlFilter.trim() === ''
-      ? pages
-      : pages.filter((page) => page.url.toLowerCase().includes(urlFilter.trim().toLowerCase()));
+  const filteredPages = pages.filter((page) => {
+    const matchesUrl =
+      urlFilter.trim() === '' || page.url.toLowerCase().includes(urlFilter.trim().toLowerCase());
+    const metadata = page.responseMetadata;
+    const matchesResponse =
+      responseFilter === 'all' ||
+      (responseFilter === 'slow' && (metadata?.durationMs ?? 0) >= 2_000) ||
+      (responseFilter === 'non-html' &&
+        Boolean(metadata?.contentType && !/html/i.test(metadata.contentType))) ||
+      (responseFilter === 'redirected' &&
+        Boolean(metadata?.redirectChain.length || metadata?.redirectObservationUnavailable));
+    return matchesUrl && matchesResponse;
+  });
 
   return {
     phase,
@@ -252,6 +264,8 @@ export function useSiteAudit() {
     comparison,
     urlFilter,
     setUrlFilter,
+    responseFilter,
+    setResponseFilter,
     validateInput,
     requestAccess,
     startAudit,

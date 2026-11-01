@@ -82,9 +82,45 @@ blockers, not config options).
 
 ## Redirect behavior
 
-- `fetch(..., { redirect: "follow" })`; the response's final URL is stored
-  per page. Same-origin redirects are fine (the final URL becomes the page
-  identity for reporting). Cross-origin redirects are not parsed.
+- In the E2E Chromium extension-page probe, a 302 requested with
+  `redirect: "manual"` produced `type: "opaqueredirect"`, `status: 0`, and
+  no readable `Location` header. The crawler therefore uses manual redirect
+  mode, records an opaque redirect observation, and does **not** follow it.
+  It cannot truthfully report a final URL or hop status in this browser. The
+  page is marked failed with an explicit observation-unavailable reason.
+  This deliberately sacrifices redirect traversal to ensure the browser
+  never fetches an unchecked cross-origin redirect target.
+- Redirect metadata can still be recorded when a browser exposes a basic
+  same-origin redirect response: up to 10 hops, each path is rechecked against
+  robots, the exact origin permission is rechecked, the request is paced, and
+  cross-origin destinations are recorded but never fetched.
+
+### Response-header readability probe
+
+Verified with `e2e/siteaudit.spec.ts` on Chromium 2026-11-01. The probe
+fetches a routed local fixture from the extension dashboard after granting
+that exact fixture origin. It returns a normal `basic` 200 response. The
+following response headers were readable through `Response.headers.get()`:
+
+| Header                                                      | Readable in extension page |
+| ----------------------------------------------------------- | -------------------------- |
+| `content-type`                                              | yes                        |
+| `content-length`                                            | yes                        |
+| `x-robots-tag`                                              | yes                        |
+| `cache-control`                                             | yes                        |
+| `content-encoding`                                          | yes                        |
+| `strict-transport-security`                                 | yes                        |
+| `content-security-policy`                                   | yes                        |
+| `x-content-type-options`                                    | yes                        |
+| `referrer-policy`                                           | yes                        |
+| `x-frame-options`                                           | yes                        |
+| redirect `Location` when manual redirect response is opaque | **no**                     |
+
+The fixture did not set `Access-Control-Expose-Headers`; the custom headers
+were readable through the granted host permission. Header values are
+treated as untrusted text, truncated before persistence, and escaped in
+reports and the UI. Only presence flags are retained for security-header
+families.
 
 ## Authentication and private-site protections
 
@@ -106,6 +142,10 @@ blockers, not config options).
 - `4xx` robots.txt → crawling allowed (RFC 9309 behavior), recorded as
   `unreachable`. `5xx`/network failure → the audit is **blocked** for this
   run (conservative).
+- Redirects from robots.txt are requested manually. If Chromium returns an
+  opaque redirect (status 0 and no readable `Location`), the crawl is blocked
+  and the redirect is not followed. A visible 3xx is also blocked rather than
+  followed because this environment did not provide a reliable safe target.
 - Matching paths are skipped (`skipped-robots`), never fetched.
 - Limitations: no per-agent handling beyond `*`, no sitemap consumption,
   no `Site-map`/`Cache-delay` support — documented, not hidden.

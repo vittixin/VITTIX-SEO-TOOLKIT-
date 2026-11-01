@@ -218,10 +218,20 @@ describe('runSiteAudit', () => {
     const pages = await listSitePages(sessionId);
     const urls = pages.map((page) => page.url).sort();
     expect(urls).toEqual([`${ORIGIN}/`, `${ORIGIN}/a`]); // no other.test, no dup
+    const root = pages.find((page) => page.url === `${ORIGIN}/`)!;
+    expect(root.responseMetadata?.contentType).toContain('text/html');
+    expect(root.responseMetadata?.finalStatus).toBe(200);
+    expect(root.responseMetadata?.durationMs).toBeGreaterThanOrEqual(0);
+    expect(
+      root.result?.findings.some((finding) => finding.ruleId === 'missing-security-headers'),
+    ).toBe(true);
     const fetched = fetchImpl.mock.calls.filter(
       ([input]) => !String(input).endsWith('/robots.txt'),
     );
     expect(fetched).toHaveLength(2);
+    for (const [, init] of fetched) {
+      expect(init).toMatchObject({ method: 'GET', credentials: 'omit', redirect: 'manual' });
+    }
   });
 
   it('blocks the whole audit when robots.txt returns a server error', async () => {
@@ -282,7 +292,12 @@ describe('runSiteAudit', () => {
       const url = String(input);
       if (url.endsWith('/robots.txt')) return Promise.resolve(jsonResponse(404));
       if (url === `${ORIGIN}/redirect`) {
-        return Promise.resolve(htmlResponse('<p>other origin</p>', 'https://elsewhere.test/final'));
+        return Promise.resolve(
+          new Response('', {
+            status: 302,
+            headers: { location: 'https://elsewhere.test/final' },
+          }) as unknown as Response,
+        );
       }
       return Promise.resolve(htmlResponse('<a href="https://site.test/redirect">r</a>', url));
     });
@@ -297,6 +312,9 @@ describe('runSiteAudit', () => {
     const redirected = pages.find((page) => page.url === `${ORIGIN}/redirect`);
     expect(redirected?.status).toBe('skipped-external-redirect');
     expect(redirected?.finalUrl).toBe('https://elsewhere.test/final');
+    expect(fetchImpl.mock.calls.map(([input]) => String(input))).not.toContain(
+      'https://elsewhere.test/final',
+    );
   });
 
   it('records non-HTML responses as skipped', async () => {

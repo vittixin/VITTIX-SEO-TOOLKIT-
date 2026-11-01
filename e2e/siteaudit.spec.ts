@@ -22,6 +22,27 @@ test('site audit: consent → crawl → summary → export', async () => {
     // link, and /locked (403). /a links back to /. /b is robots-disallowed.
     await context.route('https://fixture.test/**', (route) => {
       const url = new URL(route.request().url());
+      if (url.pathname === '/headers') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          headers: {
+            'content-length': '36',
+            'x-robots-tag': 'noindex',
+            'cache-control': 'public, max-age=60',
+            'content-encoding': 'identity',
+            'strict-transport-security': 'max-age=31536000',
+            'content-security-policy': "default-src 'self'; frame-ancestors 'none'",
+            'x-content-type-options': 'nosniff',
+            'referrer-policy': 'no-referrer',
+            'x-frame-options': 'DENY',
+          },
+          body: '<!doctype html><title>Headers</title>',
+        });
+      }
+      if (url.pathname === '/redirect') {
+        return route.fulfill({ status: 302, headers: { location: '/headers' }, body: '' });
+      }
       if (url.pathname === '/robots.txt') {
         return route.fulfill({
           contentType: 'text/plain',
@@ -34,6 +55,11 @@ test('site audit: consent → crawl → summary → export', async () => {
       if (url.pathname === '/a') {
         return route.fulfill({
           contentType: 'text/html',
+          headers: {
+            'x-robots-tag': 'noindex',
+            'cache-control': 'no-cache',
+            'x-content-type-options': 'nosniff',
+          },
           body: '<!doctype html><html lang="en"><head><title>Page A Title</title><meta name="description" content="A description long enough to be healthy for the analyzer checks on page A." /></head><body><h1>Page A</h1><a href="https://fixture.test/">home</a></body></html>',
         });
       }
@@ -58,6 +84,62 @@ test('site audit: consent → crawl → summary → export', async () => {
     await dashboard.getByTestId('site-origin-input').fill('https://fixture.test');
     await dashboard.getByTestId('site-grant').click();
     await expect(dashboard.getByTestId('site-consent')).toBeVisible({ timeout: 10_000 });
+    const headerProbe = await dashboard.evaluate(async () => {
+      const response = await fetch('https://fixture.test/headers', {
+        method: 'GET',
+        credentials: 'omit',
+        redirect: 'manual',
+      });
+      return {
+        status: response.status,
+        type: response.type,
+        url: response.url,
+        headers: Object.fromEntries(
+          [
+            'content-type',
+            'content-length',
+            'x-robots-tag',
+            'cache-control',
+            'content-encoding',
+            'strict-transport-security',
+            'content-security-policy',
+            'x-content-type-options',
+            'referrer-policy',
+            'x-frame-options',
+          ].map((name) => [name, response.headers.get(name)]),
+        ),
+      };
+    });
+    console.log('extension response header probe', JSON.stringify(headerProbe));
+    expect(headerProbe.status).toBe(200);
+    expect(headerProbe.headers['x-robots-tag']).toBe('noindex');
+    expect(headerProbe.headers['cache-control']).toBe('public, max-age=60');
+    expect(headerProbe.headers['content-encoding']).toBe('identity');
+    expect(headerProbe.headers['strict-transport-security']).toContain('max-age=31536000');
+    expect(headerProbe.headers['content-security-policy']).toContain("frame-ancestors 'none'");
+    expect(headerProbe.headers['x-content-type-options']).toBe('nosniff');
+    expect(headerProbe.headers['referrer-policy']).toBe('no-referrer');
+    expect(headerProbe.headers['x-frame-options']).toBe('DENY');
+    const redirectProbe = await dashboard.evaluate(async () => {
+      const response = await fetch('https://fixture.test/redirect', {
+        method: 'GET',
+        credentials: 'omit',
+        redirect: 'manual',
+      });
+      return {
+        status: response.status,
+        type: response.type,
+        url: response.url,
+        location: response.headers.get('location'),
+      };
+    });
+    console.log('extension manual redirect probe', JSON.stringify(redirectProbe));
+    expect(redirectProbe).toEqual({
+      status: 0,
+      type: 'opaqueredirect',
+      url: 'https://fixture.test/redirect',
+      location: null,
+    });
     await dashboard.getByTestId('site-start').click();
 
     // The crawl completes quickly on fixtures; the summary must appear and
@@ -70,13 +152,21 @@ test('site audit: consent → crawl → summary → export', async () => {
     // URL list: filter to /a.
     await dashboard.getByTestId('site-url-filter').fill('/a');
     await expect(dashboard.getByText('https://fixture.test/a').first()).toBeVisible();
+    await expect(dashboard.getByText('noindex', { exact: true })).toBeVisible();
+    await dashboard.getByLabel('Filter response metadata').selectOption('slow');
+    await expect(dashboard.getByText('No pages match the filter.')).toBeVisible();
+    await dashboard.getByLabel('Filter response metadata').selectOption('all');
     await dashboard.getByTestId('site-url-filter').fill('');
 
     // Exports produce real downloads.
     await dashboard.getByTestId('site-open-export-dialog').click();
     const jsonDownload = dashboard.waitForEvent('download');
     await dashboard.getByTestId('site-export-json').click();
-    expect((await jsonDownload).suggestedFilename()).toContain('vittix-site-audit');
+    const siteJsonDownload = await jsonDownload;
+    expect(siteJsonDownload.suggestedFilename()).toContain('vittix-site-audit');
+    const siteJsonPath = resolve(import.meta.dirname, '../test-results/export-site-audit.json');
+    await siteJsonDownload.saveAs(siteJsonPath);
+    expect(readFileSync(siteJsonPath, 'utf8')).toContain('"xRobotsTag": "noindex"');
 
     const csvDownload = dashboard.waitForEvent('download');
     await dashboard.getByTestId('site-export-csv').click();
@@ -89,6 +179,7 @@ test('site audit: consent → crawl → summary → export', async () => {
     const htmlPath = resolve(import.meta.dirname, '../test-results/export-site-report.html');
     await htmlReport.saveAs(htmlPath);
     const html = readFileSync(htmlPath, 'utf8');
+    expect(html).toContain('X-Robots-Tag');
     const reportPage = await context.newPage();
     const requests: string[] = [];
     reportPage.on('request', (request) => requests.push(request.url()));
@@ -174,6 +265,24 @@ test('site audit robustness: oversized, malformed and non-HTML pages + clear-dat
     await expect(dashboard.locator('text=skipped-non-html').first()).toBeVisible();
     await dashboard.getByTestId('site-url-filter').fill('fixture.test/huge');
     await expect(dashboard.locator('text=ok').first()).toBeVisible();
+    const hugePage = await dashboard.evaluate(async () => {
+      const request = indexedDB.open('vittix-seo');
+      const database = await new Promise<IDBDatabase>((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const rows = await new Promise<Record<string, unknown>[]>((resolve, reject) => {
+        const get = database.transaction('sitePages').objectStore('sitePages').getAll();
+        get.onsuccess = () => resolve(get.result);
+        get.onerror = () => reject(get.error);
+      });
+      database.close();
+      return rows.find((row) => String(row.url).endsWith('/huge'));
+    });
+    expect(
+      (hugePage?.responseMetadata as { bodyTruncated?: boolean } | undefined)?.bodyTruncated,
+    ).toBe(true);
+    expect((hugePage?.result as { truncated?: boolean } | undefined)?.truncated).toBe(true);
     await dashboard.getByTestId('site-url-filter').fill('fixture.test/malformed');
     await expect(dashboard.locator('text=ok').first()).toBeVisible();
 

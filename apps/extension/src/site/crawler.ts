@@ -1,6 +1,7 @@
 import { browser } from 'wxt/browser';
-import { SITE_LIMITS, type SiteSession } from '@vittix/shared';
+import { SITE_LIMITS, type SiteResponseMetadata, type SiteSession } from '@vittix/shared';
 import { analyzeSnapshot } from '@vittix/seo-core';
+import { analyzeResponseMetadata } from '@vittix/seo-core';
 import { checkCrawlableOrigin, isSameOriginUrl } from './guards';
 import { normalizeSiteUrl } from './normalize';
 import { EMPTY_ROBOTS_POLICY, parseRobotsTxt, type RobotsPolicy } from './robots';
@@ -75,7 +76,7 @@ export async function runSiteAudit(sessionId: number, options: CrawlerOptions = 
   }
 
   // --- robots.txt gate ------------------------------------------------------
-  const robots = await loadRobots(session, fetchImpl);
+  const robots = await loadRobots(session, fetchImpl, hasPermission);
   if (robots.blocked) {
     // Bookkeeping first (best-effort), then the durable stop state.
     try {
@@ -238,6 +239,7 @@ async function shouldStop(sessionId: number): Promise<boolean> {
 async function loadRobots(
   session: SiteSession,
   fetchImpl: typeof fetch,
+  hasPermission: (origin: string) => Promise<boolean>,
 ): Promise<{
   policy: RobotsPolicy;
   status: 'allowed' | 'unreachable';
@@ -246,11 +248,34 @@ async function loadRobots(
 }> {
   try {
     const robotsUrl = `${session.origin}/robots.txt`;
+    if (!(await hasPermission(session.origin)))
+      return {
+        policy: EMPTY_ROBOTS_POLICY,
+        status: 'allowed',
+        blocked: true,
+        blockReason: 'Origin permission was revoked before robots.txt fetch.',
+      };
     const response = await fetchImpl(robotsUrl, {
       method: 'GET',
       credentials: 'omit',
-      redirect: 'follow',
+      redirect: 'manual',
     });
+    if (response.type === 'opaqueredirect' || response.status === 0)
+      return {
+        policy: EMPTY_ROBOTS_POLICY,
+        status: 'allowed',
+        blocked: true,
+        blockReason:
+          'robots.txt redirect metadata is opaque in this browser; the redirect was not followed.',
+      };
+    if (response.status >= 300 && response.status < 400)
+      return {
+        policy: EMPTY_ROBOTS_POLICY,
+        status: 'allowed',
+        blocked: true,
+        blockReason:
+          'robots.txt returned a redirect; redirects are not followed when destination safety cannot be verified.',
+      };
     // Fail closed: a robots.txt redirect that leaves the origin (or any
     // non-http(s) final URL) is treated as a blocked audit, not as "no
     // rules" — the fetched content is not trusted.
@@ -301,6 +326,189 @@ interface ProcessContext {
   sessionId: number;
 }
 
+interface SafeResponse {
+  response: Response | null;
+  metadata: SiteResponseMetadata;
+  finalUrl: string;
+  externalRedirect: boolean;
+  failure: string | null;
+}
+
+const MAX_REDIRECT_HOPS = 10;
+
+/** Fetches manually so a redirect is never followed implicitly. Opaque
+ * redirects are recorded and stopped; this Chrome extension context exposes
+ * `opaqueredirect` rather than the hop status/Location. */
+async function fetchSameOriginResponse(
+  initialUrl: string,
+  session: SiteSession,
+  robots: RobotsPolicy,
+  context: ProcessContext,
+  firstRequestAlreadyPaced: boolean,
+): Promise<SafeResponse> {
+  const startedAt = performance.now();
+  const redirectChain: SiteResponseMetadata['redirectChain'] = [];
+  let currentUrl = initialUrl;
+  for (let requestIndex = 0; requestIndex <= MAX_REDIRECT_HOPS; requestIndex += 1) {
+    if (!isSameOriginUrl(currentUrl, session.origin))
+      return {
+        response: null,
+        metadata: makeMetadata(null, redirectChain, startedAt, true),
+        finalUrl: currentUrl,
+        externalRedirect: true,
+        failure: null,
+      };
+    const parsed = new URL(currentUrl);
+    if (!robots.allows(parsed.pathname + parsed.search))
+      return {
+        response: null,
+        metadata: makeMetadata(null, redirectChain, startedAt, true),
+        finalUrl: currentUrl,
+        externalRedirect: false,
+        failure: 'Redirect target is disallowed by robots.txt.',
+      };
+    if (requestIndex > 0 || !firstRequestAlreadyPaced) await context.runner.pace();
+    if (!(await context.hasPermission(session.origin)))
+      return {
+        response: null,
+        metadata: makeMetadata(null, redirectChain, startedAt, true),
+        finalUrl: currentUrl,
+        externalRedirect: false,
+        failure: 'Origin permission was revoked before a response fetch.',
+      };
+    if (await shouldStop(context.sessionId))
+      return {
+        response: null,
+        metadata: makeMetadata(null, redirectChain, startedAt, true),
+        finalUrl: currentUrl,
+        externalRedirect: false,
+        failure: 'Crawl cancelled before response fetch.',
+      };
+    let response: Response;
+    try {
+      response = await context.fetchImpl(currentUrl, {
+        method: 'GET',
+        credentials: 'omit',
+        redirect: 'manual',
+      });
+    } catch (error) {
+      return {
+        response: null,
+        metadata: makeMetadata(null, redirectChain, startedAt, false),
+        finalUrl: currentUrl,
+        externalRedirect: false,
+        failure: `Response fetch failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+    if (response.type === 'opaqueredirect' || response.status === 0) {
+      redirectChain.push({
+        url: currentUrl.slice(0, 2048),
+        status: null,
+        location: null,
+        opaque: true,
+      });
+      return {
+        response: null,
+        metadata: makeMetadata(null, redirectChain, startedAt, true),
+        finalUrl: currentUrl,
+        externalRedirect: false,
+        failure:
+          'Redirect response metadata is opaque in this browser; the redirect was not followed for safety.',
+      };
+    }
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get('location');
+      let destination: URL | null = null;
+      try {
+        if (location !== null) destination = new URL(location, currentUrl);
+      } catch {
+        destination = null;
+      }
+      redirectChain.push({
+        url: currentUrl.slice(0, 2048),
+        status: response.status,
+        location: location?.slice(0, 2048) ?? null,
+        opaque: false,
+      });
+      if (destination === null)
+        return {
+          response,
+          metadata: makeMetadata(response, redirectChain, startedAt, false),
+          finalUrl: currentUrl,
+          externalRedirect: false,
+          failure: 'Redirect response had no valid Location; it was not followed.',
+        };
+      if (destination.origin !== new URL(session.origin).origin)
+        return {
+          response,
+          metadata: makeMetadata(response, redirectChain, startedAt, false),
+          finalUrl: destination.href.slice(0, 2048),
+          externalRedirect: true,
+          failure: null,
+        };
+      if (requestIndex === MAX_REDIRECT_HOPS)
+        return {
+          response,
+          metadata: makeMetadata(response, redirectChain, startedAt, false),
+          finalUrl: currentUrl,
+          externalRedirect: false,
+          failure: 'Redirect hop limit exceeded.',
+        };
+      currentUrl = destination.href;
+      continue;
+    }
+    return {
+      response,
+      metadata: makeMetadata(response, redirectChain, startedAt, false),
+      finalUrl: currentUrl,
+      externalRedirect: false,
+      failure: null,
+    };
+  }
+  return {
+    response: null,
+    metadata: makeMetadata(null, redirectChain, startedAt, false),
+    finalUrl: currentUrl,
+    externalRedirect: false,
+    failure: 'Redirect hop limit exceeded.',
+  };
+}
+
+function makeMetadata(
+  response: Response | null,
+  redirectChain: SiteResponseMetadata['redirectChain'],
+  startedAt: number,
+  redirectObservationUnavailable: boolean,
+): SiteResponseMetadata {
+  const header = (name: string, cap = 2048) => response?.headers.get(name)?.slice(0, cap) ?? null;
+  const contentLengthRaw = header('content-length', 32);
+  const contentLengthNumber = contentLengthRaw === null ? null : Number(contentLengthRaw);
+  const contentLength =
+    Number.isSafeInteger(contentLengthNumber) && contentLengthNumber! >= 0
+      ? contentLengthNumber
+      : null;
+  const csp = header('content-security-policy') ?? '';
+  return {
+    finalStatus: response?.status ?? null,
+    redirectChain,
+    redirectObservationUnavailable,
+    contentType: header('content-type'),
+    contentLength,
+    contentEncoding: header('content-encoding', 256),
+    xRobotsTag: header('x-robots-tag'),
+    cacheControl: header('cache-control'),
+    hasHsts: response?.headers.has('strict-transport-security') ?? false,
+    hasCsp: response?.headers.has('content-security-policy') ?? false,
+    hasXContentTypeOptions: response?.headers.has('x-content-type-options') ?? false,
+    hasReferrerPolicy: response?.headers.has('referrer-policy') ?? false,
+    hasFrameProtection: Boolean(
+      response?.headers.has('x-frame-options') || /(?:^|;)\s*frame-ancestors\b/i.test(csp),
+    ),
+    durationMs: Math.max(0, performance.now() - startedAt),
+    bodyTruncated: false,
+  };
+}
+
 /**
  * Fail the whole session with a durable reason (permission revoked, etc.).
  * Pending pages stay pending so the audit can resume after the cause is
@@ -325,7 +533,7 @@ async function processUrl(
   robots: RobotsPolicy,
   context: ProcessContext,
 ): Promise<void> {
-  const { fetchImpl, runner, onProgress } = context;
+  const { runner, onProgress } = context;
 
   const pages = await listSitePages(sessionId);
   const record = pages.find((page) => page.url === target.url && page.status === 'pending');
@@ -342,23 +550,33 @@ async function processUrl(
         return;
       }
 
-      const response = await fetchImpl(target.url, {
-        method: 'GET',
-        credentials: 'omit',
-        redirect: 'follow',
-      });
-
-      const finalUrl = response.url || target.url;
-      if (!isSameOriginUrl(finalUrl, session.origin)) {
+      const safe = await fetchSameOriginResponse(target.url, session, robots, context, true);
+      if (safe.failure !== null) {
         await updateSitePage(pageId, {
-          status: 'skipped-external-redirect',
-          finalUrl,
-          httpStatus: response.status,
+          status: 'failed',
+          finalUrl: safe.finalUrl,
+          error: safe.failure,
+          responseMetadata: safe.metadata,
         });
         await syncCounters(sessionId);
         onProgress();
         return;
       }
+      if (safe.externalRedirect) {
+        await updateSitePage(pageId, {
+          status: 'skipped-external-redirect',
+          finalUrl: safe.finalUrl,
+          httpStatus: safe.metadata.finalStatus,
+          responseMetadata: safe.metadata,
+        });
+        await syncCounters(sessionId);
+        onProgress();
+        return;
+      }
+
+      const response = safe.response!;
+      const finalUrl = safe.finalUrl;
+      const responseFindings = analyzeResponseMetadata(null, safe.metadata);
 
       const contentType = response.headers.get('content-type') ?? '';
       if (!contentType.toLowerCase().includes('text/html')) {
@@ -366,6 +584,8 @@ async function processUrl(
           status: 'skipped-non-html',
           finalUrl,
           httpStatus: response.status,
+          responseMetadata: safe.metadata,
+          responseFindings,
         });
         await syncCounters(sessionId);
         onProgress();
@@ -379,15 +599,19 @@ async function processUrl(
           finalUrl,
           httpStatus: response.status,
           error: `HTTP ${response.status}`,
+          responseMetadata: safe.metadata,
+          responseFindings,
         });
         await syncCounters(sessionId);
         onProgress();
         return;
       }
 
-      const html = await readBodyCapped(response);
+      const { html, truncated: bodyTruncated } = await readBodyCapped(response);
+      const metadata = { ...safe.metadata, bodyTruncated };
       const snapshot = parsePageSnapshot(html, finalUrl, EXTRACTOR_LIMITS);
-      const result = analyzeSnapshot(snapshot);
+      const result = analyzeSnapshot(snapshot, { responseMetadata: metadata });
+      if (bodyTruncated) result.truncated = true;
 
       await updateSitePage(pageId, {
         status: 'ok',
@@ -396,6 +620,7 @@ async function processUrl(
         analyzedAt: new Date().toISOString(),
         snapshot,
         result,
+        responseMetadata: metadata,
       });
       await syncCounters(sessionId);
       onProgress();
@@ -422,10 +647,44 @@ async function processUrl(
   });
 }
 
-async function readBodyCapped(response: Response): Promise<string> {
-  const blob = await response.blob();
-  if (blob.size <= SITE_LIMITS.maxResponseBytes) return blob.text();
-  return blob.slice(0, SITE_LIMITS.maxResponseBytes).text();
+async function readBodyCapped(response: Response): Promise<{ html: string; truncated: boolean }> {
+  if (!response.body) {
+    // Test doubles and genuinely body-less responses may not expose a stream.
+    // Production Fetch responses with content use the streaming branch below.
+    if (typeof response.blob !== 'function') return { html: '', truncated: false };
+    const blob = await response.blob();
+    const truncated = blob.size > SITE_LIMITS.maxResponseBytes;
+    return { html: await blob.slice(0, SITE_LIMITS.maxResponseBytes).text(), truncated };
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  let truncated = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const remaining = SITE_LIMITS.maxResponseBytes - size;
+      if (value.byteLength > remaining) {
+        if (remaining > 0) chunks.push(value.slice(0, remaining));
+        size += Math.max(0, remaining);
+        truncated = true;
+        await reader.cancel();
+        break;
+      }
+      chunks.push(value);
+      size += value.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { html: new TextDecoder().decode(bytes), truncated };
 }
 
 async function enqueueDiscovered(

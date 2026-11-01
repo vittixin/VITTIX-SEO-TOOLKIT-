@@ -66,6 +66,7 @@ export const BLOCKING_RULE_IDS: readonly string[] = [
   'title-present',
   'h1-present',
   'canonical-valid',
+  'x-robots-noindex-header',
 ];
 
 /** Maximum total score when a blocking finding is present. */

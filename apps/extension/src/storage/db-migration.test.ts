@@ -20,8 +20,8 @@ afterEach(async () => {
   );
 });
 
-describe('Dexie v3 → v4 migration', () => {
-  it('preserves legacy audit and keyword rows and creates the production origin settings store', async () => {
+describe('Dexie v3 → current migration', () => {
+  it('preserves legacy audit and keyword rows and creates current origin settings store', async () => {
     const name = `vittix-migration-${Date.now()}-${Math.random()}`;
     const previous = new VittixDatabase(name, 3);
     openDatabases.push(previous);
@@ -44,7 +44,7 @@ describe('Dexie v3 → v4 migration', () => {
     const upgraded = new VittixDatabase(name);
     openDatabases.push(upgraded);
     await upgraded.open();
-    expect(upgraded.verno).toBe(4);
+    expect(upgraded.verno).toBe(5);
     expect((await upgraded.audits.get(auditId))?.title).toBe('Legacy title');
     expect((await upgraded.targetKeywords.get('https://legacy.example/page'))?.keyword).toBe(
       'legacy phrase',
@@ -82,7 +82,7 @@ describe('oldest supported Dexie v1 → current migration', () => {
     const current = new VittixDatabase(name);
     openDatabases.push(current);
     await current.open();
-    expect(current.verno).toBe(4);
+    expect(current.verno).toBe(5);
     expect((await current.audits.get(auditId))?.title).toBe('V1 legacy row');
     expect(await current.settings.get('legacy-setting')).toEqual({
       key: 'legacy-setting',
@@ -98,6 +98,36 @@ describe('oldest supported Dexie v1 → current migration', () => {
     });
     expect(await current.targetKeywords.get('https://v1.example/')).toBeDefined();
     expect(await current.originRuleSettings.get('https://v1.example')).toBeDefined();
+  });
+});
+
+describe('Dexie v4 → v5 response-metadata migration', () => {
+  it('preserves legacy site pages and validates new fields with safe defaults', async () => {
+    const name = `vittix-response-migration-${Date.now()}-${Math.random()}`;
+    const previous = new VittixDatabase(name, 4);
+    openDatabases.push(previous);
+    await previous.open();
+    const pageId = await previous.sitePages.add({
+      sessionId: 1,
+      url: 'https://legacy.example/page',
+      finalUrl: 'https://legacy.example/page',
+      status: 'ok',
+      depth: 0,
+      httpStatus: 200,
+      snapshot: { schemaVersion: 5 },
+      result: { findings: [], score: { total: 80 } },
+    } as never);
+    previous.close();
+
+    const upgraded = new VittixDatabase(name);
+    openDatabases.push(upgraded);
+    await upgraded.open();
+    expect(upgraded.verno).toBe(5);
+    const stored = await upgraded.sitePages.get(pageId);
+    expect(stored?.url).toBe('https://legacy.example/page');
+    const validated = (await import('@vittix/shared')).SitePageRecordSchema.parse(stored);
+    expect(validated.responseMetadata).toBeNull();
+    expect(validated.responseFindings).toEqual([]);
   });
 });
 

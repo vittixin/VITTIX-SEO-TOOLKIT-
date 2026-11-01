@@ -39,6 +39,10 @@ export interface SiteReportInput {
       errorCount: number;
       warnCount: number;
       truncated: boolean;
+      contentType?: string | null;
+      responseTimeMs?: number | null;
+      redirectCount?: number | null;
+      xRobotsTag?: string | null;
     }[];
   };
   profileId?: string;
@@ -92,6 +96,10 @@ function buildSiteAuditReportHtmlBase(
     page.errorCount,
     page.warnCount,
     page.truncated ? 'Yes' : 'No',
+    page.contentType ?? 'Unavailable',
+    page.responseTimeMs == null ? 'Unavailable' : Math.round(page.responseTimeMs),
+    page.redirectCount == null ? 'Unavailable' : page.redirectCount,
+    page.xRobotsTag ?? '—',
   ]);
   const issues = [
     ['Missing title', summary.missingTitle.length],
@@ -148,10 +156,12 @@ function buildSiteAuditReportHtmlBase(
   )}${duplicateList(
     'Duplicate descriptions',
     summary.duplicateDescriptions.map((item) => ({ value: item.description, urls: item.urls })),
-  )}<section><h2>Missing title</h2>${summary.missingTitle.length ? `<ul>${summary.missingTitle.map((url) => `<li>${escapeReportHtml(url)}</li>`).join('')}</ul>` : '<p>None in inspected pages.</p>'}</section><section><h2>Missing meta description</h2>${summary.missingDescription.length ? `<ul>${summary.missingDescription.map((url) => `<li>${escapeReportHtml(url)}</li>`).join('')}</ul>` : '<p>None in inspected pages.</p>'}</section><section><h2>Noindex pages</h2>${summary.noindexPages.length ? `<ul>${summary.noindexPages.map((url) => `<li>${escapeReportHtml(url)}</li>`).join('')}</ul>` : '<p>None in inspected pages.</p>'}</section><section><h2>Broken-link candidates</h2><p>Verified candidates were fetched by this crawl and returned an HTTP error. Unchecked targets are not listed as verified.</p>${summary.brokenLinkCandidates.length ? `<ul>${summary.brokenLinkCandidates.map((candidate) => `<li>${escapeReportHtml(candidate.url)} — HTTP ${candidate.httpStatus ?? 'unknown'}, linked from ${candidate.linkedFrom.length} inspected pages</li>`).join('')}</ul>` : '<p>No verified candidates in this crawl.</p>'}</section><section><h2>Orphan analysis</h2>${summary.orphanPages === null ? '<p>Unchecked: there is not enough inspected link evidence to determine orphan pages.</p>' : summary.orphanPages.length ? `<ul>${summary.orphanPages.map((url) => `<li>${escapeReportHtml(url)}</li>`).join('')}</ul>` : '<p>Checked: no orphan pages found among inspected pages.</p>'}</section>${ignored.length ? `<section><h2>Ignored rules</h2><ul>${ignored.map((id) => `<li><code>${escapeReportHtml(id)}</code> — Ignored</li>`).join('')}</ul></section>` : ''}${capReasons.length ? `<section><h2>Score cap reasons</h2><ul>${capReasons.map((reason) => `<li>${escapeReportHtml(reason)}</li>`).join('')}</ul></section>` : ''}<section><h2>Pages (first 200)</h2><table><thead><tr><th scope="col">URL</th><th scope="col">Status</th><th scope="col">Score</th><th scope="col">Errors</th><th scope="col">Warnings</th><th scope="col">Truncated</th></tr></thead><tbody>${pageRows}</tbody></table>${summary.pages.length > 200 ? '<p>Showing 200 rows. See CSV for the full list.</p>' : ''}</section><footer><p>Scores are preliminary and are not ranking predictions. Page excerpts and target keywords are excluded unless explicitly opted in.</p></footer></main></body></html>`.replace(
-    '<main>',
-    `<main>${brandHtml}`,
-  );
+  )}<section><h2>Missing title</h2>${summary.missingTitle.length ? `<ul>${summary.missingTitle.map((url) => `<li>${escapeReportHtml(url)}</li>`).join('')}</ul>` : '<p>None in inspected pages.</p>'}</section><section><h2>Missing meta description</h2>${summary.missingDescription.length ? `<ul>${summary.missingDescription.map((url) => `<li>${escapeReportHtml(url)}</li>`).join('')}</ul>` : '<p>None in inspected pages.</p>'}</section><section><h2>Noindex pages</h2>${summary.noindexPages.length ? `<ul>${summary.noindexPages.map((url) => `<li>${escapeReportHtml(url)}</li>`).join('')}</ul>` : '<p>None in inspected pages.</p>'}</section><section><h2>Broken-link candidates</h2><p>Verified candidates were fetched by this crawl and returned an HTTP error. Unchecked targets are not listed as verified.</p>${summary.brokenLinkCandidates.length ? `<ul>${summary.brokenLinkCandidates.map((candidate) => `<li>${escapeReportHtml(candidate.url)} — HTTP ${candidate.httpStatus ?? 'unknown'}, linked from ${candidate.linkedFrom.length} inspected pages</li>`).join('')}</ul>` : '<p>No verified candidates in this crawl.</p>'}</section><section><h2>Orphan analysis</h2>${summary.orphanPages === null ? '<p>Unchecked: there is not enough inspected link evidence to determine orphan pages.</p>' : summary.orphanPages.length ? `<ul>${summary.orphanPages.map((url) => `<li>${escapeReportHtml(url)}</li>`).join('')}</ul>` : '<p>Checked: no orphan pages found among inspected pages.</p>'}</section>${ignored.length ? `<section><h2>Ignored rules</h2><ul>${ignored.map((id) => `<li><code>${escapeReportHtml(id)}</code> — Ignored</li>`).join('')}</ul></section>` : ''}${capReasons.length ? `<section><h2>Score cap reasons</h2><ul>${capReasons.map((reason) => `<li>${escapeReportHtml(reason)}</li>`).join('')}</ul></section>` : ''}<section><h2>Pages (first 200)</h2><table><thead><tr><th scope="col">URL</th><th scope="col">Status</th><th scope="col">Score</th><th scope="col">Errors</th><th scope="col">Warnings</th><th scope="col">Truncated</th></tr></thead><tbody>${pageRows}</tbody></table>${summary.pages.length > 200 ? '<p>Showing 200 rows. See CSV for the full list.</p>' : ''}</section><footer><p>Scores are preliminary and are not ranking predictions. Page excerpts and target keywords are excluded unless explicitly opted in.</p></footer></main></body></html>`
+    .replace('<main>', `<main>${brandHtml}`)
+    .replace(
+      '<th scope="col">Truncated</th>',
+      '<th scope="col">Truncated</th><th scope="col">Content type</th><th scope="col">Response ms</th><th scope="col">Redirects</th><th scope="col">X-Robots-Tag</th>',
+    );
 }
 
 /** Add excerpt/keyword content only when the export dialog explicitly opts in. */
@@ -294,11 +304,11 @@ export function buildSiteAuditMarkdown(
     '',
     '## Pages (first 200)',
     '',
-    '| URL | Status | Score | Errors | Warnings |',
-    '| --- | --- | ---: | ---: | ---: |',
+    '| URL | Status | Score | Errors | Warnings | Content type | Response ms | Redirects | X-Robots-Tag |',
+    '| --- | --- | ---: | ---: | ---: | --- | ---: | ---: | --- |',
     ...pages.map(
       (page) =>
-        `| ${escapeReportMarkdown(page.url)} | ${escapeReportMarkdown(page.status)} | ${page.score ?? '—'} | ${page.errorCount} | ${page.warnCount} |`,
+        `| ${escapeReportMarkdown(page.url)} | ${escapeReportMarkdown(page.status)} | ${page.score ?? '—'} | ${page.errorCount} | ${page.warnCount} | ${escapeReportMarkdown(page.contentType ?? 'Unavailable')} | ${page.responseTimeMs == null ? '—' : Math.round(page.responseTimeMs)} | ${page.redirectCount == null ? '—' : page.redirectCount} | ${escapeReportMarkdown(page.xRobotsTag ?? '—')} |`,
     ),
   );
   if (summary.pages.length > 200) lines.push('', 'See CSV for the full page list.');

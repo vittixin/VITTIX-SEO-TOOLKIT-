@@ -1,4 +1,9 @@
-import { FINDING_SEVERITY_ORDER, type AnalysisResult, type PageSnapshot } from '@vittix/shared';
+import {
+  FINDING_SEVERITY_ORDER,
+  type AnalysisResult,
+  type PageSnapshot,
+  type SiteResponseMetadata,
+} from '@vittix/shared';
 import { analyzeHeadings } from './analyzers/headings.js';
 import { analyzeHreflang } from './analyzers/hreflang.js';
 import { analyzeImages } from './analyzers/images.js';
@@ -8,6 +13,7 @@ import { analyzeContent } from './analyzers/content.js';
 import { analyzeKeywords } from './analyzers/keywords.js';
 import { analyzeTechnical } from './analyzers/technical.js';
 import { analyzeStructuredData } from './analyzers/structured-data.js';
+import { analyzeResponseMetadata } from './analyzers/response.js';
 import { computeScore } from './scoring.js';
 import { RULE_SET_VERSION } from './rules.js';
 import { SCORING_PROFILES, type ProfileId } from './profiles.js';
@@ -23,6 +29,8 @@ export interface AnalyzeOptions {
   ignoredRuleIds?: readonly string[];
   unignoredRuleIds?: readonly string[];
   severityOverrides?: Readonly<Record<string, Severity>>;
+  /** Only supplied by site-audit; single-page audits intentionally omit response rules. */
+  responseMetadata?: SiteResponseMetadata;
 }
 
 /**
@@ -48,6 +56,9 @@ export function analyzeSnapshot(
     ...analyzeContent(snapshot),
     ...analyzeKeywords(snapshot, options.targetKeyword),
     ...analyzeStructuredData(snapshot),
+    ...(options.responseMetadata
+      ? analyzeResponseMetadata(snapshot, options.responseMetadata)
+      : []),
   ]
     .map((finding) => ({
       ...finding,

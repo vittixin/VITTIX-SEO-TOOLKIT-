@@ -133,6 +133,10 @@ export interface SitePageSummary {
   errorCount: number;
   warnCount: number;
   truncated: boolean;
+  contentType: string | null;
+  responseTimeMs: number | null;
+  redirectCount: number | null;
+  xRobotsTag: string | null;
 }
 
 export interface SiteSummary {
@@ -321,7 +325,7 @@ export function buildSiteSummary(session: SiteSession, pages: SitePageRecord[]):
     incomplete,
     pages: pages.map((page) => {
       const result = page.result as AnalysisResult | null;
-      const findings = result?.findings ?? [];
+      const findings = result?.findings ?? page.responseFindings ?? [];
       return {
         id: page.id,
         url: page.url,
@@ -333,6 +337,12 @@ export function buildSiteSummary(session: SiteSession, pages: SitePageRecord[]):
         errorCount: findings.filter((finding) => finding.severity === 'error').length,
         warnCount: findings.filter((finding) => finding.severity === 'warn').length,
         truncated: result?.truncated ?? false,
+        contentType: page.responseMetadata?.contentType ?? null,
+        responseTimeMs: page.responseMetadata?.durationMs ?? null,
+        redirectCount: page.responseMetadata?.redirectObservationUnavailable
+          ? null
+          : (page.responseMetadata?.redirectChain.length ?? 0),
+        xRobotsTag: page.responseMetadata?.xRobotsTag ?? null,
       };
     }),
   };

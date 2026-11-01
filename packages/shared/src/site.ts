@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { FindingSchema } from './finding.js';
 
 /**
  * Site-audit domain types. Site mode is opt-in and performs network requests
@@ -21,6 +22,33 @@ export const SITE_PAGE_STATUSES = [
 ] as const;
 export type SitePageStatus = (typeof SITE_PAGE_STATUSES)[number];
 export const SitePageStatusSchema = z.enum(SITE_PAGE_STATUSES);
+
+export const RedirectHopSchema = z.object({
+  url: z.string().max(2048),
+  status: z.number().int().min(300).max(399).nullable().default(null),
+  location: z.string().max(2048).nullable().default(null),
+  opaque: z.boolean().default(false),
+});
+
+/** Bounded same-origin response metadata captured by the site crawler. */
+export const SiteResponseMetadataSchema = z.object({
+  finalStatus: z.number().int().min(100).max(599).nullable().default(null),
+  redirectChain: z.array(RedirectHopSchema).max(10).default([]),
+  redirectObservationUnavailable: z.boolean().default(false),
+  contentType: z.string().max(2048).nullable().default(null),
+  contentLength: z.number().int().nonnegative().nullable().default(null),
+  contentEncoding: z.string().max(256).nullable().default(null),
+  xRobotsTag: z.string().max(2048).nullable().default(null),
+  cacheControl: z.string().max(2048).nullable().default(null),
+  hasHsts: z.boolean().default(false),
+  hasCsp: z.boolean().default(false),
+  hasXContentTypeOptions: z.boolean().default(false),
+  hasReferrerPolicy: z.boolean().default(false),
+  hasFrameProtection: z.boolean().default(false),
+  durationMs: z.number().min(0).nullable().default(null),
+  bodyTruncated: z.boolean().default(false),
+});
+export type SiteResponseMetadata = z.infer<typeof SiteResponseMetadataSchema>;
 
 /** Session record (crawl state lives here — NOT in the service worker). */
 export const SiteSessionSchema = z.object({
@@ -64,6 +92,10 @@ export const SitePageRecordSchema = z.object({
   snapshot: z.unknown().nullable().default(null),
   /** Present only for status 'ok' (AnalysisResult). */
   result: z.unknown().nullable().default(null),
+  /** Absent on legacy rows; populated only for site-audit fetches. */
+  responseMetadata: SiteResponseMetadataSchema.nullable().default(null),
+  /** Site-only response rules for pages that cannot be parsed as HTML. */
+  responseFindings: z.array(FindingSchema).default([]),
 });
 export type SitePageRecord = z.infer<typeof SitePageRecordSchema>;
 /** Input shape: fields with schema defaults may be omitted on write. */

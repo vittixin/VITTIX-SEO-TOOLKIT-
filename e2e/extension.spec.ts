@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { extensionPageUrl, loadExtension } from './helpers/extension';
+import { highlightOnPage } from '../apps/extension/src/highlight/overlay';
 
 const SECTION_TITLES: Record<string, string> = {
   metadata: 'Metadata',
@@ -13,6 +14,33 @@ const SECTION_TITLES: Record<string, string> = {
 };
 
 test.describe('Vittix SEO Toolkit smoke tests', () => {
+  test('page highlight is bounded, dismissible, stale-safe and makes no requests', async () => {
+    const { context, page } = await loadExtension('e2e');
+    const requests: string[] = [];
+    context.on('request', (request) => requests.push(request.url()));
+    await context.route('https://fixture.test/**', (route) =>
+      route.fulfill({
+        contentType: 'text/html',
+        body: '<!doctype html><h1>Fixture target</h1><a href="/next">Next</a>',
+      }),
+    );
+    try {
+      await page.goto('https://fixture.test/highlight');
+      await page.evaluate(highlightOnPage, [{ kind: 'heading', nthIndex: 0 }]);
+      await expect(page.getByRole('status')).toContainText('Highlighted 1 element');
+      expect(
+        await page.locator('h1').evaluate((el) => (el as HTMLElement).style.outline),
+      ).toContain('solid');
+      await page.getByRole('button', { name: 'Dismiss page highlights' }).click();
+      await expect(page.getByRole('status')).toHaveCount(0);
+      expect(await page.locator('h1').evaluate((el) => (el as HTMLElement).style.outline)).toBe('');
+      await page.evaluate(highlightOnPage, [{ kind: 'heading', nthIndex: 999 }]);
+      await expect(page.getByRole('status')).toContainText('Element no longer found');
+      expect(requests.filter((url) => !url.includes('fixture.test'))).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
   test('permission probe: Chrome accepts localhost patterns and sidePanel as optional manifest entries', async () => {
     const { context, page, extensionId } = await loadExtension('e2e');
     try {

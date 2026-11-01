@@ -25,7 +25,7 @@ export interface ExtractorLimits {
 }
 
 /**
- * One-shot page extraction (snapshot schema v5). Runs in the page's ISOLATED
+ * One-shot page extraction (snapshot schema v6). Runs in the page's ISOLATED
  * world (no access to page JavaScript variables). Reads only what the SEO
  * analyzers need, caps every collection, and returns a plain serializable
  * object. Nothing is fetched and nothing is transmitted.
@@ -322,7 +322,7 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
   const headings: PageSnapshot['headings'] = [];
   const hiddenCounts = { headings: 0, images: 0, links: 0 };
   let headingsSeen = 0;
-  document.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach((el) => {
+  document.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach((el, locatorIndex) => {
     const tag = el.tagName.toLowerCase() as PageSnapshot['headings'][number]['tag'];
     if (isHidden(el)) {
       hiddenCounts.headings += 1;
@@ -332,7 +332,11 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
     headingsSeen += 1;
     if (headings.length < limits.headings) {
       const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
-      headings.push({ tag, text: text.slice(0, limits.textField) });
+      headings.push({
+        tag,
+        text: text.slice(0, limits.textField),
+        locator: locatorIndex <= 100_000 ? { kind: 'heading', nthIndex: locatorIndex } : null,
+      });
     }
   });
 
@@ -342,7 +346,7 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
   let imagesHidden = 0;
   const isHttps = location.protocol === 'https:';
   const mixedContentSamples: string[] = [];
-  imageEls.forEach((el) => {
+  imageEls.forEach((el, locatorIndex) => {
     if (isHidden(el)) {
       imagesHidden += 1;
       return;
@@ -379,6 +383,7 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
         fetchpriority: notBlank(el.getAttribute('fetchpriority'), 10),
         format: formatFromSrc(src),
         foldIndex,
+        locator: locatorIndex <= 100_000 ? { kind: 'image', nthIndex: locatorIndex } : null,
       });
     }
     // Mixed-content detection: http:// subresources on an https page.
@@ -406,7 +411,7 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
   const linkEls = document.querySelectorAll('a[href]');
   const links: PageSnapshot['links'] = [];
   let linksSeen = 0;
-  linkEls.forEach((el) => {
+  linkEls.forEach((el, locatorIndex) => {
     if (isHidden(el)) {
       hiddenCounts.links += 1;
       return;
@@ -421,6 +426,7 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
       rel: anchor.getAttribute('rel'),
       target: anchor.getAttribute('target'),
       accessibleName: accessibleNameOf(anchor, text).slice(0, 300),
+      locator: locatorIndex <= 100_000 ? { kind: 'link', nthIndex: locatorIndex } : null,
     });
   });
 
@@ -561,7 +567,7 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
 
   return {
     // Keep in sync with SNAPSHOT_SCHEMA_VERSION in @vittix/shared.
-    schemaVersion: 5,
+    schemaVersion: 6,
     url: location.href,
     title: (document.title ?? '').slice(0, 500),
     titleCount: document.querySelectorAll('title').length,

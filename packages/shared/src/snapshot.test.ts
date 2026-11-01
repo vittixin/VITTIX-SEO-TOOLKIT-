@@ -17,10 +17,11 @@ export function img(src: string, alt: string | null): ImageEntry {
     fetchpriority: null,
     format: '',
     foldIndex: null,
+    locator: null,
   };
 }
 
-export function buildSnapshot(overrides: Partial<PageSnapshot> = {}): PageSnapshot {
+export function buildSnapshot(overrides: Record<string, unknown> = {}): PageSnapshot {
   const base: PageSnapshot = {
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     url: 'https://example.com/page',
@@ -46,20 +47,28 @@ export function buildSnapshot(overrides: Partial<PageSnapshot> = {}): PageSnapsh
     descriptions: ['An example page description.'],
     canonicals: ['https://example.com/page'],
     headings: [
-      { tag: 'h1', text: 'Main heading' },
-      { tag: 'h2', text: 'Section heading' },
+      { tag: 'h1', text: 'Main heading', locator: null },
+      { tag: 'h2', text: 'Section heading', locator: null },
     ],
     headingCounts: { h1: 1, h2: 1, h3: 0, h4: 0, h5: 0, h6: 0 },
     images: [img('https://example.com/a.png', 'A diagram'), img('https://example.com/b.png', null)],
     imageCount: 2,
     links: [
-      { href: '/about', text: 'About', rel: null, target: null, accessibleName: 'About' },
+      {
+        href: '/about',
+        text: 'About',
+        rel: null,
+        target: null,
+        accessibleName: 'About',
+        locator: null,
+      },
       {
         href: 'https://other.com/',
         text: 'Other',
         rel: 'noopener',
         target: '_blank',
         accessibleName: 'Other',
+        locator: null,
       },
     ],
     linkCount: 2,
@@ -94,10 +103,10 @@ export function buildSnapshot(overrides: Partial<PageSnapshot> = {}): PageSnapsh
     microdataRdfaTypes: [],
     extractedAt: '2026-10-31T12:00:00.000Z',
   };
-  return { ...base, ...overrides };
+  return { ...base, ...overrides } as PageSnapshot;
 }
 
-describe('PageSnapshotSchema (v5)', () => {
+describe('PageSnapshotSchema (v6)', () => {
   it('accepts a valid v5 snapshot', () => {
     const result = PageSnapshotSchema.safeParse(buildSnapshot());
     expect(result.success).toBe(true);
@@ -118,6 +127,25 @@ describe('PageSnapshotSchema (v5)', () => {
     expect(parsed.schemaVersion).toBe(4);
     expect(parsed.textSummary.syllableCount).toBe(0);
     expect(parsed.textSummary.leadText).toBe('');
+  });
+
+  it('defaults v6 locators on stored v5 element rows and validates bounded locators', () => {
+    const old = buildSnapshot({
+      schemaVersion: 5,
+      headings: [{ tag: 'h1', text: 'Legacy heading' }],
+      images: [{ src: '/old.png', alt: null }],
+      links: [{ href: '/old', text: 'Old', rel: null, target: null }],
+    });
+    const parsed = PageSnapshotSchema.parse(old);
+    expect(parsed.headings[0]?.locator).toBeNull();
+    expect(parsed.images[0]?.locator).toBeNull();
+    expect(parsed.links[0]?.locator).toBeNull();
+    expect(
+      PageSnapshotSchema.safeParse({
+        ...buildSnapshot(),
+        headings: [{ tag: 'h1', text: 'x', locator: { kind: 'heading', nthIndex: 100_001 } }],
+      }).success,
+    ).toBe(false);
   });
 
   it('enforces the lead-text character limit', () => {

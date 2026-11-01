@@ -12,7 +12,11 @@ import { FRIENDLY_ERROR_MESSAGES, type AnalyzeSuccess, type ErrorCode } from '@v
 import { ScoreRing } from '@/src/components/ScoreRing';
 import { isAnalyzableUrl, pageHost } from '@/src/extraction/guards';
 import { formatDate } from '@/src/lib/format';
-import { openDashboard, requestAnalyzeActiveTab } from '@/src/messaging/client';
+import {
+  openDashboard,
+  requestAnalyzeActiveTab,
+  requestShowHighlights,
+} from '@/src/messaging/client';
 
 type Status = 'idle' | 'analyzing' | 'done' | 'error';
 
@@ -22,6 +26,7 @@ export function App() {
   const [success, setSuccess] = useState<AnalyzeSuccess | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<ErrorCode | null>(null);
+  const [highlightMessage, setHighlightMessage] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -45,6 +50,11 @@ export function App() {
       setErrorCode(response.error.code);
       setStatus('error');
     }
+  }
+
+  async function handleShowOnPage() {
+    if (!success) return;
+    setHighlightMessage(await requestShowHighlights(success.auditId));
   }
 
   return (
@@ -100,6 +110,22 @@ export function App() {
               <p className="mt-1 pl-6 font-mono text-[11px] text-rose-400">{errorCode}</p>
             ) : null}
           </div>
+        ) : null}
+
+        {status === 'done' ? (
+          <button
+            type="button"
+            onClick={() => void handleShowOnPage()}
+            className="w-full rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+            aria-label="Show analyzed elements on the page"
+          >
+            Show on page
+          </button>
+        ) : null}
+        {highlightMessage ? (
+          <p role="status" className="text-xs text-slate-600">
+            {highlightMessage}
+          </p>
         ) : null}
 
         {status === 'done' && success ? (

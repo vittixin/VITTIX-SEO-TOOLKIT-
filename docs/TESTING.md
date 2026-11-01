@@ -12,7 +12,7 @@
 
 207 tests covering:
 
-- **shared**: snapshot schema v5 accept/reject paths (schema versions 1–5
+- **shared**: snapshot schema v6 accept/reject paths (schema versions 1–6
   incl. legacy readability, caps, invalid tags, null-vs-empty alt, omitted/
   hidden/svg defaults), settings validation, message contracts (discriminated
   union, error codes, friendly messages), severity counting

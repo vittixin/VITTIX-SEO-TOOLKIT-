@@ -453,7 +453,16 @@ test('site audit against a real local HTTPS server: robots, gzip sitemap, redire
     ).toBe(true);
     const about = state.pages.find(
       (row) => String(row.url).endsWith('/about') && row.status === 'ok',
-    ) as { responseMetadata?: Record<string, unknown> } | undefined;
+    ) as
+      | {
+          responseMetadata?: Record<string, unknown>;
+          snapshot?: {
+            headings?: { locator?: unknown }[];
+            images?: { locator?: unknown }[];
+            links?: { locator?: unknown }[];
+          };
+        }
+      | undefined;
     expect(about?.responseMetadata).toMatchObject({
       xRobotsTag: 'noindex',
       hasHsts: true,
@@ -462,6 +471,9 @@ test('site audit against a real local HTTPS server: robots, gzip sitemap, redire
       hasReferrerPolicy: true,
       hasFrameProtection: true,
     });
+    expect(about?.snapshot?.headings?.every((entry) => entry.locator === null)).toBe(true);
+    expect(about?.snapshot?.images?.every((entry) => entry.locator === null)).toBe(true);
+    expect(about?.snapshot?.links?.every((entry) => entry.locator === null)).toBe(true);
     const slow = state.pages.find((row) => String(row.url).endsWith('/slow')) as
       { responseMetadata?: { durationMs?: number | null } } | undefined;
     expect(slow?.responseMetadata?.durationMs).toBeGreaterThanOrEqual(2000);

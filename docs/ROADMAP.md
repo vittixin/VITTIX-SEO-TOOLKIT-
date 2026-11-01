@@ -9,6 +9,14 @@
 - Side panel remains gated on runtime permission behavior; no install-time
   permission has been added.
 
+## Snapshot schema v6 — page highlight locators
+
+- Live snapshots retain bounded nullable selector ordinals for visible
+  headings, images, and links. Fetched-HTML snapshots leave locators null.
+- The popup's user-triggered Show on page action outlines up to 50 captured
+  elements. Dismissal restores their prior outlines; navigation removes the
+  temporary overlay. Dashboard pages cannot use activeTab for this action.
+
 ## Phase C status update (2026-11-01)
 
 Phase C part 1 and the requested part 2 features cover response metadata,

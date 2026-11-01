@@ -27,9 +27,17 @@ export const PageMetaSchema = z.object({
 });
 export type PageMeta = z.infer<typeof PageMetaSchema>;
 
+/** Stable, bounded selector ordinal for click-triggered page highlighting. */
+export const ElementLocatorSchema = z.object({
+  kind: z.enum(['heading', 'image', 'link']),
+  nthIndex: z.number().int().nonnegative().max(100_000),
+});
+export type ElementLocator = z.infer<typeof ElementLocatorSchema>;
+
 export const HeadingEntrySchema = z.object({
   tag: HeadingTagSchema,
   text: z.string(),
+  locator: ElementLocatorSchema.nullable().default(null),
 });
 export type HeadingEntry = z.infer<typeof HeadingEntrySchema>;
 
@@ -56,6 +64,7 @@ export const ImageEntrySchema = z.object({
    * with getBoundingClientRect at extraction); null when not measured.
    */
   foldIndex: nonNegativeInt.nullable().default(null),
+  locator: ElementLocatorSchema.nullable().default(null),
 });
 export type ImageEntry = z.infer<typeof ImageEntrySchema>;
 
@@ -70,6 +79,7 @@ export const LinkEntrySchema = z.object({
    * (aria-labelledby is not resolved — documented limitation.)
    */
   accessibleName: z.string().default(''),
+  locator: ElementLocatorSchema.nullable().default(null),
 });
 export type LinkEntry = z.infer<typeof LinkEntrySchema>;
 
@@ -166,7 +176,7 @@ export type Pagination = z.infer<typeof PaginationSchema>;
  * A bounded, serializable snapshot of a page. This is the ONLY data the
  * extractor takes out of a page — nothing else is collected or transmitted.
  *
- * v2/v3/v4/v5 fields carry defaults so stored audits from earlier versions
+ * v2/v3/v4/v5/v6 fields carry defaults so stored audits from earlier versions
  * still validate. Fresh extractions always use the current
  * SNAPSHOT_SCHEMA_VERSION.
  */
@@ -177,6 +187,7 @@ export const PageSnapshotSchema = z.object({
     z.literal(SNAPSHOT_SCHEMA_VERSIONS[2]),
     z.literal(SNAPSHOT_SCHEMA_VERSIONS[3]),
     z.literal(SNAPSHOT_SCHEMA_VERSIONS[4]),
+    z.literal(SNAPSHOT_SCHEMA_VERSIONS[5]),
   ]),
   url: z.string().min(1),
   title: z.string(),

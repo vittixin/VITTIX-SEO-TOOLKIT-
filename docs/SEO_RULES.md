@@ -1,6 +1,6 @@
 # SEO Rules — Rule Set v0.9.0
 
-All rules are pure functions of a validated `PageSnapshot` (schema **v5**):
+All rules are pure functions of a validated `PageSnapshot` (schema **v6**):
 the same snapshot always produces the same findings, in the same order
 (findings are sorted by severity, then `ruleId`). Every non-pass finding
 carries `evidence` (what was found) and `remediation` (how to fix it).

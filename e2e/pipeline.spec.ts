@@ -81,7 +81,7 @@ test('real extraction → validation → analysis pipeline', async () => {
 
     // 2. Extraction correctness on the fixture.
     expect(snapshot.title).toBe('Vittix Fixture Page With A Good Long Title');
-    expect(snapshot.schemaVersion).toBe(5);
+    expect(snapshot.schemaVersion).toBe(6);
     expect(snapshot.textSummary.syllableCount).toBeGreaterThan(0);
     expect(snapshot.textSummary.leadText).toContain('Fixture main heading');
     expect(snapshot.textSummary.leadText).not.toContain('hidden secret');
@@ -91,11 +91,14 @@ test('real extraction → validation → analysis pipeline', async () => {
     // analysis collections but counted.
     expect(snapshot.headingCounts.h1).toBe(1);
     expect(snapshot.headingCounts.h2).toBe(1);
+    expect(snapshot.headings[0]?.locator).toMatchObject({ kind: 'heading' });
     expect(snapshot.hidden.headings).toBe(2);
     // The display:none decorative image is hidden; visible: chart + missing-alt.
     expect(snapshot.imageCount).toBe(2);
+    expect(snapshot.images[0]?.locator).toMatchObject({ kind: 'image' });
     expect(snapshot.hidden.images).toBe(1);
     expect(snapshot.linkCount).toBe(5);
+    expect(snapshot.links[0]?.locator).toMatchObject({ kind: 'link' });
     // v2/v3: accessible names incl. aria-labelledby resolution.
     const emptyAnchor = snapshot.links.find((link) => link.href === '/empty-anchor');
     const ariaLink = snapshot.links.find((link) => link.href === 'https://external.example/');

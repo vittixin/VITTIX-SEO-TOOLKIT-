@@ -23,15 +23,16 @@ export const DB_NAME = 'vittix-seo';
  *   pagination{prev,next}.
  * - v5: textSummary.syllableCount and a locally stored leadText excerpt
  *   (first 100 visible words, whitespace-normalized, capped at 800 chars).
+ * - v6: nullable element locators for captured headings, images, and links.
  *
- * All v2/v3/v4/v5 additions carry defaults, so records stored by earlier
- * versions remain readable (the schema accepts all five versions). See
+ * All v2/v3/v4/v5/v6 additions carry defaults, so records stored by earlier
+ * versions remain readable (the schema accepts all six versions). See
  * docs/ROADMAP.md for the changelog of when each version landed.
  */
-export const SNAPSHOT_SCHEMA_VERSION = 5;
+export const SNAPSHOT_SCHEMA_VERSION = 6;
 
 /** Snapshot versions the schema can still read (legacy stored audits). */
-export const SNAPSHOT_SCHEMA_VERSIONS = [1, 2, 3, 4, 5] as const;
+export const SNAPSHOT_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6] as const;
 
 /**
  * Hard bounds applied while extracting a page so that audits stay small and

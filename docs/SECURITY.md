@@ -39,6 +39,9 @@ permissions, content scripts, web-accessible resources, or a CSP that allows
 - Injection happens only after a user click, only on `http(s)` URLs; guarded
   before execution with clear user-facing errors for everything else
   (browser-internal pages, extension pages, files, PDF viewer)
+- The page-highlight helper is serialized and self-contained, uses only fixed
+  selectors and saved ordinals, caps highlights at 50, and uses `textContent`
+  for its static overlay message. It does not fetch or transmit data.
 
 ## Secrets
 

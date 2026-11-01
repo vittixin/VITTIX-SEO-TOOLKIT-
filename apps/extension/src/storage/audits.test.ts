@@ -102,7 +102,7 @@ describe('stored-record migration and compatibility', () => {
     expect(parsed.data.snapshot.omitted.links).toBe(0);
   });
 
-  it('accepts the current v5 snapshot', () => {
+  it('accepts the current v6 snapshot', () => {
     const record = wrapAudit({ ...v2Snapshot(), schemaVersion: SNAPSHOT_SCHEMA_VERSION });
     expect(AuditRecordSchema.safeParse(record).success).toBe(true);
   });

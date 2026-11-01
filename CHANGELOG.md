@@ -8,6 +8,9 @@
   switching the chosen scoring profile.
 - Added redirect consent wording that loopback redirects may reach local
   network services.
+- Snapshot schema v6 adds bounded heading/image/link locators. The popup can
+  outline stored elements after an explicit Show on page click; fetched HTML
+  keeps locator values empty.
 
 ## Unreleased — Phase C redirect observations, duplicate heuristics, link graph, and comparisons
 

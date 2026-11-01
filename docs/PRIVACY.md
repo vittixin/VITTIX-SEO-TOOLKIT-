@@ -90,6 +90,12 @@ CSP, no remote code).
 
 ## Site-audit response metadata
 
+Snapshot v6 stores bounded selector ordinals for visible headings, images,
+and links to support the user-triggered page highlight. These locators do not
+contain text or attributes; fetched-HTML site audits leave them empty. The
+popup uses the stored locators only after the user clicks Show on page, and
+does not collect or transmit additional page data.
+
 Site audits accept HTTPS origins and, for development only, `http://localhost`
 or `http://127.0.0.1`. These are optional runtime host patterns; Chrome match
 patterns ignore ports, so approving either host can cover any port on that host.

@@ -2,6 +2,7 @@ import { browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
 import {
   ANALYZE_REQUEST_SCHEMA,
+  SHOW_HIGHLIGHTS_REQUEST_SCHEMA,
   PageSnapshotSchema,
   SNAPSHOT_SCHEMA_VERSION,
   analyzeFailure,
@@ -13,10 +14,11 @@ import { analyzeSnapshot } from '@vittix/seo-core';
 import { EXTRACTOR_LIMITS } from '@/src/extraction/limits';
 import { extractPageSnapshot } from '@/src/extraction/snapshot-inject';
 import { isAnalyzableUrl } from '@/src/extraction/guards';
-import { pruneAudits, saveAudit } from '@/src/storage/audits';
+import { getAudit, pruneAudits, saveAudit } from '@/src/storage/audits';
 import { getSettings } from '@/src/storage/settings';
 import { getTargetKeyword } from '@/src/storage/keywords';
 import { getOriginRuleSettings } from '@/src/storage/rule-settings';
+import { highlightOnPage } from '@/src/highlight/overlay';
 
 /**
  * Minimal, event-driven MV3 service worker.
@@ -32,6 +34,11 @@ import { getOriginRuleSettings } from '@/src/storage/rule-settings';
  */
 export default defineBackground(() => {
   browser.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+    const highlightRequest = SHOW_HIGHLIGHTS_REQUEST_SCHEMA.safeParse(message);
+    if (highlightRequest.success) {
+      void showAuditHighlights(highlightRequest.data.auditId).then(sendResponse);
+      return true;
+    }
     if (!ANALYZE_REQUEST_SCHEMA.safeParse(message).success) {
       return; // not our message; let other listeners decide
     }
@@ -160,6 +167,32 @@ async function applyRetention(): Promise<void> {
     await pruneAudits(await getSettings());
   } catch (error) {
     console.warn('[vittix] retention cleanup failed', error);
+  }
+}
+
+async function showAuditHighlights(auditId: number): Promise<{ ok: boolean; message: string }> {
+  const audit = await getAudit(auditId);
+  if (!audit) return { ok: false, message: 'Saved audit not found — re-analyze this page.' };
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  if (tab?.id === undefined) {
+    return { ok: false, message: 'Open the popup on the page to use Show on page.' };
+  }
+  const locators = [...audit.snapshot.headings, ...audit.snapshot.images, ...audit.snapshot.links]
+    .map((entry) => entry.locator)
+    .filter((locator) => locator !== null)
+    .slice(0, 50);
+  try {
+    await browser.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: highlightOnPage,
+      args: [locators],
+    });
+    return {
+      ok: true,
+      message: 'Highlights shown on the page. Dismiss the page notice to clear them.',
+    };
+  } catch {
+    return { ok: false, message: 'Open the popup on the page to use Show on page.' };
   }
 }
 

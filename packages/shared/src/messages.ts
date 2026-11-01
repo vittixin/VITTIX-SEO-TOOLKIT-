@@ -3,6 +3,7 @@ import { type SeverityCounts } from './finding.js';
 
 /** Message type used by popup/dashboard to ask the background worker to analyze. */
 export const ANALYZE_MESSAGE_TYPE = 'vittix/analyze-active-tab';
+export const SHOW_HIGHLIGHTS_MESSAGE_TYPE = 'vittix/show-highlights';
 
 export const ANALYZE_REQUEST_SCHEMA = z.object({
   type: z.literal(ANALYZE_MESSAGE_TYPE),
@@ -12,6 +13,15 @@ export type AnalyzeRequest = z.infer<typeof ANALYZE_REQUEST_SCHEMA>;
 export function analyzeRequest(): AnalyzeRequest {
   return { type: ANALYZE_MESSAGE_TYPE };
 }
+
+export const SHOW_HIGHLIGHTS_REQUEST_SCHEMA = z.object({
+  type: z.literal(SHOW_HIGHLIGHTS_MESSAGE_TYPE),
+  auditId: z.number().int().positive(),
+});
+export const SHOW_HIGHLIGHTS_RESPONSE_SCHEMA = z.object({
+  ok: z.boolean(),
+  message: z.string(),
+});
 
 /** Every failure mode the analysis pipeline can report to the UI. */
 export const ERROR_CODES = [

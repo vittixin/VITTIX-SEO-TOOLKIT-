@@ -172,7 +172,7 @@ export function parsePageSnapshot(
     headingsSeen += 1;
     if (headings.length < limits.headings) {
       const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
-      headings.push({ tag, text: text.slice(0, limits.textField) });
+      headings.push({ tag, text: text.slice(0, limits.textField), locator: null });
     }
   });
 
@@ -215,6 +215,7 @@ export function parsePageSnapshot(
         fetchpriority: notBlank(el.getAttribute('fetchpriority'), 10),
         format: formatFromSrc(src),
         foldIndex: null,
+        locator: null,
       });
     }
     if (
@@ -256,6 +257,7 @@ export function parsePageSnapshot(
       rel: anchor.getAttribute('rel'),
       target: anchor.getAttribute('target'),
       accessibleName: accessibleNameOf(anchor, text).slice(0, 300),
+      locator: null,
     });
   });
 

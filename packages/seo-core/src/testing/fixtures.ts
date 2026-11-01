@@ -2,8 +2,8 @@ import type { ImageEntry, PageMeta, PageSnapshot } from '@vittix/shared';
 import { SNAPSHOT_SCHEMA_VERSION } from '@vittix/shared';
 
 /**
- * Test-only snapshot builder for the v5 schema. Not exported from the
- * package index. New-in-v4/v5 fields default to healthy values (no omissions,
+ * Test-only snapshot builder for the v6 schema. Not exported from the
+ * package index. New-in-v4/v5/v6 fields default to healthy values (no omissions,
  * no hidden content, no SVG, healthy content summary) so tests only specify
  * what a rule exercises.
  */
@@ -23,6 +23,7 @@ export function defaultImage(src: string, alt: string | null): ImageEntry {
     fetchpriority: null,
     format: '',
     foldIndex: null,
+    locator: null,
   };
 }
 
@@ -36,11 +37,11 @@ export function buildSnapshot(
     descriptions?: string[];
     canonicals?: string[];
     robotsValues?: string[];
-    headings?: PageSnapshot['headings'];
+    headings?: Array<Omit<PageSnapshot['headings'][number], 'locator'> & { locator?: null }>;
     headingCounts?: PageSnapshot['headingCounts'];
     images?: Array<Partial<ImageEntry> & Pick<ImageEntry, 'src' | 'alt'>>;
     imageCount?: number;
-    links?: PageSnapshot['links'];
+    links?: Array<Omit<PageSnapshot['links'][number], 'locator'> & { locator?: null }>;
     linkCount?: number;
     structuredData?: PageSnapshot['structuredData'];
     structuredDataCount?: number;
@@ -81,16 +82,18 @@ export function buildSnapshot(
     ogUrl: 'https://example.com/page',
     ...overrides.meta,
   };
-  const links = overrides.links ?? [
-    { href: '/about', text: 'About us', rel: null, target: null, accessibleName: 'About us' },
-    {
-      href: 'https://other.com/',
-      text: 'Other site',
-      rel: 'noopener',
-      target: '_blank',
-      accessibleName: 'Other site',
-    },
-  ];
+  const links = (
+    overrides.links ?? [
+      { href: '/about', text: 'About us', rel: null, target: null, accessibleName: 'About us' },
+      {
+        href: 'https://other.com/',
+        text: 'Other site',
+        rel: 'noopener',
+        target: '_blank',
+        accessibleName: 'Other site',
+      },
+    ]
+  ).map((link) => ({ ...link, locator: link.locator ?? null }));
   const images: ImageEntry[] = (
     overrides.images ?? [
       { src: 'https://example.com/a.png', alt: 'A bar chart of quarterly sales' },
@@ -111,10 +114,12 @@ export function buildSnapshot(
     meta,
     descriptions,
     canonicals,
-    headings: overrides.headings ?? [
-      { tag: 'h1', text: 'Main heading' },
-      { tag: 'h2', text: 'Section' },
-    ],
+    headings: (
+      overrides.headings ?? [
+        { tag: 'h1', text: 'Main heading' },
+        { tag: 'h2', text: 'Section' },
+      ]
+    ).map((heading) => ({ ...heading, locator: heading.locator ?? null })),
     headingCounts: overrides.headingCounts ?? { h1: 1, h2: 1, h3: 0, h4: 0, h5: 0, h6: 0 },
     images,
     imageCount: overrides.imageCount ?? images.length,

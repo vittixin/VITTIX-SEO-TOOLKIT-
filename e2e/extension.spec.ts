@@ -264,10 +264,43 @@ test.describe('Vittix SEO Toolkit smoke tests', () => {
       route.fulfill({ contentType: 'text/html', body: '<h1>Different page</h1>' }),
     );
     try {
-      await page.goto(extensionPageUrl(extensionId, 'popup.html'));
+      await test.step('wait for the production popup and audit database', async () => {
+        await page.goto(extensionPageUrl(extensionId, 'popup.html'), { timeout: 15_000 });
+        await expect(page.getByTestId('analyze-button')).toBeVisible();
+        await expect
+          .poll(
+            () =>
+              page.evaluate(async () => {
+                const database = (await indexedDB.databases()).find(
+                  (entry) => entry.name === 'vittix-seo',
+                );
+                return (database?.version ?? 0) > 0;
+              }),
+            { timeout: 10_000 },
+          )
+          .toBe(true);
+      });
+      const popupTabId = await page.evaluate(async () => {
+        const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+        return active?.id;
+      });
       const target = await context.newPage();
-      await target.goto('https://fixture.test/audited');
+      await target.goto('https://fixture.test/audited', { timeout: 15_000 });
       await target.bringToFront();
+      await expect
+        .poll(
+          () =>
+            page.evaluate(async () => {
+              const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+              return active?.id;
+            }),
+          { timeout: 10_000 },
+        )
+        .not.toBe(popupTabId);
+      const targetTabId = await page.evaluate(async () => {
+        const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+        return active?.id;
+      });
 
       const snapshot = buildSnapshot({
         url: 'https://fixture.test/audited',
@@ -289,22 +322,49 @@ test.describe('Vittix SEO Toolkit smoke tests', () => {
             request.onerror = () => reject(request.error);
             request.onsuccess = () => {
               const database = request.result;
-              const add = database
-                .transaction('audits', 'readwrite')
-                .objectStore('audits')
-                .add(row);
-              add.onsuccess = () => {
-                resolve(Number(add.result));
+              if (!database.objectStoreNames.contains('audits')) {
                 database.close();
+                reject(new Error('Production audit store was not initialized.'));
+                return;
+              }
+              const transaction = database.transaction('audits', 'readwrite');
+              const add = transaction.objectStore('audits').add(row);
+              let id: number | undefined;
+              add.onsuccess = () => {
+                id = Number(add.result);
               };
               add.onerror = () => reject(add.error);
+              transaction.oncomplete = () => {
+                database.close();
+                if (id === undefined) reject(new Error('Audit row was not committed.'));
+                else resolve(id);
+              };
+              transaction.onerror = () => {
+                database.close();
+                reject(transaction.error);
+              };
+              transaction.onabort = () => {
+                database.close();
+                reject(transaction.error ?? new Error('Audit transaction was aborted.'));
+              };
             };
           }),
         record,
       );
 
-      await target.goto('https://other.test/different');
+      await target.goto('https://other.test/different', { timeout: 15_000 });
+      await expect(target).toHaveURL('https://other.test/different');
       await target.bringToFront();
+      await expect
+        .poll(
+          () =>
+            page.evaluate(async () => {
+              const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+              return active?.id;
+            }),
+          { timeout: 10_000 },
+        )
+        .toBe(targetTabId);
       const outcome = await page.evaluate(async (id) => {
         const active = await chrome.tabs.query({ active: true, currentWindow: true });
         const hasHost = await chrome.permissions.contains({ origins: ['https://other.test/*'] });

@@ -1,84 +1,128 @@
-# Manual GUI Acceptance Checklist (owner-executed, installed Chrome)
+# Manual acceptance checklist — production build
 
-Automated coverage cannot press the real toolbar. Execute this checklist on
-a machine with the production build loaded unpacked
-(`pnpm build:chrome` → `chrome://extensions` → Developer mode → Load
-unpacked → `apps/extension/.output/chrome-mv3`). Record PASS/FAIL/NOT TESTED
-per item. Items marked ⚙ are covered by automated tests but worth a human
-sanity pass.
+Run this checklist with a real Chrome profile and the production build only.
+Do not load `.output/chrome-mv3-e2e` or use Playwright's fake permission UI for
+these checks. The site-audit permission and redirect acknowledgement need real
+Chrome prompts and a controlled test origin. Use only test sites you control.
 
-## A. Single-page audit
+## Prepare
 
-1. ⚙ Open a normal https page → click the Vittix toolbar icon → popup shows
-   the page host and "Analyze Current Page".
-2. ⚙ Click Analyze → spinner → summary with preliminary score ring and
-   error/warning/info/pass counts.
-3. NOT TESTED (human): toolbar icon renders the brand mark; badge shows the
-   score after an audit.
-4. ⚙ Open Dashboard from the popup → Overview renders the same audit.
-5. ⚙ Navigate Metadata/Headings/Images/Links → extracted data matches the
-   page you audited.
-6. ⚙ Findings section → search, category filter, severity filter, group-by
-   toggle work; each error/warning shows evidence and a "How to fix" hint.
-7. NOT TESTED (human): visual quality of score ring/bars on a wide and a
-   narrow window.
+1. Run `pnpm build:chrome` and wait for the production build to finish.
+2. Open `chrome://extensions` in a dedicated Chrome profile.
+3. Turn on **Developer mode**.
+4. Click **Load unpacked**, select `.output/chrome-mv3`, then pin Vittix from
+   the Extensions menu.
+5. Open the extension's **Details** page. Confirm the installed permissions
+   are `activeTab` and `scripting`; confirm no site access is granted yet.
+6. Record the Chrome version, OS, extension version, date, and tester below.
 
-## B. Site-audit permission prompt
+## Acceptance steps
 
-8. ⚙ Dashboard → Site Audits → disclosure text is shown before anything.
-9. NOT TESTED (human): enter a real https origin → Grant → the NATIVE
-   Chrome prompt appears naming EXACTLY that origin → accept.
-10. ⚙ Consent panel shows scope (page cap, depth, pacing, robots honored).
-11. NOT TESTED (human): deny the prompt → clear "Permission was not
-    granted" error, no network activity (verify in DevTools → Network).
+### Install and permission baseline
 
-## C. Start / cancel / resume
+- [ ] In `chrome://extensions`, confirm Vittix is enabled and its details page
+      lists the production build version.
+- [ ] Confirm **Site access** has no granted origins before starting a site
+      audit. The optional catalog must remain optional.
+- [ ] Confirm no background permission or broad installed host permission is
+      listed.
 
-12. ⚙ Start → progress bar advances; the "runs while this tab is open"
-    notice is shown.
-13. NOT TESTED (human): Cancel mid-crawl → loop stops between requests,
-    completed pages remain, status 'cancelled'.
-14. NOT TESTED (human): close the dashboard tab mid-crawl → reopen →
-    session recovered → Resume → pending pages complete (also covered by
-    the automated browser-restart test).
+### Single-page audit and keyboard shortcut
 
-## D. Permission revocation during crawling
+1. Open a normal HTTPS page that you control or a public test page.
+2. Click the pinned Vittix toolbar icon.
+3. Click **Analyze Current Page** and wait for the preliminary score.
+4. Click **Open Dashboard**; confirm the Overview shows the URL, score, score
+   cap (if any), and findings.
+5. Open another page and press **Ctrl+Shift+U** (Windows/Linux) or
+   **Command+Shift+U** (macOS). Confirm a new audit is saved.
+6. In the dashboard, open **Audit History** and confirm both audits appear.
 
-15. NOT TESTED (human): while crawling, remove the origin permission in
-    `chrome://extensions` → audit stops promptly with the red stop-reason
-    banner and the permission status shows REVOKED.
+### Exports
 
-## E. Results and comparisons
+1. Open Dashboard → **Export** and export JSON, CSV, HTML, and Markdown one at
+   a time.
+2. In JSON/HTML/Markdown options, leave **include page text excerpt** and
+   **include target keyword** unchecked. Open each file and confirm neither is
+   present.
+3. Check each opt-in separately, export again, and confirm the selected value
+   is included only in that file.
+4. Confirm CSV opens in a spreadsheet without treating page-provided values as
+   formulas. CSV must not include excerpt or target keyword data.
+5. Confirm HTML opens offline, has no remote resources, and displays escaped
+   text as text.
 
-16. ⚙ Site summary: audited/failed/skipped counts, error/warning totals,
-    duplicate title/description groups, missing title/description/canonical,
-    noindex warnings, broken-link candidates, orphan analysis (or the
-    explicit "not enough evidence" state), score distribution.
-17. ⚙ Run the same site twice → comparison line appears with deltas when
-    rule-set versions match; incomparable sessions explain why.
+### Site audit: real permission and redirect acknowledgement
 
-## F. Exports
+1. Use a controlled HTTPS test origin with robots.txt, several linked pages,
+   and one redirect route. Do not use a production site for this test.
+2. Open Dashboard → **Site Audit**, enter the origin, and click **Start audit**.
+3. Read the redirect-risk text and accept the required acknowledgement.
+4. When Chrome displays the host permission prompt, verify the displayed site
+   and choose **Allow**. Confirm the crawl starts and results appear.
+5. Confirm the audit reports its profile, rule-set version, response headers,
+   and completeness/stop reason.
+6. Start another controlled audit with enough delayed pages to keep it running.
+   Open `chrome://extensions` → Vittix → **Site access** and revoke that
+   origin while the crawl is active. Return to the dashboard; confirm the
+   crawl stops safely and reports the permission loss without continuing
+   requests.
+7. Start a controlled site whose linked URL redirects. Confirm the redirect
+   acknowledgement appears before the crawl and the destination behavior is
+   described exactly as the consent text states.
 
-18. ⚙ Single-page: JSON export contains the full snapshot + findings;
-    CSV opens in Excel/Sheets with correct quoting.
-19. ⚙ Site: site JSON + pages CSV download; open the CSV and confirm NO
-    cell is interpreted as a formula (try a page URL or title starting
-    with "=" if you craft one).
-20. ⚙ History CSV export lists all stored single-page audits.
+### Development-origin audit
 
-## G. Data deletion
+1. Start a local HTTP server on `127.0.0.1` (or `localhost`) on a test port.
+2. In Site Audit, enter that origin and click **Start audit**.
+3. Confirm Chrome requests optional host access at runtime. The consent must
+   say that localhost permission covers every port and a redirect can reach
+   other local services.
+4. Accept the prompt and start the crawl. Confirm the UI and report show the
+   **Development origin** badge and HTTPS/mixed-content checks use the relaxed
+   informational severity.
+5. Confirm the selected scoring profile did not change automatically.
 
-21. ⚙ Options page → Clear all audit data (two-step) → confirmation state;
-    verify DevTools → Application → IndexedDB → vittix-seo is empty.
-22. ⚙ Site Audits → Clear site-audit data → siteAudits/sitePages empty.
+### Theme, data deletion, and uninstall
 
-## H. Browser restart / recovery
+1. Open Settings and select Light, Dark, then System. Navigate to the popup,
+   dashboard, options page, and side panel; confirm the selection persists
+   without a flash of the wrong theme.
+2. Save an audit, target keyword, origin rule setting, and export logo. Open
+   Settings → **Clear all data** → confirm. Verify audits, site pages, target
+   keywords, origin settings, and logo data are removed; retention/theme
+   preferences remain.
+3. Open `chrome://extensions`, remove Vittix, and confirm Chrome removes its
+   local database and settings from that profile.
 
-23. NOT TESTED (human): close the whole browser mid-audit, reopen → resume
-    works (automated: e2e/siterestart.spec.ts).
+## Results table
 
-## I. Unsupported pages & errors
+Fill in every row. A release candidate is not manually accepted until every
+required row has a result and any failure has an issue or an explicit release
+decision.
 
-24. ⚙ chrome://, edge://, extension pages, PDFs → friendly "cannot be
-    analyzed" error, error code shown, nothing saved.
-25. NOT TESTED (human): offline page → clear injection-failure message.
+| Check                             | Result (Pass/Fail/Blocked) | Date | Chrome / OS | Evidence or issue |
+| --------------------------------- | -------------------------- | ---- | ----------- | ----------------- |
+| Install and permission baseline   |                            |      |             |                   |
+| Single-page toolbar audit         |                            |      |             |                   |
+| Keyboard shortcut audit           |                            |      |             |                   |
+| Audit history                     |                            |      |             |                   |
+| JSON and CSV exports              |                            |      |             |                   |
+| HTML and Markdown exports         |                            |      |             |                   |
+| Site audit real permission prompt |                            |      |             |                   |
+| Mid-crawl permission revocation   |                            |      |             |                   |
+| Redirect acknowledgement          |                            |      |             |                   |
+| Development-origin audit          |                            |      |             |                   |
+| Theme toggle across views         |                            |      |             |                   |
+| Clear all data                    |                            |      |             |                   |
+| Uninstall behavior                |                            |      |             |                   |
+
+**Tester:** ____________________
+
+**Chrome version:** ____________________
+
+**Operating system:** ____________________
+
+**Production build commit:** ____________________
+
+**Overall decision:** ____________________

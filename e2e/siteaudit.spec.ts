@@ -36,6 +36,12 @@ test('site audit accepts and labels an HTTP 127.0.0.1 development origin', async
     await dashboard.getByTestId('site-origin-input').fill(origin);
     await dashboard.getByTestId('site-grant').click();
     await expect(dashboard.getByTestId('site-consent')).toBeVisible();
+    await expect(dashboard.getByTestId('site-consent')).toContainText(
+      'the optional host permission covers every port on that host',
+    );
+    await expect(dashboard.getByTestId('site-consent')).toContainText(
+      'may send a request to another local service',
+    );
     await dashboard.getByTestId('site-redirect-consent').check();
     await dashboard.getByTestId('site-start').click();
     await expect(dashboard.getByTestId('site-summary')).toBeVisible({ timeout: 30_000 });

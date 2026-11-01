@@ -32,7 +32,7 @@ export function ScoreRing({ score, size = 150 }: { score: number; size?: number 
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="#e2e8f0"
+          stroke="var(--vittix-score-track)"
           strokeWidth={strokeWidth}
         />
         <circle

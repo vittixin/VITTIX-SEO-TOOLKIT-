@@ -19,7 +19,8 @@ const DASHBOARD_SECTIONS = [
   'settings',
 ] as const;
 
-test('dark theme screenshots and visible-text WCAG audit across extension views', async () => {
+test('light and dark theme contrast audit across extension views', async () => {
+  test.setTimeout(360_000);
   mkdirSync(EVIDENCE_DIR, { recursive: true });
   const { context, page, extensionId } = await loadExtension('production');
   const contrastFailures: Array<{
@@ -33,12 +34,22 @@ test('dark theme screenshots and visible-text WCAG audit across extension views'
   }> = [];
   const colorStats = new Map<string, number>();
   let auditedVisibleTextNodeCount = 0;
+  const nonTextFailures: Array<{
+    theme: string;
+    view: string;
+    width: number;
+    selector: string;
+    part: string;
+    foreground: string;
+    background: string;
+    ratio: number;
+  }> = [];
 
-  const auditAndScreenshot = async (view: string, width: number) => {
+  const auditAndScreenshot = async (theme: 'light' | 'dark', view: string, width: number) => {
     await expect(page.locator('body')).toBeVisible();
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await page.screenshot({
-      path: resolve(EVIDENCE_DIR, `${view}-${width}.png`),
+      path: resolve(EVIDENCE_DIR, `${theme}-${view}-${width}.png`),
       fullPage: true,
       animations: 'disabled',
     });
@@ -131,6 +142,13 @@ test('dark theme screenshots and visible-text WCAG audit across extension views'
         background: string;
         ratio: number;
       }> = [];
+      const nonTextFailures: Array<{
+        selector: string;
+        part: string;
+        foreground: string;
+        background: string;
+        ratio: number;
+      }> = [];
       let visibleTextNodeCount = 0;
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
       while (walker.nextNode()) {
@@ -147,7 +165,8 @@ test('dark theme screenshots and visible-text WCAG audit across extension views'
         for (let current: Element | null = element; current; current = current.parentElement) {
           ancestors.push(current);
         }
-        let background: [number, number, number] = [15, 23, 42];
+        let background: [number, number, number] =
+          document.documentElement.dataset.theme === 'dark' ? [15, 23, 42] : [255, 255, 255];
         for (const ancestor of ancestors.reverse()) {
           const style = getComputedStyle(ancestor);
           const parsed = parseColor(style.backgroundColor);
@@ -179,62 +198,132 @@ test('dark theme screenshots and visible-text WCAG audit across extension views'
           });
         }
       }
-      return { failures, visibleTextNodeCount };
+      const surfaces = (element: Element) => {
+        for (let current: Element | null = element; current; current = current.parentElement) {
+          const parsed = parseColor(getComputedStyle(current).backgroundColor);
+          if (parsed && parsed[3] > 0) return composite(parsed, [255, 255, 255]);
+        }
+        return [255, 255, 255] as [number, number, number];
+      };
+      const inspectEdge = (element: Element, part: 'border' | 'outline' | 'ring' | 'indicator') => {
+        const style = getComputedStyle(element);
+        let colorText =
+          part === 'outline'
+            ? style.outlineColor
+            : part === 'ring'
+              ? style.getPropertyValue('--tw-ring-color')
+              : style.borderTopColor;
+        if (part === 'indicator') colorText = style.stroke || style.color;
+        const parsed = colorText ? parseColor(colorText) : null;
+        if (!parsed || parsed[3] === 0) return;
+        const background = surfaces(element);
+        const rendered = composite(parsed, background);
+        const ratio = contrast(rendered, background);
+        if (ratio < 3)
+          nonTextFailures.push({
+            selector: describe(element),
+            part,
+            foreground: colorText,
+            background: `rgb(${background.map(Math.round).join(' ')})`,
+            ratio: Number(ratio.toFixed(2)),
+          });
+      };
+      const visible = [
+        ...document.querySelectorAll(
+          'button, input, select, textarea, [role="button"], [class*="severity"], [data-severity], svg circle, svg path',
+        ),
+      ].filter((element) => element.getClientRects().length);
+      for (const element of visible) {
+        const tag = element.tagName.toLowerCase();
+        if (['input', 'select', 'textarea'].includes(tag)) inspectEdge(element, 'border');
+        if (element.matches('button, [role="button"]')) {
+          const computed = getComputedStyle(element);
+          if (computed.outlineStyle !== 'none' && computed.outlineWidth !== '0px')
+            inspectEdge(element, 'outline');
+          if (computed.borderTopWidth !== '0px') inspectEdge(element, 'border');
+        }
+        if (element.matches('[class*="severity"], [data-severity]')) inspectEdge(element, 'border');
+        if (element.matches('svg circle, svg path')) {
+          const svg = element.closest('svg');
+          if (svg && (svg.getAttribute('aria-label') || svg.querySelector('circle')))
+            inspectEdge(element, 'indicator');
+        }
+      }
+      const firstFocusable = document.querySelector<HTMLElement>(
+        'button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])',
+      );
+      firstFocusable?.focus();
+      const focused = document.activeElement;
+      if (focused && focused !== document.body) {
+        const computed = getComputedStyle(focused);
+        if (computed.outlineStyle !== 'none' && computed.outlineWidth !== '0px')
+          inspectEdge(focused, 'outline');
+        if (computed.getPropertyValue('--tw-ring-color')) inspectEdge(focused, 'ring');
+      }
+      return { failures, nonTextFailures, visibleTextNodeCount };
     });
     auditedVisibleTextNodeCount += result.visibleTextNodeCount;
     const failures = result.failures;
     for (const failure of failures) {
-      contrastFailures.push({ view, width, ...failure });
+      contrastFailures.push({ theme, view, width, ...failure });
       const key = `${failure.selector} | ${failure.foreground} on ${failure.background}`;
       colorStats.set(key, (colorStats.get(key) ?? 0) + 1);
     }
+    for (const failure of result.nonTextFailures)
+      nonTextFailures.push({ theme, view, width, ...failure });
   };
 
   try {
-    await page.goto(extensionPageUrl(extensionId, 'dashboard.html'));
-    await page.getByTestId('nav-settings').click();
-    await page.getByLabel('Theme').selectOption('dark');
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            new Promise<string | undefined>((resolve) => {
-              const request = indexedDB.open('vittix-seo');
-              request.onsuccess = () => {
-                const database = request.result;
-                const get = database
-                  .transaction('settings')
-                  .objectStore('settings')
-                  .get('app-settings');
-                get.onsuccess = () => {
-                  resolve(get.result?.value?.theme);
-                  database.close();
-                };
-              };
-            }),
-        ),
-      )
-      .toBe('dark');
-
-    for (const width of [1280, 400]) {
-      await page.setViewportSize({ width, height: 900 });
-      await page.goto(extensionPageUrl(extensionId, 'popup.html'));
-      await auditAndScreenshot('popup', width);
-
-      await page.goto(extensionPageUrl(extensionId, 'panel.html'));
-      await auditAndScreenshot('side-panel', width);
-
-      await page.goto(extensionPageUrl(extensionId, 'options.html'));
-      await auditAndScreenshot('options', width);
-
+    for (const theme of ['light', 'dark'] as const) {
+      await page.setViewportSize({ width: 1280, height: 900 });
       await page.goto(extensionPageUrl(extensionId, 'dashboard.html'));
-      for (const section of DASHBOARD_SECTIONS) {
-        if (width < 768) await page.getByTestId('mobile-menu').click();
-        await page.getByTestId(`nav-${section}`).click();
-        await expect(page.getByTestId('section-title')).toHaveText(/.+/);
-        await expect(page.getByText('Loading section…')).toHaveCount(0);
-        await auditAndScreenshot(`dashboard-${section}`, width);
+      await page.getByTestId('nav-settings').click();
+      await page.getByLabel('Theme').selectOption(theme);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              new Promise<string | undefined>((resolve) => {
+                const request = indexedDB.open('vittix-seo');
+                request.onsuccess = () => {
+                  const database = request.result;
+                  const get = database
+                    .transaction('settings')
+                    .objectStore('settings')
+                    .get('app-settings');
+                  get.onsuccess = () => {
+                    resolve(get.result?.value?.theme);
+                    database.close();
+                  };
+                };
+              }),
+          ),
+        )
+        .toBe(theme);
+
+      for (const width of [1280, 400]) {
+        console.log(`Contrast audit progress: ${theme} ${width}`);
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(extensionPageUrl(extensionId, 'popup.html'));
+        console.log(`Contrast audit view: ${theme} popup ${width}`);
+        await auditAndScreenshot(theme, 'popup', width);
+
+        await page.goto(extensionPageUrl(extensionId, 'panel.html'));
+        await auditAndScreenshot(theme, 'side-panel', width);
+
+        await page.goto(extensionPageUrl(extensionId, 'options.html'));
+        await auditAndScreenshot(theme, 'options', width);
+
+        await page.goto(extensionPageUrl(extensionId, 'dashboard.html'));
+        for (const section of DASHBOARD_SECTIONS) {
+          if (width < 768) await page.getByTestId('mobile-menu').click();
+          await page.getByTestId(`nav-${section}`).click();
+          await expect(page.getByTestId('section-title')).toHaveText(/.+/);
+          await expect(page.getByText('Loading section…')).toHaveCount(0);
+          console.log(`Contrast audit view: ${theme} dashboard-${section} ${width}`);
+          await auditAndScreenshot(theme, `dashboard-${section}`, width);
+        }
       }
     }
   } finally {
@@ -243,10 +332,13 @@ test('dark theme screenshots and visible-text WCAG audit across extension views'
       JSON.stringify(
         {
           threshold: '4.5:1 for normal text',
+          nonTextThreshold: '3:1 for visible controls and indicators',
           auditedVisibleTextNodeCount,
           failureCount: contrastFailures.length,
+          nonTextFailureCount: nonTextFailures.length,
           commonColorPairs: [...colorStats].sort((a, b) => b[1] - a[1]),
           failures: contrastFailures,
+          nonTextFailures,
         },
         null,
         2,
@@ -255,8 +347,12 @@ test('dark theme screenshots and visible-text WCAG audit across extension views'
     await context.close();
   }
 
-  console.log(`Dark theme contrast failures: ${contrastFailures.length}`);
-  console.log(`Dark theme visible text nodes audited: ${auditedVisibleTextNodeCount}`);
-  console.log(`Dark theme common failing color pairs: ${JSON.stringify([...colorStats])}`);
+  console.log(`Light/dark visible text contrast failures: ${contrastFailures.length}`);
+  console.log(`Light/dark visible text nodes audited: ${auditedVisibleTextNodeCount}`);
+  console.log(`Non-text UI contrast failures: ${nonTextFailures.length}`);
+  console.log(`Common failing text color pairs: ${JSON.stringify([...colorStats])}`);
   expect(contrastFailures.length, 'all visible text should meet 4.5:1 contrast').toBe(0);
+  expect(nonTextFailures.length, 'visible controls and indicators should meet 3:1 contrast').toBe(
+    0,
+  );
 });

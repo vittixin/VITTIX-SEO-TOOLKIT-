@@ -1,7 +1,10 @@
 {
   "threshold": "4.5:1 for normal text",
-  "auditedVisibleTextNodeCount": 1112,
+  "nonTextThreshold": "3:1 for visible controls and indicators",
+  "auditedVisibleTextNodeCount": 2224,
   "failureCount": 0,
+  "nonTextFailureCount": 0,
   "commonColorPairs": [],
-  "failures": []
+  "failures": [],
+  "nonTextFailures": []
 }

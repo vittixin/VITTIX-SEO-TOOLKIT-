@@ -10,6 +10,7 @@ import {
   Link2,
   ListChecks,
   Menu,
+  Newspaper,
   Settings,
   ShieldCheck,
   X,
@@ -27,6 +28,7 @@ import { MetadataView } from '@/src/features/views/MetadataView';
 import { OverviewView } from '@/src/features/views/OverviewView';
 import { SettingsView } from '@/src/features/views/SettingsView';
 import { SiteAuditView } from '@/src/features/views/SiteAuditView';
+import { PreviewsView } from '@/src/features/views/PreviewsView';
 
 type Section =
   | 'overview'
@@ -37,6 +39,7 @@ type Section =
   | 'findings'
   | 'history'
   | 'site'
+  | 'previews'
   | 'export'
   | 'settings';
 
@@ -49,6 +52,7 @@ const NAV: { id: Section; label: string; icon: LucideIcon }[] = [
   { id: 'findings', label: 'Findings', icon: ListChecks },
   { id: 'history', label: 'Audit History', icon: History },
   { id: 'site', label: 'Site Audits', icon: Globe },
+  { id: 'previews', label: 'Previews', icon: Newspaper },
   { id: 'export', label: 'Export', icon: Download },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
@@ -62,6 +66,7 @@ const SECTION_TITLES: Record<Section, { title: string; subtitle: string }> = {
   findings: { title: 'Findings', subtitle: 'Every rule result for this audit' },
   history: { title: 'Audit History', subtitle: 'Locally stored audits' },
   site: { title: 'Site Audits', subtitle: 'Opt-in multi-page audits of one approved origin' },
+  previews: { title: 'Previews', subtitle: 'Search-result and social share estimates' },
   export: { title: 'Export', subtitle: 'JSON and CSV downloads' },
   settings: { title: 'Settings', subtitle: 'Retention and local data controls' },
 };
@@ -194,6 +199,7 @@ export function App() {
               />
             ) : null}
             {section === 'site' ? <SiteAuditView /> : null}
+            {section === 'previews' ? <PreviewsView audit={audits.current} /> : null}
             {section === 'export' ? <ExportView audit={audits.current} /> : null}
             {section === 'settings' ? <SettingsView /> : null}
           </div>

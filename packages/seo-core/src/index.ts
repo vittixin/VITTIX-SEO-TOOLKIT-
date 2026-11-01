@@ -30,7 +30,13 @@ export {
   LANG_TAG_PATTERN,
   RULE_IDS,
   RULE_SET_VERSION,
+  TITLE_FONT_SIZE_PX,
   TITLE_LENGTH_BOUNDS,
+  TITLE_PIXEL_LIMIT_PX,
+  DESCRIPTION_FONT_SIZE_PX,
+  DESCRIPTION_PIXEL_LIMIT_DESKTOP_PX,
+  DESCRIPTION_PIXEL_LIMIT_MOBILE_PX,
+  estimateTextWidth,
 } from './rules.js';
 export { AUDIT_EXPORT_FORMAT, AUDIT_EXPORT_FORMAT_VERSION, auditToJson } from './export/json.js';
 export { csvEscape, findingsToCsv, historyToCsv } from './export/csv.js';

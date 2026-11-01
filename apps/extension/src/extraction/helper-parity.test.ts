@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   countParagraphs,
   countSentences,
@@ -70,7 +70,7 @@ describe('PRE-STEP: injector/seo-core helper parity', () => {
     expect(embedded.countParagraphs(text)).toBe(countParagraphs(text));
   }
 
-  it.each(Object.keys(CORPUS))('parity over %s corpus', (name) => {
-    parity(name, CORPUS[name]);
+  it.each(Object.entries(CORPUS))('parity over %s corpus', (name, text) => {
+    parity(name, text);
   });
 });

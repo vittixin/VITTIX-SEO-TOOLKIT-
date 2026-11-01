@@ -54,7 +54,7 @@ links, content, social, technical) — see
 
 ## Quality bar (current)
 
-- **265 unit tests** (16 files) — schemas, all 57 rules, scoring math,
+- **307 unit tests** (19 files; verified 2026-11-01) — schemas, all 57 rules, scoring math,
   migration/compatibility, crawler security, limits parity
 - **10 Playwright E2E tests** — popup/dashboard/options smoke, real
   injection pipeline, real-flow persistence + exports, site audit,

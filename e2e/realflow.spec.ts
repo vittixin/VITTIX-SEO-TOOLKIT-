@@ -70,6 +70,18 @@ test('real message → real injection → persisted history → exports', async 
     await dashboard.getByTestId('nav-history').click();
     await expect(dashboard.getByText('fixture.test/real-flow').first()).toBeVisible();
 
+    await dashboard.getByTestId('nav-previews').click();
+    await expect(dashboard.getByTestId('previews-estimate-note')).toContainText(
+      'Google may rewrite',
+    );
+    await expect(dashboard.getByText('Facebook / LinkedIn card')).toBeVisible();
+    await expect(dashboard.getByText(/Images are never loaded by Vittix/i)).toBeVisible();
+    await dashboard.screenshot({
+      path: resolve(import.meta.dirname, '../docs/acceptance-evidence/12-previews.png'),
+      fullPage: true,
+    });
+    await dashboard.getByTestId('nav-history').click();
+
     // Load it back from history via the View button (deep-link path).
     await dashboard.getByTestId('history-view').first().click();
     await expect(dashboard.getByTestId('section-title')).toContainText('Overview');

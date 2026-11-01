@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import {
   Download,
   BookOpen,
@@ -19,22 +19,45 @@ import {
 } from 'lucide-react';
 import { browser } from 'wxt/browser';
 import { useAudits } from '@/src/features/useAudits';
-import { ExportView } from '@/src/features/views/ExportView';
-import { FindingsView } from '@/src/features/views/FindingsView';
-import { HeadingsView } from '@/src/features/views/HeadingsView';
-import { HistoryView } from '@/src/features/views/HistoryView';
-import { ImagesView } from '@/src/features/views/ImagesView';
-import { LinksView } from '@/src/features/views/LinksView';
-import { MetadataView } from '@/src/features/views/MetadataView';
 import { OverviewView } from '@/src/features/views/OverviewView';
-import { SettingsView } from '@/src/features/views/SettingsView';
-import { SiteAuditView } from '@/src/features/views/SiteAuditView';
-import { PreviewsView } from '@/src/features/views/PreviewsView';
 import { analyzeSnapshot } from '@vittix/seo-core';
 import { getTargetKeyword } from '@/src/storage/keywords';
 import { getOriginRuleSettings } from '@/src/storage/rule-settings';
 import { saveAudit } from '@/src/storage/audits';
-import { ContentView } from '@/src/features/views/ContentView';
+
+const ExportView = lazy(() =>
+  import('@/src/features/views/ExportView').then((m) => ({ default: m.ExportView })),
+);
+const FindingsView = lazy(() =>
+  import('@/src/features/views/FindingsView').then((m) => ({ default: m.FindingsView })),
+);
+const HeadingsView = lazy(() =>
+  import('@/src/features/views/HeadingsView').then((m) => ({ default: m.HeadingsView })),
+);
+const HistoryView = lazy(() =>
+  import('@/src/features/views/HistoryView').then((m) => ({ default: m.HistoryView })),
+);
+const ImagesView = lazy(() =>
+  import('@/src/features/views/ImagesView').then((m) => ({ default: m.ImagesView })),
+);
+const LinksView = lazy(() =>
+  import('@/src/features/views/LinksView').then((m) => ({ default: m.LinksView })),
+);
+const MetadataView = lazy(() =>
+  import('@/src/features/views/MetadataView').then((m) => ({ default: m.MetadataView })),
+);
+const SettingsView = lazy(() =>
+  import('@/src/features/views/SettingsView').then((m) => ({ default: m.SettingsView })),
+);
+const SiteAuditView = lazy(() =>
+  import('@/src/features/views/SiteAuditView').then((m) => ({ default: m.SiteAuditView })),
+);
+const PreviewsView = lazy(() =>
+  import('@/src/features/views/PreviewsView').then((m) => ({ default: m.PreviewsView })),
+);
+const ContentView = lazy(() =>
+  import('@/src/features/views/ContentView').then((m) => ({ default: m.ContentView })),
+);
 
 type Section =
   | 'overview'
@@ -215,33 +238,41 @@ export function App() {
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <div className="mx-auto max-w-5xl">
-            {section === 'overview' ? (
-              <OverviewView
-                audit={audits.current}
-                previous={audits.previous}
-                onReanalyze={() => void reanalyzeCurrent()}
-              />
-            ) : null}
-            {section === 'metadata' ? <MetadataView audit={audits.current} /> : null}
-            {section === 'headings' ? <HeadingsView audit={audits.current} /> : null}
-            {section === 'images' ? <ImagesView audit={audits.current} /> : null}
-            {section === 'links' ? <LinksView audit={audits.current} /> : null}
-            {section === 'findings' ? <FindingsView audit={audits.current} /> : null}
-            {section === 'history' ? (
-              <HistoryView
-                summaries={audits.summaries}
-                loading={audits.loading}
-                onView={viewAudit}
-                onDelete={(id) => void audits.remove(id)}
-              />
-            ) : null}
-            {section === 'site' ? <SiteAuditView /> : null}
-            {section === 'previews' ? <PreviewsView audit={audits.current} /> : null}
-            {section === 'content' ? (
-              <ContentView audit={audits.current} onReanalyze={() => void reanalyzeCurrent()} />
-            ) : null}
-            {section === 'export' ? <ExportView audit={audits.current} /> : null}
-            {section === 'settings' ? <SettingsView audit={audits.current} /> : null}
+            <Suspense
+              fallback={
+                <p role="status" className="text-sm text-slate-500">
+                  Loading section…
+                </p>
+              }
+            >
+              {section === 'overview' ? (
+                <OverviewView
+                  audit={audits.current}
+                  previous={audits.previous}
+                  onReanalyze={() => void reanalyzeCurrent()}
+                />
+              ) : null}
+              {section === 'metadata' ? <MetadataView audit={audits.current} /> : null}
+              {section === 'headings' ? <HeadingsView audit={audits.current} /> : null}
+              {section === 'images' ? <ImagesView audit={audits.current} /> : null}
+              {section === 'links' ? <LinksView audit={audits.current} /> : null}
+              {section === 'findings' ? <FindingsView audit={audits.current} /> : null}
+              {section === 'history' ? (
+                <HistoryView
+                  summaries={audits.summaries}
+                  loading={audits.loading}
+                  onView={viewAudit}
+                  onDelete={(id) => void audits.remove(id)}
+                />
+              ) : null}
+              {section === 'site' ? <SiteAuditView /> : null}
+              {section === 'previews' ? <PreviewsView audit={audits.current} /> : null}
+              {section === 'content' ? (
+                <ContentView audit={audits.current} onReanalyze={() => void reanalyzeCurrent()} />
+              ) : null}
+              {section === 'export' ? <ExportView audit={audits.current} /> : null}
+              {section === 'settings' ? <SettingsView audit={audits.current} /> : null}
+            </Suspense>
           </div>
         </main>
       </div>

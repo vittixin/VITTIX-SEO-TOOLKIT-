@@ -145,6 +145,16 @@ test('real message → real injection → persisted history → exports', async 
     const csv = readFileSync(csvPath, 'utf8');
     expect(csv.startsWith('analyzedAt,url,pageTitle,category,severity,ruleId')).toBe(true);
     expect(csv).toContain('title-present');
+
+    const markdownDownloadPromise = dashboard.waitForEvent('download');
+    await dashboard.getByTestId('export-markdown').click();
+    const markdownDownload = await markdownDownloadPromise;
+    const markdownPath = resolve(import.meta.dirname, '../test-results/export-audit.md');
+    await markdownDownload.saveAs(markdownPath);
+    const markdown = readFileSync(markdownPath, 'utf8');
+    expect(markdown).toContain('# SEO audit:');
+    expect(markdown).toContain('title\\-present');
+    expect(markdown).toContain('Scores are preliminary');
   } finally {
     await context.close();
   }

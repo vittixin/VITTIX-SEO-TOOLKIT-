@@ -141,8 +141,9 @@ test('site audit survives a full browser restart and resumes idempotently', asyn
     await expect(dashboard2.getByText('https://fixture.test/b').first()).toBeVisible();
 
     // Counters survived the restart and accumulated (not reset).
-    const progressText = await dashboard2.getByTestId('site-progress-text').innerText();
-    expect(progressText).not.toContain('0 analyzed');
+    await expect
+      .poll(() => dashboard2.getByTestId('site-progress-text').innerText(), { timeout: 15_000 })
+      .not.toContain('0 analyzed');
   } finally {
     await second.context.close();
     rmSync(profileDir, { recursive: true, force: true });

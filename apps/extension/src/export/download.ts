@@ -1,5 +1,10 @@
 import type { AuditRecord } from '@vittix/shared';
-import { auditToJson, findingsToCsv } from '@vittix/seo-core';
+import {
+  auditToJson,
+  buildAuditMarkdown,
+  findingsToCsv,
+  type AuditReportOptions,
+} from '@vittix/seo-core';
 
 /**
  * Export downloads use a Blob URL + user gesture — this requires no extra
@@ -38,4 +43,36 @@ export function exportFindingsCsv(audit: AuditRecord): void {
     findingsToCsv(audit),
     'text/csv',
   );
+}
+
+export function exportAuditMarkdown(audit: AuditRecord, options: AuditReportOptions = {}): string {
+  const markdown = buildAuditMarkdown(audit, options);
+  downloadFile(
+    `vittix-audit-${fileStamp(audit.analyzedAt)}-${audit.id ?? 'latest'}.md`,
+    markdown,
+    'text/markdown;charset=utf-8',
+  );
+  return markdown;
+}
+
+/** Copy is attempted only from the explicit user click; it needs no new extension permission. */
+export async function copyTextToClipboard(value: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // Fall through to the focused legacy copy path, still within this gesture.
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand('copy');
+  textarea.remove();
+  return copied;
 }

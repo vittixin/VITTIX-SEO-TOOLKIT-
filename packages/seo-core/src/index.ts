@@ -50,6 +50,20 @@ export {
 export { AUDIT_EXPORT_FORMAT, AUDIT_EXPORT_FORMAT_VERSION, auditToJson } from './export/json.js';
 export { csvEscape, findingsToCsv, historyToCsv } from './export/csv.js';
 export {
+  buildAuditMarkdown,
+  buildAuditReportHtml,
+  escapeReportHtml,
+  escapeReportMarkdown,
+  type AuditReportOptions,
+  type ReportBranding,
+} from './export/report.js';
+export {
+  buildSiteAuditReportHtml,
+  buildSiteAuditMarkdown,
+  type SiteReportInput,
+  type SiteReportOptions,
+} from './export/site-report.js';
+export {
   SITE_AUDIT_EXPORT_FORMAT,
   SITE_AUDIT_EXPORT_FORMAT_VERSION,
   compareSiteSessions,

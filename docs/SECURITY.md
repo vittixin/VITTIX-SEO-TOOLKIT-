@@ -14,6 +14,9 @@ and any content scripts. Runtime optional host patterns are limited to
 `https://*/*`, `http://localhost/*`, and `http://127.0.0.1/*`; the HTTP
 patterns support local development only and Chrome ignores ports in these
 patterns.
+The `sidePanel` permission is optional too and is requested only from the
+popup after the user selects Enable side panel; it is not an install-time
+grant.
 
 `minimum_chrome_version` is 111 (Tailwind CSS 4 baseline; MV3 itself requires 88+).
 

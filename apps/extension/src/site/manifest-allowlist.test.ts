@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 
 const script = resolve(process.cwd(), 'scripts/verify-manifest.mjs');
 
-function verify(optionalHosts: string[]) {
+function verify(optionalHosts: string[], optionalPermissions = ['sidePanel']) {
   const dir = mkdtempSync(join(tmpdir(), 'vittix-manifest-'));
   try {
     const file = join(dir, 'manifest.json');
@@ -15,6 +15,7 @@ function verify(optionalHosts: string[]) {
         manifest_version: 3,
         permissions: ['activeTab', 'scripting'],
         optional_host_permissions: optionalHosts,
+        optional_permissions: optionalPermissions,
         background: { service_worker: 'background.js' },
       }),
     );
@@ -35,6 +36,13 @@ describe('production manifest origin allow-list', () => {
         verify(['https://*/*', 'http://localhost/*', 'http://127.0.0.1/*', pattern]).status,
       ).not.toBe(0);
     }
+  });
+
+  it('rejects any optional API permission beyond sidePanel', () => {
+    expect(
+      verify(['https://*/*', 'http://localhost/*', 'http://127.0.0.1/*'], ['sidePanel', 'tabs'])
+        .status,
+    ).not.toBe(0);
   });
 });
 import { describe, expect, it } from 'vitest';

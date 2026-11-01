@@ -67,7 +67,10 @@ export const BASE_MANIFEST = {
   description:
     'Privacy-first SEO audits for metadata, headings, images and links. All analysis is local — nothing ever leaves your browser.',
   permissions: ['activeTab', 'scripting'],
-  minimum_chrome_version: '111',
+  // Chrome 114+ recognizes this API permission as optional; WXT's
+  // ManifestOptionalPermission union predates the sidePanel API.
+  optional_permissions: ['sidePanel'] as never,
+  minimum_chrome_version: '114',
   // A keyboard command is a user gesture and grants activeTab exactly like
   // clicking the toolbar action — no extra permission required.
   commands: {

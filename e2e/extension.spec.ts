@@ -100,6 +100,7 @@ test.describe('Vittix SEO Toolkit smoke tests', () => {
       await expect(page.getByText('Vittix SEO Toolkit')).toBeVisible();
       await expect(page.getByTestId('analyze-button')).toBeEnabled();
       await expect(page.getByTestId('open-dashboard')).toBeVisible();
+      await expect(page.getByTestId('enable-side-panel')).toBeVisible();
 
       // The popup itself is a chrome-extension:// page — the analyzer must
       // reject it with an understandable message instead of failing silently.
@@ -107,6 +108,54 @@ test.describe('Vittix SEO Toolkit smoke tests', () => {
       const error = page.getByTestId('analysis-error');
       await expect(error).toBeVisible();
       await expect(error).toContainText(/only inspects regular http\(s\) web pages/i);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('side panel page renders without automatic analysis', async () => {
+    const { context, page, extensionId } = await loadExtension('e2e');
+    try {
+      await page.goto(extensionPageUrl(extensionId, 'panel.html'));
+      await expect(page.getByTestId('analyze-button')).toBeEnabled();
+      await expect(page.getByTestId('analysis-summary')).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('sidePanel optional permission can be requested at runtime', async () => {
+    const { context, page, extensionId } = await loadExtension('e2e', [
+      '--use-fake-ui-for-permission-flow',
+    ]);
+    try {
+      await page.goto(extensionPageUrl(extensionId, 'popup.html'));
+      await page.evaluate(() => {
+        const button = document.createElement('button');
+        button.id = 'sidepanel-permission-probe';
+        button.textContent = 'Request sidePanel';
+        button.addEventListener('click', () => {
+          void chrome.permissions.request({ permissions: ['sidePanel'] }).then((granted) => {
+            (window as typeof window & { sidePanelGrant?: boolean }).sidePanelGrant = granted;
+          });
+        });
+        document.body.append(button);
+      });
+      await page.locator('#sidepanel-permission-probe').click();
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              () => (window as typeof window & { sidePanelGrant?: boolean }).sidePanelGrant,
+            ),
+          {
+            timeout: 10_000,
+          },
+        )
+        .toBe(true);
+      expect(
+        await page.evaluate(() => chrome.permissions.contains({ permissions: ['sidePanel'] })),
+      ).toBe(true);
     } finally {
       await context.close();
     }

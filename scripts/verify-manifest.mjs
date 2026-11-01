@@ -42,17 +42,20 @@ if (JSON.stringify(actual) !== JSON.stringify(approved)) {
   );
 }
 
-const mustBeEmpty = [
-  'host_permissions',
-  'optional_permissions',
-  'content_scripts',
-  'web_accessible_resources',
-];
+const mustBeEmpty = ['host_permissions', 'content_scripts', 'web_accessible_resources'];
 for (const key of mustBeEmpty) {
   const value = manifest[key];
   if (value !== undefined && value !== null && value.length !== 0) {
     errors.push(`${key} must be empty or absent, found ${JSON.stringify(value)}`);
   }
+}
+
+const optionalPermissions = [...(manifest.optional_permissions ?? [])].sort();
+const allowedOptionalPermissions = ['sidePanel'];
+if (JSON.stringify(optionalPermissions) !== JSON.stringify(allowedOptionalPermissions)) {
+  errors.push(
+    `optional_permissions must be exactly ${JSON.stringify(allowedOptionalPermissions)}, found ${JSON.stringify(optionalPermissions)}`,
+  );
 }
 
 // optional_host_permissions: a CATALOG of grantable patterns for the opt-in

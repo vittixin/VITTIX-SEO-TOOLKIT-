@@ -32,6 +32,13 @@ if (JSON.stringify(actual) !== JSON.stringify(APPROVED)) {
   console.error(`✗ Manifest permissions are ${JSON.stringify(actual)} — refusing to package.`);
   process.exit(1);
 }
+const optionalPermissions = [...(manifest.optional_permissions ?? [])].sort();
+if (JSON.stringify(optionalPermissions) !== JSON.stringify(['sidePanel'])) {
+  console.error(
+    `✗ Optional permissions are ${JSON.stringify(optionalPermissions)} — refusing to package.`,
+  );
+  process.exit(1);
+}
 
 const FORBIDDEN = [/\.map$/, /\.ts$/, /node_modules/, /^\./, /test-results/, /playwright-report/];
 const files = [];

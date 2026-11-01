@@ -11,6 +11,8 @@
 - Snapshot schema v6 adds bounded heading/image/link locators. The popup can
   outline stored elements after an explicit Show on page click; fetched HTML
   keeps locator values empty.
+- Added an opt-in side panel behind the optional `sidePanel` permission. The
+  panel reuses the popup's user-triggered analyze flow and does not auto-run.
 
 ## Unreleased — Phase C redirect observations, duplicate heuristics, link graph, and comparisons
 

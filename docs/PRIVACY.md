@@ -96,6 +96,11 @@ contain text or attributes; fetched-HTML site audits leave them empty. The
 popup uses the stored locators only after the user clicks Show on page, and
 does not collect or transmit additional page data.
 
+The optional side panel requests the `sidePanel` permission only when the user
+clicks Enable side panel in the popup. Declining leaves the popup and dashboard
+available. Opening the panel does not analyze a page; each analysis requires a
+separate user click. It uses the same local extraction and storage flow.
+
 Site audits accept HTTPS origins and, for development only, `http://localhost`
 or `http://127.0.0.1`. These are optional runtime host patterns; Chrome match
 patterns ignore ports, so approving either host can cover any port on that host.

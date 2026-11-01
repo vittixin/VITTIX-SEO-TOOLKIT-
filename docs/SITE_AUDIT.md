@@ -272,6 +272,15 @@ and mixed-content findings become informational because HTTP is expected on
 these local development servers. Redirect consent also warns that redirects
 may reach local-network services.
 
+### Optional side-panel permission probe
+
+| Permission  | Chrome accepted as optional | Evidence                                                                                                                                                                                                                                                                                    |
+| ----------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sidePanel` | Yes                         | The Playwright extension build loads with `optional_permissions: ["sidePanel"]`; `chrome.permissions.contains` is false before opt-in, and the runtime request resolves `true` in the permission-flow test. The production manifest verifier allow-lists only this optional API permission. |
+
+The runtime request is issued only from the popup's Enable side panel button.
+The panel is user-triggered and does not start analysis automatically.
+
 - Install-time warnings are unchanged (no `host_permissions`, no
   `<all_urls>`, no content scripts).
 - `optional_host_permissions: ["https://*/*"]` is the standard pattern for

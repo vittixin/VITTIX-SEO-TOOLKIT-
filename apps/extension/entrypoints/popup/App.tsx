@@ -20,13 +20,14 @@ import {
 
 type Status = 'idle' | 'analyzing' | 'done' | 'error';
 
-export function App() {
+export function App({ sidePanel = false }: { sidePanel?: boolean }) {
   const [status, setStatus] = useState<Status>('idle');
   const [host, setHost] = useState<string | null>(null);
   const [success, setSuccess] = useState<AnalyzeSuccess | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<ErrorCode | null>(null);
   const [highlightMessage, setHighlightMessage] = useState<string | null>(null);
+  const [sidePanelMessage, setSidePanelMessage] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -55,6 +56,26 @@ export function App() {
   async function handleShowOnPage() {
     if (!success) return;
     setHighlightMessage(await requestShowHighlights(success.auditId));
+  }
+
+  async function handleOpenSidePanel() {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id === undefined) {
+      setSidePanelMessage('Open this popup from a web page first.');
+      return;
+    }
+    try {
+      const granted = await browser.permissions.request({ permissions: ['sidePanel'] });
+      if (!granted) {
+        setSidePanelMessage('Side panel permission was not granted.');
+        return;
+      }
+      await browser.sidePanel.setOptions({ tabId: tab.id, path: 'panel.html', enabled: true });
+      await browser.sidePanel.open({ tabId: tab.id });
+      setSidePanelMessage('Side panel opened. Analysis remains user-triggered.');
+    } catch {
+      setSidePanelMessage('Could not open the side panel. Use the popup and dashboard instead.');
+    }
   }
 
   return (
@@ -125,6 +146,21 @@ export function App() {
         {highlightMessage ? (
           <p role="status" className="text-xs text-slate-600">
             {highlightMessage}
+          </p>
+        ) : null}
+        {!sidePanel ? (
+          <button
+            type="button"
+            data-testid="enable-side-panel"
+            onClick={() => void handleOpenSidePanel()}
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+          >
+            Enable side panel (optional)
+          </button>
+        ) : null}
+        {sidePanelMessage ? (
+          <p role="status" className="text-xs text-slate-600">
+            {sidePanelMessage}
           </p>
         ) : null}
 

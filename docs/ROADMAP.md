@@ -6,8 +6,9 @@
   `http://127.0.0.1/*` only. Chrome host patterns ignore ports.
 - Marked loopback audits as development origins and softened HTTPS/mixed-
   content findings to informational without changing the selected profile.
-- Side panel remains gated on runtime permission behavior; no install-time
-  permission has been added.
+- The side panel is available after a runtime opt-in; opening it does not
+  automatically analyze the active page.
+- Chrome minimum version is now 114 to support the optional side-panel API.
 
 ## Snapshot schema v6 — page highlight locators
 

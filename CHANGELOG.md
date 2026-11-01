@@ -11,6 +11,15 @@
   Location); the crawler stops and records that limitation instead of following
   the redirect.
 
+### Added — Phase C Part 1 sitemap discovery
+
+- Site audits read bounded same-origin sitemap indexes and URL sets, honor
+  robots, and compare discovered URLs only when sitemap reading completes.
+- Sitemap crawl seeding is opt-in. Parse failures, truncation, duplicates,
+  invalid lastmod values, and ignored cross-origin URLs are reported.
+- Resume continues the existing durable session without re-analyzing
+  completed pages.
+
 All notable changes to the Vittix SEO Toolkit extension. Versions follow the
 manifest version; the SEO rule set has its own `RULE_SET_VERSION` documented
 in [docs/SEO_RULES.md](docs/SEO_RULES.md).
@@ -100,7 +109,7 @@ in [docs/SEO_RULES.md](docs/SEO_RULES.md).
 
 ### Tests
 
-265 unit tests (16 files) · 10 Playwright E2E tests. All gates green:
+360 unit tests (24 files) · 11 Playwright E2E tests. All gates green:
 lint, strict typecheck (3 workspaces), frozen-lockfile install, production
 MV3 build, manifest permission audit, zero known dependency vulnerabilities.
 
@@ -110,3 +119,7 @@ MV3 build, manifest permission audit, zero known dependency vulnerabilities.
   10-section dashboard, options page, local history, JSON/CSV exports
 - Opt-in site audits (per-origin permission, robots-aware crawler)
 - Chrome MV3, WXT + React 19 + TypeScript strict, Tailwind CSS 4
+
+## Unreleased � Phase C Part 1
+
+- Added bounded same-origin sitemap discovery and evidence-gated sitemap comparisons to site audits, with optional sitemap crawl seeding.

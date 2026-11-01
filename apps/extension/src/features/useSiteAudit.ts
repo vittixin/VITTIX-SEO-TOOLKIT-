@@ -9,6 +9,7 @@ import {
   clearAllSiteData,
   createSiteSession,
   getLatestSiteSession,
+  getSiteSession,
   getPreviousSiteSession,
   listSitePages,
   type SiteSummary,
@@ -33,6 +34,7 @@ export function useSiteAudit() {
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
   const [consented, setConsented] = useState(false);
   const [maxPages, setMaxPages] = useState<number>(SITE_LIMITS.maxPagesDefault);
+  const [seedFromSitemap, setSeedFromSitemap] = useState(false);
   const [session, setSession] = useState<SiteSession | null>(null);
   const [pages, setPages] = useState<SitePageRecord[]>([]);
   const [summary, setSummary] = useState<SiteSummary | null>(null);
@@ -151,6 +153,24 @@ export function useSiteAudit() {
   }
 
   async function startAudit(): Promise<void> {
+    if (session?.status === 'running' && session.id !== undefined) {
+      setError(null);
+      setPhase('running');
+      const sessionId = session.id;
+      const token = ++runTokenRef.current;
+      void runSiteAudit(sessionId, {
+        onProgress: () => {
+          if (runTokenRef.current === token) void refresh(sessionId);
+        },
+      }).then(async () => {
+        if (runTokenRef.current === token) {
+          await refresh(sessionId);
+          await applySession(await getSiteSession(sessionId));
+          setPhase('finished');
+        }
+      });
+      return;
+    }
     if (grantedOrigin === null) return;
     setError(null);
     try {
@@ -164,6 +184,7 @@ export function useSiteAudit() {
         concurrency: SITE_LIMITS.concurrencyDefault,
         delayMs: Math.max(settings.siteAuditDelayMs, SITE_LIMITS.delayMsFloor),
         ruleSetVersion: RULE_SET_VERSION,
+        seedFromSitemap,
       });
       setPhase('running');
       setSession(await getLatestSiteSession());
@@ -257,6 +278,8 @@ export function useSiteAudit() {
     setConsented,
     maxPages,
     setMaxPages,
+    seedFromSitemap,
+    setSeedFromSitemap,
     session,
     pages,
     filteredPages,

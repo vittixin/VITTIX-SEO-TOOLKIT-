@@ -11,6 +11,7 @@ import {
   type SiteSessionInput,
 } from '@vittix/shared';
 import { db } from './db';
+import { diffSitemap } from '@vittix/seo-core';
 
 /**
  * Durable site-audit state (crawl state lives in IndexedDB — never in a
@@ -172,6 +173,7 @@ export interface SiteSummary {
   externalLinks: number;
   incomplete: boolean;
   pages: SitePageSummary[];
+  sitemap: ReturnType<typeof diffSitemap>;
 }
 
 /**
@@ -344,6 +346,29 @@ export function buildSiteSummary(session: SiteSession, pages: SitePageRecord[]):
           : (page.responseMetadata?.redirectChain.length ?? 0),
         xRobotsTag: page.responseMetadata?.xRobotsTag ?? null,
       };
+    }),
+    sitemap: diffSitemap({
+      state: session.sitemap,
+      crawledUrls: pages
+        .filter((page) => page.status !== 'pending' && page.status !== 'skipped-robots')
+        .map((page) => page.url),
+      pageStates: pages
+        .filter((page) => page.status !== 'pending' && page.status !== 'skipped-robots')
+        .map((page) => {
+          const snapshot = page.snapshot as PageSnapshot | null;
+          const robots =
+            `${snapshot?.meta.robots ?? ''} ${page.responseMetadata?.xRobotsTag ?? ''}`.toLowerCase();
+          return {
+            url: page.url,
+            noindex: /\b(?:noindex|none)\b/.test(robots),
+            status: page.httpStatus,
+            redirected: Boolean(
+              page.responseMetadata?.redirectChain.length ||
+              (page.finalUrl && page.finalUrl !== page.url),
+            ),
+            canonical: snapshot?.meta.canonical ?? null,
+          };
+        }),
     }),
   };
 }

@@ -50,6 +50,23 @@ export const SiteResponseMetadataSchema = z.object({
 });
 export type SiteResponseMetadata = z.infer<typeof SiteResponseMetadataSchema>;
 
+export const SitemapEntrySchema = z.object({
+  url: z.string().max(2048),
+  lastmod: z.string().max(128).nullable().default(null),
+  alternates: z.array(z.string().max(2048)).max(20).default([]),
+});
+export type SitemapEntry = z.infer<typeof SitemapEntrySchema>;
+export const SitemapStateSchema = z.object({
+  entries: z.array(SitemapEntrySchema).max(50_000).default([]),
+  fullyRead: z.boolean().default(false),
+  truncated: z.boolean().default(false),
+  invalidLastmodCount: z.number().int().nonnegative().default(0),
+  duplicateCount: z.number().int().nonnegative().default(0),
+  crossOriginCount: z.number().int().nonnegative().default(0),
+  warnings: z.array(z.string().max(256)).max(20).default([]),
+});
+export type SitemapState = z.infer<typeof SitemapStateSchema>;
+
 /** Session record (crawl state lives here — NOT in the service worker). */
 export const SiteSessionSchema = z.object({
   id: z.number().int().positive().optional(),
@@ -69,6 +86,16 @@ export const SiteSessionSchema = z.object({
   stopRequested: z.boolean().default(false),
   /** Rule set in effect when the session started (comparison gate). */
   ruleSetVersion: z.string().optional(),
+  sitemap: SitemapStateSchema.default({
+    entries: [],
+    fullyRead: false,
+    truncated: false,
+    invalidLastmodCount: 0,
+    duplicateCount: 0,
+    crossOriginCount: 0,
+    warnings: [],
+  }),
+  seedFromSitemap: z.boolean().default(false),
   /** Why the session stopped abnormally (permission revoked, robots blocked…). */
   stopReason: z.string().nullable().default(null),
 });
@@ -112,6 +139,9 @@ export const SITE_LIMITS = {
   delayMsFloor: 100,
   /** Responses larger than this are truncated before parsing. */
   maxResponseBytes: 2_000_000,
+  maxSitemapBytes: 10_000_000,
+  maxSitemapTotalBytes: 50_000_000,
+  maxSitemapUrls: 50_000,
   /** Sessions kept (most recent pruned like single-page audits). */
   maxStoredSessions: 20,
 } as const;

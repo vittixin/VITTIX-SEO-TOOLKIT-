@@ -103,6 +103,51 @@ export async function runSiteAudit(sessionId: number, options: CrawlerOptions = 
   const effectiveDelay = Math.max(session.delayMs, robots.policy.crawlDelayMs ?? 0);
   const runner = new PacedRunner(session.concurrency, effectiveDelay, options.delay);
 
+  if (session.stopRequested) {
+    await updateSiteSession(sessionId, {
+      status: 'cancelled',
+      finishedAt: new Date().toISOString(),
+    });
+    onProgress();
+    return;
+  }
+  const sitemapState =
+    session.sitemap === undefined
+      ? {
+          entries: [],
+          fullyRead: false,
+          truncated: false,
+          invalidLastmodCount: 0,
+          duplicateCount: 0,
+          crossOriginCount: 0,
+          warnings: [],
+        }
+      : await discoverSitemaps(
+          session,
+          robots.policy,
+          runner,
+          fetchImpl,
+          hasPermission,
+          onProgress,
+        );
+  if (await shouldStop(sessionId)) {
+    const latest = await getSiteSession(sessionId);
+    if (latest?.stopRequested) {
+      await updateSiteSession(sessionId, {
+        status: 'cancelled',
+        finishedAt: new Date().toISOString(),
+      });
+      onProgress();
+    }
+    return;
+  }
+  try {
+    await updateSiteSession(sessionId, { sitemap: sitemapState });
+  } catch (error) {
+    console.warn('[vittix] could not persist sitemap state', error);
+  }
+  onProgress();
+
   // --- crawl state (BFS) ------------------------------------------------------
   const existing = await listSitePages(sessionId);
   const seen = new Set(existing.map((page) => page.url));
@@ -127,6 +172,26 @@ export async function runSiteAudit(sessionId: number, options: CrawlerOptions = 
       }
       queue.push({ url: start, depth: 0 });
       seen.add(start);
+    }
+  }
+  if (session.seedFromSitemap) {
+    const currentPages = await listSitePages(sessionId);
+    const candidates = sitemapState.entries
+      .map((entry) => normalizeSiteUrl(entry.url))
+      .filter((url): url is string => url !== null && isSameOriginUrl(url, session.origin))
+      .filter((url) => robots.policy.allows(new URL(url).pathname + new URL(url).search))
+      .filter((url) => !seen.has(url))
+      .slice(0, Math.max(0, session.maxPages - currentPages.length));
+    if (candidates.length) {
+      const records = candidates.map((url) => ({
+        sessionId,
+        url,
+        status: 'pending' as const,
+        depth: 1,
+      }));
+      await addSitePages(records);
+      queue.push(...records.map(({ url, depth }) => ({ url, depth })));
+      candidates.forEach((url) => seen.add(url));
     }
   }
 
@@ -314,6 +379,263 @@ async function loadRobots(
   } catch {
     return { policy: EMPTY_ROBOTS_POLICY, status: 'allowed', blocked: true };
   }
+}
+
+/** Parse XML only in this extension page. Fetched bytes are never evaluated. */
+async function discoverSitemaps(
+  session: SiteSession,
+  robots: RobotsPolicy,
+  runner: PacedRunner,
+  fetchImpl: typeof fetch,
+  hasPermission: (origin: string) => Promise<boolean>,
+  onProgress: () => void,
+): Promise<import('@vittix/shared').SitemapState> {
+  const entries: import('@vittix/shared').SitemapEntry[] = [];
+  const warnings: string[] = [];
+  const visited = new Set<string>();
+  const urlsSeen = new Set<string>();
+  let totalBytes = 0;
+  let duplicateCount = 0;
+  let crossOriginCount = 0;
+  let invalidLastmodCount = 0;
+  let truncated = false;
+  let fullyRead = true;
+  const roots = robots.sitemaps.length ? robots.sitemaps : [`${session.origin}/sitemap.xml`];
+
+  const readBounded = async (
+    response: Response,
+    gzip: boolean,
+  ): Promise<{ text: string; truncated: boolean; size: number }> => {
+    if (!response.body) return { text: '', truncated: false, size: 0 };
+    const stream = gzip
+      ? response.body.pipeThrough(new DecompressionStream('gzip'))
+      : response.body;
+    const reader = stream.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    let wasTruncated = false;
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const perFileLeft = SITE_LIMITS.maxSitemapBytes - size;
+        const totalLeft = SITE_LIMITS.maxSitemapTotalBytes - totalBytes - size;
+        const allowed = Math.max(0, Math.min(perFileLeft, totalLeft));
+        if (value.byteLength > allowed) {
+          if (allowed) chunks.push(value.slice(0, allowed));
+          size += allowed;
+          wasTruncated = true;
+          await reader.cancel();
+          break;
+        }
+        chunks.push(value);
+        size += value.byteLength;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return { text: new TextDecoder().decode(bytes), truncated: wasTruncated, size };
+  };
+
+  const visit = async (rawUrl: string, depth: number): Promise<void> => {
+    if (
+      depth > 2 ||
+      entries.length >= SITE_LIMITS.maxSitemapUrls ||
+      totalBytes >= SITE_LIMITS.maxSitemapTotalBytes
+    ) {
+      truncated = true;
+      fullyRead = false;
+      return;
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(rawUrl, session.origin);
+    } catch {
+      fullyRead = false;
+      warnings.push('Invalid sitemap URL ignored.');
+      return;
+    }
+    if (parsed.origin !== new URL(session.origin).origin) {
+      crossOriginCount += 1;
+      fullyRead = false;
+      return;
+    }
+    const normalized = parsed.href;
+    if (visited.has(normalized)) return;
+    visited.add(normalized);
+    if (!robots.allows(parsed.pathname + parsed.search)) {
+      warnings.push('A sitemap URL was disallowed by robots.txt and was not fetched.');
+      fullyRead = false;
+      return;
+    }
+    if (await shouldStop(session.id ?? -1)) {
+      fullyRead = false;
+      return;
+    }
+    await runner.pace();
+    if (!(await hasPermission(session.origin))) {
+      warnings.push('Origin permission was revoked during sitemap discovery.');
+      fullyRead = false;
+      await failSession(
+        session.id ?? -1,
+        'Origin permission was revoked during sitemap discovery; fetching stopped immediately.',
+      );
+      runner.stop();
+      return;
+    }
+    if (await shouldStop(session.id ?? -1)) {
+      fullyRead = false;
+      return;
+    }
+    let response: Response;
+    try {
+      response = await fetchImpl(normalized, {
+        method: 'GET',
+        credentials: 'omit',
+        redirect: 'manual',
+      });
+    } catch {
+      fullyRead = false;
+      warnings.push('A sitemap fetch failed.');
+      return;
+    }
+    if (
+      response.type === 'opaqueredirect' ||
+      response.status === 0 ||
+      (response.status >= 300 && response.status < 400)
+    ) {
+      fullyRead = false;
+      warnings.push(
+        'A sitemap redirect was not followed because its destination could not be safely verified.',
+      );
+      return;
+    }
+    if (!response.ok) {
+      fullyRead = false;
+      warnings.push(`A sitemap returned HTTP ${response.status}.`);
+      return;
+    }
+    // Fetch transparently decodes Content-Encoding. A .gz sitemap file is a
+    // separate gzip artifact and is decoded here under the streaming cap.
+    const gzip =
+      normalized.toLowerCase().endsWith('.gz') &&
+      !/\bgzip\b/i.test(response.headers.get('content-encoding') ?? '');
+    let body;
+    try {
+      body = await readBounded(response, gzip);
+    } catch {
+      fullyRead = false;
+      warnings.push('A sitemap could not be decompressed safely.');
+      return;
+    }
+    totalBytes += body.size;
+    if (body.truncated) {
+      truncated = true;
+      fullyRead = false;
+      warnings.push('Sitemap size limit reached; remaining content is unchecked.');
+    }
+    let doc: Document;
+    try {
+      doc = new DOMParser().parseFromString(body.text, 'application/xml');
+    } catch {
+      fullyRead = false;
+      warnings.push('Malformed sitemap XML.');
+      return;
+    }
+    if (doc.querySelector('parsererror')) {
+      fullyRead = false;
+      warnings.push('Malformed sitemap XML.');
+      return;
+    }
+    const root = doc.documentElement.localName.toLowerCase();
+    if (root === 'sitemapindex') {
+      if (depth >= 2) {
+        if (doc.querySelector('sitemap loc')) {
+          truncated = true;
+          fullyRead = false;
+          warnings.push('Sitemap index recursion limit reached.');
+        }
+        return;
+      }
+      for (const node of Array.from(doc.querySelectorAll('sitemap > loc'))) {
+        const loc = node.textContent?.trim();
+        if (loc) await visit(loc, depth + 1);
+      }
+      return;
+    }
+    if (root !== 'urlset') {
+      fullyRead = false;
+      warnings.push('Unrecognized sitemap XML root.');
+      return;
+    }
+    for (const node of Array.from(doc.querySelectorAll('url'))) {
+      const loc = node.querySelector(':scope > loc')?.textContent?.trim();
+      if (!loc) continue;
+      let url: URL;
+      try {
+        url = new URL(loc, session.origin);
+      } catch {
+        fullyRead = false;
+        continue;
+      }
+      if (url.origin !== new URL(session.origin).origin) {
+        crossOriginCount += 1;
+        continue;
+      }
+      const canonical = url.href;
+      if (urlsSeen.has(canonical)) {
+        duplicateCount += 1;
+        continue;
+      }
+      urlsSeen.add(canonical);
+      if (entries.length >= SITE_LIMITS.maxSitemapUrls) {
+        truncated = true;
+        fullyRead = false;
+        warnings.push('Sitemap URL limit reached (50,000).');
+        break;
+      }
+      const lastmod = node.querySelector(':scope > lastmod')?.textContent?.trim() || null;
+      if (lastmod && Number.isNaN(Date.parse(lastmod))) invalidLastmodCount += 1;
+      const alternates = Array.from(node.querySelectorAll('link[rel="alternate"]'))
+        .map((link) => link.getAttribute('href') ?? '')
+        .filter(Boolean)
+        .slice(0, 20);
+      entries.push({
+        url: canonical.slice(0, 2048),
+        lastmod: lastmod?.slice(0, 128) ?? null,
+        alternates,
+      });
+    }
+  };
+
+  for (const root of roots) {
+    if (await shouldStop(session.id ?? -1)) {
+      fullyRead = false;
+      break;
+    }
+    await visit(root, 0);
+  }
+  if (totalBytes >= SITE_LIMITS.maxSitemapTotalBytes) {
+    truncated = true;
+    fullyRead = false;
+    warnings.push('Total sitemap size limit reached (50 MB).');
+  }
+  onProgress();
+  return {
+    entries,
+    fullyRead,
+    truncated,
+    invalidLastmodCount,
+    duplicateCount,
+    crossOriginCount,
+    warnings: [...new Set(warnings)].slice(0, 20),
+  };
 }
 
 interface ProcessContext {

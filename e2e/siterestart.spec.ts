@@ -103,6 +103,26 @@ test('site audit survives a full browser restart and resumes idempotently', asyn
   await expect(dashboard1.getByTestId('site-progress-text')).toContainText(/([1-9]\d*) analyzed/, {
     timeout: 15_000,
   });
+  await expect
+    .poll(
+      async () =>
+        dashboard1.evaluate(async () => {
+          const request = indexedDB.open('vittix-seo');
+          const database = await new Promise<IDBDatabase>((resolve, reject) => {
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          });
+          const rows = await new Promise<Record<string, unknown>[]>((resolve, reject) => {
+            const get = database.transaction('sitePages').objectStore('sitePages').getAll();
+            get.onsuccess = () => resolve(get.result);
+            get.onerror = () => reject(get.error);
+          });
+          database.close();
+          return rows.find((row) => String(row.url).endsWith('/a'))?.status;
+        }),
+      { timeout: 20_000 },
+    )
+    .toBe('ok');
 
   // State check BEFORE the restart (the page is still alive here).
   const before = await dumpState(dashboard1, first.extensionId, 'run1');
@@ -131,6 +151,10 @@ test('site audit survives a full browser restart and resumes idempotently', asyn
     // Resume from durable state.
     await dashboard2.getByTestId('site-resume').click();
     await expect(dashboard2.getByTestId('site-summary')).toBeVisible({ timeout: 30_000 });
+    // Sitemap discovery now runs before a resumed queue. Wait until the
+    // previously pending pages are actually fetched before inspecting rows.
+    await expect.poll(() => fetchCounts.get('/b') ?? 0, { timeout: 30_000 }).toBeGreaterThan(0);
+    await expect.poll(() => fetchCounts.get('/c') ?? 0, { timeout: 30_000 }).toBeGreaterThan(0);
 
     // Idempotency: completed pages were NOT re-fetched after the restart.
     expect(fetchCounts.get('/a')).toBe(fetchesBeforeRestart.get('/a'));

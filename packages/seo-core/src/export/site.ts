@@ -1,4 +1,5 @@
 import type { SitePageRecord, SiteSession, SiteSessionStatus } from '@vittix/shared';
+import { diffSitemap } from '../sitemap.js';
 
 export const SITE_AUDIT_EXPORT_FORMAT = 'vittix-site-audit';
 export const SITE_AUDIT_EXPORT_FORMAT_VERSION = 1;
@@ -70,6 +71,39 @@ export function siteAuditToJson(
         .filter((reason): reason is string => Boolean(reason)),
     ),
   ];
+  const sitemapDiff = diffSitemap({
+    state: session.sitemap ?? {
+      entries: [],
+      fullyRead: false,
+      truncated: false,
+      invalidLastmodCount: 0,
+      duplicateCount: 0,
+      crossOriginCount: 0,
+      warnings: [],
+    },
+    crawledUrls: pages
+      .filter((page) => page.status !== 'pending' && page.status !== 'skipped-robots')
+      .map((page) => page.url),
+    pageStates: pages
+      .filter((page) => page.status !== 'pending' && page.status !== 'skipped-robots')
+      .map((page) => {
+        const snapshot = page.snapshot as {
+          meta?: { robots?: string | null; canonical?: string | null };
+        } | null;
+        const robots =
+          `${snapshot?.meta?.robots ?? ''} ${page.responseMetadata?.xRobotsTag ?? ''}`.toLowerCase();
+        return {
+          url: page.url,
+          noindex: /\b(?:noindex|none)\b/.test(robots),
+          status: page.httpStatus,
+          redirected: Boolean(
+            page.responseMetadata?.redirectChain.length ||
+            (page.finalUrl && page.finalUrl !== page.url),
+          ),
+          canonical: snapshot?.meta?.canonical ?? null,
+        };
+      }),
+  });
   return JSON.stringify(
     {
       format: SITE_AUDIT_EXPORT_FORMAT,
@@ -80,6 +114,7 @@ export function siteAuditToJson(
         ruleSetVersion: session.ruleSetVersion ?? 'unknown',
         ignoredRules,
         scoreCapReasons,
+        sitemapDiff,
       },
       session,
       pages: safePages,
@@ -112,6 +147,18 @@ const SITE_CSV_COLUMNS = [
   'hasXContentTypeOptions',
   'hasReferrerPolicy',
   'hasFrameProtection',
+  'sitemapStatus',
+  'sitemapLastmod',
+  'sitemapChecked',
+  'sitemapNotCrawledCount',
+  'sitemapCrawledAbsentCount',
+  'sitemapAbsentStatus',
+  'sitemapInvalidLastmodCount',
+  'sitemapDuplicateCount',
+  'sitemapCrossOriginIgnored',
+  'sitemapWarnings',
+  'recordType',
+  'sitemapUrl',
 ] as const;
 
 /**
@@ -121,6 +168,22 @@ const SITE_CSV_COLUMNS = [
  */
 export function sitePagesToCsv(session: SiteSession, pages: SitePageRecord[]): string {
   const rows: string[][] = [[...SITE_CSV_COLUMNS]];
+  const sitemap = session.sitemap ?? {
+    entries: [],
+    fullyRead: false,
+    truncated: false,
+    invalidLastmodCount: 0,
+    duplicateCount: 0,
+    crossOriginCount: 0,
+    warnings: [],
+  };
+  const notCrawledCount = sitemap.entries.filter(
+    (entry) =>
+      !pages.some(
+        (page) =>
+          page.url === entry.url && page.status !== 'pending' && page.status !== 'skipped-robots',
+      ),
+  ).length;
   for (const page of pages) {
     const result = page.result as {
       score?: { total?: number };
@@ -159,7 +222,52 @@ export function sitePagesToCsv(session: SiteSession, pages: SitePageRecord[]): s
       page.responseMetadata?.hasXContentTypeOptions ? 'yes' : 'no',
       page.responseMetadata?.hasReferrerPolicy ? 'yes' : 'no',
       page.responseMetadata?.hasFrameProtection ? 'yes' : 'no',
+      sitemap.entries.some((entry) => entry.url === page.url)
+        ? 'listed'
+        : sitemap.fullyRead && !sitemap.truncated
+          ? 'absent'
+          : 'unchecked',
+      sitemap.entries.find((entry) => entry.url === page.url)?.lastmod ?? '',
+      sitemap.fullyRead && !sitemap.truncated ? 'yes' : 'no',
+      String(notCrawledCount),
+      sitemap.fullyRead && !sitemap.truncated
+        ? String(
+            pages.filter(
+              (page) =>
+                page.status === 'ok' && !sitemap.entries.some((entry) => entry.url === page.url),
+            ).length,
+          )
+        : '',
+      sitemap.fullyRead && !sitemap.truncated ? 'checked' : 'unchecked',
+      String(sitemap.invalidLastmodCount ?? 0),
+      String(sitemap.duplicateCount ?? 0),
+      String(sitemap.crossOriginCount ?? 0),
+      sitemap.warnings.join('; '),
+      'page',
+      '',
     ]);
+  }
+  for (const entry of sitemap.entries) {
+    const fetched = pages.some(
+      (page) =>
+        page.url === entry.url && page.status !== 'pending' && page.status !== 'skipped-robots',
+    );
+    if (fetched) continue;
+    const row = Array<string>(SITE_CSV_COLUMNS.length).fill('');
+    row[0] = entry.url;
+    row[2] = 'not crawled';
+    row[22] = 'not crawled';
+    row[23] = entry.lastmod ?? '';
+    row[24] = sitemap.fullyRead && !sitemap.truncated ? 'yes' : 'no';
+    row[25] = String(notCrawledCount);
+    row[27] = sitemap.fullyRead && !sitemap.truncated ? 'checked' : 'unchecked';
+    row[28] = String(sitemap.invalidLastmodCount ?? 0);
+    row[29] = String(sitemap.duplicateCount ?? 0);
+    row[30] = String(sitemap.crossOriginCount ?? 0);
+    row[31] = sitemap.warnings.join('; ');
+    row[32] = 'sitemap-entry';
+    row[33] = entry.url;
+    rows.push(row);
   }
   void session; // session metadata is in the JSON export
   return rows.map((row) => row.map(csvEscape).join(',')).join('\r\n') + '\r\n';

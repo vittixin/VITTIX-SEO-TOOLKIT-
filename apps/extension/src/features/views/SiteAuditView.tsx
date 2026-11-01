@@ -100,6 +100,15 @@ export function SiteAuditView() {
                 <li>• The audit runs while this dashboard tab is open</li>
               </ul>
               <div className="mt-3 flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={site.seedFromSitemap}
+                    onChange={(event) => site.setSeedFromSitemap(event.target.checked)}
+                    aria-label="Seed crawl from sitemap"
+                  />
+                  Seed crawl from sitemap
+                </label>
                 <button
                   type="button"
                   data-testid="site-start"
@@ -556,6 +565,53 @@ function SiteSummaryPanel({ summary }: { summary: ReturnType<typeof useSiteAudit
           }
           entries={(summary.orphanPages ?? []).map((url) => ({ key: url, label: url, detail: '' }))}
         />
+        <section
+          className="rounded-lg border border-slate-200 p-4"
+          aria-labelledby="sitemap-results-title"
+        >
+          <h3 id="sitemap-results-title" className="font-semibold">
+            Sitemap discovery
+          </h3>
+          <p className="mt-1 text-sm">
+            {summary.sitemap.checked
+              ? 'Checked: sitemap data was fully read.'
+              : 'Unchecked: sitemap data was incomplete or unavailable.'}{' '}
+            Invalid lastmod: {summary.sitemap.invalidLastmodCount}; duplicates:{' '}
+            {summary.sitemap.duplicateCount}; cross-origin entries ignored:{' '}
+            {summary.sitemap.crossOriginCount}.
+          </p>
+          {summary.sitemap.warnings.map((warning) => (
+            <p className="text-sm text-amber-800" key={warning}>
+              {warning}
+            </p>
+          ))}
+          <h4 className="mt-3 text-sm font-medium">Sitemap URLs not crawled</h4>
+          {summary.sitemap.notCrawled.length ? (
+            <ul className="list-inside list-disc text-sm">
+              {summary.sitemap.notCrawled.slice(0, 100).map((url) => (
+                <li key={url}>
+                  <span className="font-mono break-all">{url}</span> — not crawled
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm">No uncrawled sitemap URLs recorded.</p>
+          )}
+          <h4 className="mt-3 text-sm font-medium">Crawled URLs absent from sitemap</h4>
+          {summary.sitemap.crawledAbsent === null ? (
+            <p className="text-sm">Unchecked because the sitemap was not fully read.</p>
+          ) : summary.sitemap.crawledAbsent.length ? (
+            <ul className="list-inside list-disc text-sm">
+              {summary.sitemap.crawledAbsent.slice(0, 100).map((url) => (
+                <li className="font-mono break-all" key={url}>
+                  {url}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm">None among crawled pages.</p>
+          )}
+        </section>
       </div>
       <p className="mt-3 text-xs text-slate-400">
         Internal links: {summary.internalLinks} · External links: {summary.externalLinks} · Findings

@@ -248,3 +248,7 @@ and equally affects any browser fetch. No proxying of any kind exists.
   sessions ran on the same rule-set version (`sessionRuleSetVersion` read
   from audited page results; the version is stamped on the session at
   start).
+
+## Sitemap discovery and bounds
+
+Sitemap discovery reads same-origin Sitemap: declarations from robots.txt and falls back to /sitemap.xml. It parses XML in the extension dashboard only; XML parse failures are stored as warnings. Index recursion is capped at depth 2, entries at 50,000, each decompressed sitemap at 10 MB, and aggregate decompressed data at 50 MB. Gzip is decompressed as a stream and stopped at the same caps. Cross-origin sitemap URLs are counted and ignored. Redirects are requested manually and never followed when location is opaque or off-origin. Every sitemap request is GET-only, credential-free, paced, robots-checked, and preceded by an origin permission check. Sitemap URLs are only added to the crawl queue when the operator selects Seed crawl from sitemap; discovery itself is still reported. Partial reads never claim crawled URLs are absent from the sitemap.

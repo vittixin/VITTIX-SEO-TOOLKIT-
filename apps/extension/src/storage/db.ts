@@ -28,6 +28,7 @@ export interface OriginRuleSettingsRow {
  * - v2: siteAudits, sitePages (Phase 3 site mode) — additive; v1 data is
  *   untouched (Dexie applies the delta on upgrade).
  * - v5: additive response metadata fields on site-page rows.
+ * - v6: additive sitemap discovery state on site-audit rows.
  */
 export class VittixDatabase extends Dexie {
   audits!: EntityTable<AuditRecord, 'id'>;
@@ -37,7 +38,7 @@ export class VittixDatabase extends Dexie {
   targetKeywords!: EntityTable<TargetKeywordRow, 'url'>;
   originRuleSettings!: EntityTable<OriginRuleSettingsRow, 'origin'>;
 
-  constructor(name = DB_NAME, schemaVersion: 1 | 2 | 3 | 4 | 5 = 5) {
+  constructor(name = DB_NAME, schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 = 6) {
     super(name);
     this.version(1).stores({
       // Primary key ++id; queryable: by url and by analyzedAt (ISO string,
@@ -74,6 +75,16 @@ export class VittixDatabase extends Dexie {
     }
     if (schemaVersion >= 5) {
       this.version(5).stores({
+        audits: '++id, url, analyzedAt',
+        settings: 'key',
+        siteAudits: '++id, origin, status, startedAt',
+        sitePages: '++id, sessionId, url, status',
+        targetKeywords: 'url',
+        originRuleSettings: 'origin',
+      });
+    }
+    if (schemaVersion >= 6) {
+      this.version(6).stores({
         audits: '++id, url, analyzedAt',
         settings: 'key',
         siteAudits: '++id, origin, status, startedAt',

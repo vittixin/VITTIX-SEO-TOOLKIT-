@@ -122,3 +122,7 @@ Verified against the final production build (`pnpm build:chrome`, 2026-10-31):
 - **Private-network & credential protections**: https-only public origins,
   loopback/link-local/private ranges and IP literals rejected,
   `user:pass@host` URLs rejected — see docs/SITE_AUDIT.md.
+
+### Site audit sitemaps
+
+When site audit runs, same-origin robots.txt sitemap declarations (or /sitemap.xml fallback) may be fetched and stored locally. The locally stored sitemap state is bounded to 50,000 entries and contains URLs, lastmod values, alternates, counts, and truncation warnings. Cross-origin entries are counted and discarded. No sitemap data is sent elsewhere.

@@ -251,3 +251,7 @@ score always reports "Poor".
 - extraction caps (all reported per-collection in `omitted`): 300 headings /
   500 images / 500 links / 5 JSON-LD blocks / 5 description, canonical,
   robots & hreflang values
+
+## Sitemap interpretation (site audit, informational only)
+
+Sitemap discovery is site-audit evidence and does not add SEO scoring rules. A URL omitted from a sitemap is reported only when sitemap reading completed within the configured 50,000 URL and 50 MB decompressed limits. Incomplete reads report the comparison as unchecked. Sitemap-listed URLs not fetched are labeled not crawled; this does not imply that they are missing or unavailable.

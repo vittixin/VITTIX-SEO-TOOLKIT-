@@ -191,6 +191,117 @@ async function seedSession(overrides: Partial<SiteSessionInput> = {}): Promise<n
 // session with a unique origin to avoid interference.
 
 describe('runSiteAudit', () => {
+  it('does not fetch a sitemap URL disallowed by robots.txt', async () => {
+    const sitemap = 'https://site.test/private.xml';
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt'))
+        return Promise.resolve(
+          new Response(`User-agent: *\nDisallow: /private.xml\nSitemap: ${sitemap}\n`, {
+            status: 200,
+          }) as unknown as Response,
+        );
+      return Promise.resolve(htmlResponse('', url));
+    });
+    const sessionId = await seedSession({
+      sitemap: {
+        entries: [],
+        fullyRead: false,
+        truncated: false,
+        invalidLastmodCount: 0,
+        duplicateCount: 0,
+        crossOriginCount: 0,
+        warnings: [],
+      },
+    });
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+    expect(fetchImpl.mock.calls.some(([input]) => String(input) === sitemap)).toBe(false);
+    const { getSiteSession } = await import('@/src/storage/site');
+    expect((await getSiteSession(sessionId))?.sitemap.warnings.join(' ')).toContain(
+      'disallowed by robots.txt',
+    );
+  });
+
+  it('stops before sitemap fetch when origin permission is revoked mid-discovery', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      if (String(input).endsWith('/robots.txt'))
+        return Promise.resolve(
+          new Response('User-agent: *\nSitemap: https://site.test/map.xml\n', {
+            status: 200,
+          }) as unknown as Response,
+        );
+      return Promise.resolve(htmlResponse('', String(input)));
+    });
+    let permissionChecks = 0;
+    const sessionId = await seedSession({
+      sitemap: {
+        entries: [],
+        fullyRead: false,
+        truncated: false,
+        invalidLastmodCount: 0,
+        duplicateCount: 0,
+        crossOriginCount: 0,
+        warnings: [],
+      },
+    });
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+      hasPermission: async () => ++permissionChecks < 3,
+    });
+    expect(fetchImpl.mock.calls.map(([input]) => String(input))).toEqual([
+      'https://site.test/robots.txt',
+    ]);
+    const { getSiteSession } = await import('@/src/storage/site');
+    expect((await getSiteSession(sessionId))?.status).toBe('failed');
+  });
+
+  it('cancels a crawl paused during sitemap fetch without starting page requests', async () => {
+    let announceStarted!: () => void;
+    let releaseFetch!: (response: Response) => void;
+    const started = new Promise<void>((resolve) => (announceStarted = resolve));
+    const heldResponse = new Promise<Response>((resolve) => (releaseFetch = resolve));
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt'))
+        return Promise.resolve(new Response('', { status: 404 }) as unknown as Response);
+      if (url.endsWith('/sitemap.xml')) {
+        announceStarted();
+        return heldResponse as unknown as Promise<Response>;
+      }
+      return Promise.resolve(htmlResponse('', url));
+    });
+    const sessionId = await seedSession({
+      sitemap: {
+        entries: [],
+        fullyRead: false,
+        truncated: false,
+        invalidLastmodCount: 0,
+        duplicateCount: 0,
+        crossOriginCount: 0,
+        warnings: [],
+      },
+    });
+    const crawl = runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+    await started;
+    const { updateSiteSession, getSiteSession } = await import('@/src/storage/site');
+    await updateSiteSession(sessionId, { stopRequested: true });
+    releaseFetch(new Response('', { status: 404 }) as unknown as Response);
+    await crawl;
+    expect(fetchImpl.mock.calls.map(([input]) => String(input))).not.toContain(
+      'https://site.test/',
+    );
+    expect((await getSiteSession(sessionId))?.status).toBe('cancelled');
+  });
+
   it('crawls same-origin pages, skips cross-origin links and duplicates', async () => {
     const fetchImpl = vi.fn((input: string | URL) => {
       const url = String(input);

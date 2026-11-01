@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 import { resolve } from 'node:path';
 import { extensionPageUrl, loadExtension } from './helpers/extension';
 
@@ -18,10 +19,22 @@ test('site audit: consent → crawl → summary → export', async () => {
     '--use-fake-ui-for-permission-flow',
   ]);
   try {
+    const sitemapFetchPaths = new Set<string>();
+    let offOriginSitemapFetched = false;
+    const gzipBomb = gzipSync(
+      Buffer.from(
+        `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${' '.repeat(10_100_000)}</urlset>`,
+      ),
+    );
+    await context.route('https://other.test/**', (route) => {
+      offOriginSitemapFetched = true;
+      return route.fulfill({ status: 200, contentType: 'application/xml', body: '<urlset />' });
+    });
     // Fixture site: / links to /a, /b, a duplicate of /a, an off-origin
     // link, and /locked (403). /a links back to /. /b is robots-disallowed.
     await context.route('https://fixture.test/**', (route) => {
       const url = new URL(route.request().url());
+      sitemapFetchPaths.add(url.pathname);
       if (url.pathname === '/headers') {
         return route.fulfill({
           status: 200,
@@ -49,6 +62,37 @@ test('site audit: consent → crawl → summary → export', async () => {
           body: 'User-agent: *\nDisallow: /b\n',
         });
       }
+      if (url.pathname === '/sitemap.xml') {
+        return route.fulfill({
+          contentType: 'application/xml',
+          body: '<?xml version="1.0"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://fixture.test/map.xml</loc></sitemap><sitemap><loc>https://fixture.test/bad.xml</loc></sitemap><sitemap><loc>https://fixture.test/redirect.xml</loc></sitemap><sitemap><loc>https://fixture.test/level1.xml</loc></sitemap><sitemap><loc>https://fixture.test/zipbomb.xml.gz</loc></sitemap></sitemapindex>',
+        });
+      }
+      if (url.pathname === '/map.xml')
+        return route.fulfill({
+          contentType: 'application/xml',
+          body: '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml"><url><loc>https://fixture.test/a</loc><lastmod>2026-10-30</lastmod><xhtml:link rel="alternate" hreflang="en" href="https://fixture.test/a"/></url><url><loc>https://fixture.test/sitemap-only</loc><lastmod>not-a-date</lastmod></url><url><loc>https://fixture.test/b</loc></url><url><loc>https://other.test/out</loc></url><url><loc>https://fixture.test/a</loc></url></urlset>',
+        });
+      if (url.pathname === '/bad.xml')
+        return route.fulfill({ contentType: 'application/xml', body: '<urlset><url><loc>broken' });
+      if (url.pathname === '/redirect.xml')
+        return route.fulfill({
+          status: 302,
+          headers: { location: 'https://other.test/redirect-target.xml' },
+          body: '',
+        });
+      if (url.pathname === '/level1.xml')
+        return route.fulfill({
+          contentType: 'application/xml',
+          body: '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://fixture.test/level2.xml</loc></sitemap></sitemapindex>',
+        });
+      if (url.pathname === '/level2.xml')
+        return route.fulfill({
+          contentType: 'application/xml',
+          body: '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://fixture.test/level3.xml</loc></sitemap></sitemapindex>',
+        });
+      if (url.pathname === '/zipbomb.xml.gz')
+        return route.fulfill({ contentType: 'application/gzip', body: gzipBomb });
       if (url.pathname === '/locked') {
         return route.fulfill({ status: 403, contentType: 'text/html', body: '<p>403</p>' });
       }
@@ -146,8 +190,62 @@ test('site audit: consent → crawl → summary → export', async () => {
     // reflect the ground truth: 3 ok pages (/, /a + …), /b robots-skipped,
     // /locked failed-auth, off-origin never fetched.
     await expect(dashboard.getByTestId('site-summary')).toBeVisible({ timeout: 30_000 });
+    await expect
+      .poll(
+        () =>
+          dashboard.evaluate(async () => {
+            const request = indexedDB.open('vittix-seo');
+            const database = await new Promise<IDBDatabase>((resolve, reject) => {
+              request.onsuccess = () => resolve(request.result);
+              request.onerror = () => reject(request.error);
+            });
+            const rows = await new Promise<Record<string, unknown>[]>((resolve, reject) => {
+              const get = database.transaction('siteAudits').objectStore('siteAudits').getAll();
+              get.onsuccess = () => resolve(get.result);
+              get.onerror = () => reject(get.error);
+            });
+            database.close();
+            return (rows.at(-1)?.sitemap as { truncated?: boolean } | undefined)?.truncated;
+          }),
+        { timeout: 30_000 },
+      )
+      .toBe(true);
     const summaryText = await dashboard.getByTestId('site-summary').innerText();
     expect(summaryText).toContain('Pages audited');
+    expect(summaryText).toContain('Sitemap discovery');
+    expect(summaryText).toContain('https://fixture.test/sitemap-only');
+    expect(summaryText).toContain('cross-origin entries ignored: 1');
+    expect(summaryText).toContain('Malformed sitemap XML.');
+    expect(summaryText).toContain('recursion limit reached');
+    expect(summaryText).toContain('Sitemap size limit reached');
+    expect(sitemapFetchPaths.has('/level3.xml')).toBe(false);
+    expect(offOriginSitemapFetched).toBe(false);
+    const storedSitemap = await dashboard.evaluate(async () => {
+      const request = indexedDB.open('vittix-seo');
+      const database = await new Promise<IDBDatabase>((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const sessions = await new Promise<Record<string, unknown>[]>((resolve, reject) => {
+        const get = database.transaction('siteAudits').objectStore('siteAudits').getAll();
+        get.onsuccess = () => resolve(get.result);
+        get.onerror = () => reject(get.error);
+      });
+      database.close();
+      return (sessions.at(-1)?.sitemap ?? {}) as {
+        entries?: { url: string; lastmod: string | null; alternates: string[] }[];
+        invalidLastmodCount?: number;
+        duplicateCount?: number;
+        truncated?: boolean;
+      };
+    });
+    expect(storedSitemap.entries?.find((entry) => entry.url.endsWith('/a'))).toMatchObject({
+      lastmod: '2026-10-30',
+      alternates: ['https://fixture.test/a'],
+    });
+    expect(storedSitemap.invalidLastmodCount).toBe(1);
+    expect(storedSitemap.duplicateCount).toBe(1);
+    expect(storedSitemap.truncated).toBe(true);
 
     // URL list: filter to /a.
     await dashboard.getByTestId('site-url-filter').fill('/a');
@@ -167,6 +265,7 @@ test('site audit: consent → crawl → summary → export', async () => {
     const siteJsonPath = resolve(import.meta.dirname, '../test-results/export-site-audit.json');
     await siteJsonDownload.saveAs(siteJsonPath);
     expect(readFileSync(siteJsonPath, 'utf8')).toContain('"xRobotsTag": "noindex"');
+    expect(readFileSync(siteJsonPath, 'utf8')).toContain('"sitemap"');
 
     const csvDownload = dashboard.waitForEvent('download');
     await dashboard.getByTestId('site-export-csv').click();
@@ -180,6 +279,7 @@ test('site audit: consent → crawl → summary → export', async () => {
     await htmlReport.saveAs(htmlPath);
     const html = readFileSync(htmlPath, 'utf8');
     expect(html).toContain('X-Robots-Tag');
+    expect(html).toContain('Sitemap discovery');
     const reportPage = await context.newPage();
     const requests: string[] = [];
     reportPage.on('request', (request) => requests.push(request.url()));

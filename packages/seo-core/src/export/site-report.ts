@@ -44,6 +44,22 @@ export interface SiteReportInput {
       redirectCount?: number | null;
       xRobotsTag?: string | null;
     }[];
+    sitemap?: {
+      notCrawled: string[];
+      crawledAbsent: string[] | null;
+      inspectedSitemapUrls: {
+        url: string;
+        noindex: boolean;
+        non2xx: boolean;
+        redirected: boolean;
+        canonicalizedElsewhere: boolean;
+      }[];
+      invalidLastmodCount: number;
+      duplicateCount: number;
+      crossOriginCount: number;
+      warnings: string[];
+      checked: boolean;
+    };
   };
   profileId?: string;
   ignoredRuleIds?: string[];
@@ -148,6 +164,17 @@ function buildSiteAuditReportHtmlBase(
       : null;
   const topRows = tableRows(issues);
   const pageRows = tableRows(rows);
+  const sitemap = summary.sitemap;
+  const sitemapHtml = sitemap
+    ? `<section><h2>Sitemap discovery</h2><p>${sitemap.checked ? 'Checked: sitemap set was fully read.' : 'Unchecked: sitemap set was incomplete or unavailable.'} ${sitemap.invalidLastmodCount} invalid lastmod values; ${sitemap.duplicateCount} duplicate entries; ${sitemap.crossOriginCount} cross-origin entries ignored.</p>${sitemap.warnings.length ? `<ul>${sitemap.warnings.map((warning) => `<li>${escapeReportHtml(warning)}</li>`).join('')}</ul>` : ''}<h3>Sitemap URLs not crawled</h3>${
+        sitemap.notCrawled.length
+          ? `<ul>${sitemap.notCrawled
+              .slice(0, 200)
+              .map((url) => `<li>${escapeReportHtml(url)} — not crawled</li>`)
+              .join('')}</ul>`
+          : '<p>None in the sitemap set.</p>'
+      }<h3>Crawled URLs absent from sitemap</h3>${sitemap.crawledAbsent === null ? '<p>Unchecked: sitemap was not fully read.</p>' : sitemap.crawledAbsent.length ? `<ul>${sitemap.crawledAbsent.map((url) => `<li>${escapeReportHtml(url)}</li>`).join('')}</ul>` : '<p>None among crawled pages.</p>'}<h3>Crawled sitemap URL signals</h3>${sitemap.inspectedSitemapUrls.length ? `<ul>${sitemap.inspectedSitemapUrls.map((item) => `<li>${escapeReportHtml(item.url)} — ${[item.noindex && 'noindex', item.non2xx && 'non-2xx', item.redirected && 'redirected', item.canonicalizedElsewhere && 'canonicalized elsewhere'].filter(Boolean).join(', ') || 'no listed signal'}</li>`).join('')}</ul>` : '<p>Unchecked: no sitemap URLs were crawled.</p>'}</section>`
+    : '<section><h2>Sitemap discovery</h2><p>Unchecked: sitemap discovery data is unavailable.</p></section>';
   const csp = `default-src 'none'; style-src 'unsafe-inline'; img-src ${logo ? 'data:' : "'none'"};`;
   const brandHtml = logo ? `<p class="brand"><img alt="" src="${escapeReportHtml(logo)}"></p>` : '';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${csp}"><title>Site audit report — ${escapeReportHtml(session.origin)}</title><style>:root{color-scheme:light dark;--accent:${accent};--bg:#fff;--fg:#172033;--muted:#4b5563;--line:#cbd5e1;--soft:#f1f5f9;--warn:#854d0e}@media(prefers-color-scheme:dark){:root{--bg:#111827;--fg:#f3f4f6;--muted:#cbd5e1;--line:#475569;--soft:#1f2937;--warn:#fcd34d}}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,sans-serif}main{max-width:1100px;margin:auto;padding:28px}h1{font-size:2rem}h2{margin-top:2rem;border-bottom:1px solid var(--line)}table{border-collapse:collapse;width:100%;margin:12px 0}th,td{text-align:left;border:1px solid var(--line);padding:8px;overflow-wrap:anywhere}th{background:var(--soft)}.muted{color:var(--muted)}.notice{border-left:5px solid var(--warn);background:var(--soft);padding:12px}.brand{color:var(--accent);font-weight:700}@media print{main{max-width:none;padding:0}tr,li{break-inside:avoid}h2{break-after:avoid}}</style></head><body><main>${options.branding?.agencyName ? `<p class="brand">${escapeReportHtml(options.branding.agencyName.slice(0, 80))}</p>` : ''}<header><p class="muted">Vittix SEO Toolkit · Site audit report</p><h1>Site audit: ${escapeReportHtml(session.origin)}</h1><p>Started: ${escapeReportHtml(session.startedAt)} · Status: ${escapeReportHtml(session.status)} · Profile: ${escapeReportHtml(profile)} · Rule set: ${escapeReportHtml(session.ruleSetVersion ?? 'unknown')}</p></header>${incomplete ? '<p class="notice"><strong>Incomplete site audit.</strong> Results cover completed fetches only and may undercount.</p>' : '<p>Site audit completed.</p>'}${stop}<section><h2>Summary</h2><p>Pages inspected: ${summary.auditedPages} · Failed: ${summary.failedPages} · Skipped: ${summary.skippedPages} · Pending: ${summary.pendingPages} · Errors: ${summary.totalErrors} · Warnings: ${summary.totalWarnings}</p><p>Score distribution: Poor ${summary.scoreDistribution.poor}; Needs work ${summary.scoreDistribution.needsWork}; Good ${summary.scoreDistribution.good}; Excellent ${summary.scoreDistribution.excellent}.</p><p>Error distribution: 0 errors ${summary.errorDistribution.clean}; 1–2 ${summary.errorDistribution.some}; 3+ ${summary.errorDistribution.many}.</p></section><section><h2>Top issues by page count</h2><table><thead><tr><th scope="col">Issue</th><th scope="col">Pages/groups</th></tr></thead><tbody>${topRows}</tbody></table></section>${duplicateList(
@@ -161,7 +188,8 @@ function buildSiteAuditReportHtmlBase(
     .replace(
       '<th scope="col">Truncated</th>',
       '<th scope="col">Truncated</th><th scope="col">Content type</th><th scope="col">Response ms</th><th scope="col">Redirects</th><th scope="col">X-Robots-Tag</th>',
-    );
+    )
+    .replace('</footer>', `${sitemapHtml}</footer>`);
 }
 
 /** Add excerpt/keyword content only when the export dialog explicitly opts in. */
@@ -223,6 +251,52 @@ export function buildSiteAuditMarkdown(
     `Score distribution: poor ${summary.scoreDistribution.poor}, needs work ${summary.scoreDistribution.needsWork}, good ${summary.scoreDistribution.good}, excellent ${summary.scoreDistribution.excellent}`,
     `Error distribution: clean ${summary.errorDistribution.clean}, 1–2 ${summary.errorDistribution.some}, 3+ ${summary.errorDistribution.many}`,
   ];
+  const sitemap = summary.sitemap;
+  lines.push('', '## Sitemap discovery', '');
+  if (!sitemap) {
+    lines.push('Unchecked: sitemap discovery data is unavailable.');
+  } else {
+    lines.push(
+      sitemap.checked
+        ? 'Checked: sitemap set was fully read.'
+        : 'Unchecked: sitemap set was incomplete or unavailable.',
+    );
+    lines.push(
+      `Invalid lastmod: ${sitemap.invalidLastmodCount}; duplicate entries: ${sitemap.duplicateCount}; cross-origin ignored: ${sitemap.crossOriginCount}.`,
+    );
+    lines.push(...sitemap.warnings.map((warning) => `- ${escapeReportMarkdown(warning)}`));
+    lines.push(
+      '',
+      '### Sitemap URLs not crawled',
+      '',
+      ...(sitemap.notCrawled.length
+        ? sitemap.notCrawled
+            .slice(0, 200)
+            .map((url) => `- ${escapeReportMarkdown(url)} — not crawled`)
+        : ['None in the sitemap set.']),
+    );
+    lines.push(
+      '',
+      '### Crawled URLs absent from sitemap',
+      '',
+      ...(sitemap.crawledAbsent === null
+        ? ['Unchecked: sitemap was not fully read.']
+        : sitemap.crawledAbsent.length
+          ? sitemap.crawledAbsent.map(escapeReportMarkdown)
+          : ['None among crawled pages.']),
+    );
+    lines.push(
+      '',
+      '### Crawled sitemap URL signals',
+      '',
+      ...(sitemap.inspectedSitemapUrls.length
+        ? sitemap.inspectedSitemapUrls.map(
+            (page) =>
+              `- ${escapeReportMarkdown(page.url)}: ${[page.noindex && 'noindex', page.non2xx && 'non-2xx', page.redirected && 'redirected', page.canonicalizedElsewhere && 'canonicalized elsewhere'].filter(Boolean).join(', ') || 'no listed signal'}`,
+          )
+        : ['Unchecked: no sitemap URLs were crawled.']),
+    );
+  }
   if (summary.incomplete || summary.pendingPages > 0 || session.status !== 'completed')
     lines.push(
       '',

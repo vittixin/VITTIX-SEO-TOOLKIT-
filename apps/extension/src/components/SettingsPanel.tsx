@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Check, ShieldCheck, Trash2 } from 'lucide-react';
-import { DEFAULT_SETTINGS, type Settings } from '@vittix/shared';
+import {
+  DEFAULT_EXPORT_BRANDING,
+  DEFAULT_SETTINGS,
+  ExportBrandingSchema,
+  type Settings,
+} from '@vittix/shared';
 import { clearAllAudits, pruneAudits } from '@/src/storage/audits';
 import { getSettings, saveSettings } from '@/src/storage/settings';
 
@@ -22,6 +27,7 @@ export function SettingsPanel() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [cleared, setCleared] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [brandingError, setBrandingError] = useState<string | null>(null);
 
   useEffect(() => {
     void getSettings().then((next) => {
@@ -120,6 +126,112 @@ export function SettingsPanel() {
             </span>
           ) : null}
         </div>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 className="text-sm font-semibold text-slate-900">Export branding</h3>
+        <p className="mt-1 text-sm text-slate-600">
+          Optional, local-only branding used when you select “Agency branding” in an export. Logos
+          are limited to PNG, JPEG or WebP files up to 100 KB. SVG is not accepted.
+        </p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-slate-700">
+            Agency name (up to 80 characters)
+            <input
+              maxLength={80}
+              value={settings.exportBranding.agencyName}
+              onChange={(event) =>
+                setSettings((previous) => ({
+                  ...previous,
+                  exportBranding: { ...previous.exportBranding, agencyName: event.target.value },
+                }))
+              }
+              className={selectClasses}
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Accent color
+            <input
+              type="color"
+              value={settings.exportBranding.accentColor}
+              onChange={(event) =>
+                setSettings((previous) => ({
+                  ...previous,
+                  exportBranding: { ...previous.exportBranding, accentColor: event.target.value },
+                }))
+              }
+              className="mt-1 block h-10 w-full rounded-lg border border-slate-300 bg-white p-1"
+              aria-label="Export accent color"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700 sm:col-span-2">
+            Logo (PNG, JPEG or WebP; max 100 KB)
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              aria-label="Export logo image"
+              className={selectClasses}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (!file) return;
+                setBrandingError(null);
+                if (
+                  !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) ||
+                  file.size > 100 * 1024
+                ) {
+                  setBrandingError('Choose a PNG, JPEG or WebP logo no larger than 100 KB.');
+                  event.currentTarget.value = '';
+                  return;
+                }
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const parsed = ExportBrandingSchema.safeParse({
+                    ...settings.exportBranding,
+                    logoDataUri: typeof reader.result === 'string' ? reader.result : null,
+                  });
+                  if (!parsed.success) {
+                    setBrandingError('This logo could not be stored safely.');
+                    return;
+                  }
+                  setSettings((previous) => ({ ...previous, exportBranding: parsed.data }));
+                };
+                reader.onerror = () => setBrandingError('Could not read this logo file.');
+                reader.readAsDataURL(file);
+              }}
+            />
+          </label>
+        </div>
+        {settings.exportBranding.logoDataUri ? (
+          <div className="mt-3 flex items-center gap-3">
+            <span className="text-xs text-slate-600">Logo saved on this device.</span>
+            <button
+              type="button"
+              onClick={() =>
+                setSettings((previous) => ({
+                  ...previous,
+                  exportBranding: { ...previous.exportBranding, logoDataUri: null },
+                }))
+              }
+              className="rounded border border-slate-300 px-2 py-1 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
+            >
+              Clear logo
+            </button>
+          </div>
+        ) : null}
+        {brandingError ? (
+          <p role="alert" className="mt-2 text-sm text-rose-700">
+            {brandingError}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          onClick={() =>
+            setSettings((previous) => ({ ...previous, exportBranding: DEFAULT_EXPORT_BRANDING }))
+          }
+          className="mt-3 rounded border border-slate-300 px-3 py-2 text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
+        >
+          Clear branding
+        </button>
       </section>
 
       <section className="rounded-xl border border-rose-200 bg-rose-50/50 p-5">

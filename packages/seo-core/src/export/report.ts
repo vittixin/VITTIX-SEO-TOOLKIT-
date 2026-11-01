@@ -148,6 +148,9 @@ function markdownCode(value: string): string {
 export function buildAuditMarkdown(audit: AuditRecord, options: AuditReportOptions = {}): string {
   const score = audit.result.score;
   const lines = [
+    ...(options.branding?.agencyName
+      ? [`> ${escapeReportMarkdown(options.branding.agencyName.slice(0, 80))}`, '']
+      : []),
     `# SEO audit: ${escapeReportMarkdown(audit.title)}`,
     '',
     `URL: ${escapeReportMarkdown(audit.url)}`,

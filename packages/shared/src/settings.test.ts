@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, SettingsSchema } from './settings.js';
+import {
+  DEFAULT_EXPORT_BRANDING,
+  DEFAULT_SETTINGS,
+  ExportBrandingSchema,
+  SettingsSchema,
+} from './settings.js';
 import { countSeverities, FINDING_SEVERITY_ORDER, SEVERITIES } from './finding.js';
 
 describe('SettingsSchema', () => {
@@ -23,6 +28,37 @@ describe('SettingsSchema', () => {
     expect(SettingsSchema.safeParse({ ...DEFAULT_SETTINGS, maxStoredAudits: 1 }).success).toBe(
       false,
     );
+  });
+
+  it('defaults branding on older settings rows', () => {
+    const legacy = Object.fromEntries(
+      Object.entries(DEFAULT_SETTINGS).filter(([key]) => key !== 'exportBranding'),
+    );
+    expect(SettingsSchema.parse(legacy).exportBranding).toEqual(DEFAULT_EXPORT_BRANDING);
+  });
+});
+
+describe('ExportBrandingSchema', () => {
+  it('accepts bounded agency name, hex accent and raster logo data', () => {
+    expect(
+      ExportBrandingSchema.safeParse({
+        agencyName: 'Example Studio',
+        accentColor: '#a1B2c3',
+        logoDataUri: 'data:image/png;base64,YWJj',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects invalid colors, overlong names, SVG and oversized logos', () => {
+    expect(ExportBrandingSchema.safeParse({ agencyName: 'x'.repeat(81) }).success).toBe(false);
+    expect(ExportBrandingSchema.safeParse({ accentColor: 'url(javascript:1)' }).success).toBe(
+      false,
+    );
+    expect(
+      ExportBrandingSchema.safeParse({ logoDataUri: 'data:image/svg+xml;base64,PHN2Zz4=' }).success,
+    ).toBe(false);
+    const tooLarge = `data:image/png;base64,${'A'.repeat(136_536)}`;
+    expect(ExportBrandingSchema.safeParse({ logoDataUri: tooLarge }).success).toBe(false);
   });
 });
 

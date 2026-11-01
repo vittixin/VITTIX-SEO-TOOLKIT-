@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { extensionPageUrl, loadExtension } from './helpers/extension';
 
@@ -120,6 +120,12 @@ test('real message → real injection → persisted history → exports', async 
 
     // JSON export: a real download with real content.
     await dashboard.getByTestId('nav-export').click();
+    await dashboard.getByTestId('open-export-dialog').click();
+    await expect(dashboard.getByRole('dialog')).toBeVisible();
+    await dashboard.keyboard.press('Shift+Tab');
+    await expect(dashboard.getByRole('button', { name: 'Close', exact: true })).toBeFocused();
+    await dashboard.keyboard.press('Tab');
+    await expect(dashboard.getByRole('button', { name: 'Close export dialog' })).toBeFocused();
     const jsonDownloadPromise = dashboard.waitForEvent('download');
     await dashboard.getByTestId('export-json').click();
     const jsonDownload = await jsonDownloadPromise;
@@ -129,6 +135,8 @@ test('real message → real injection → persisted history → exports', async 
       format: string;
       audit: { url: string; result: { findings: { ruleId: string }[]; score: { total: number } } };
     };
+    expect(JSON.stringify(exportedJson)).not.toContain('leadText');
+    expect(JSON.stringify(exportedJson)).not.toContain('fixture phrase');
     expect(exportedJson.format).toBe('vittix-seo-audit');
     expect(exportedJson.audit.url).toContain('fixture.test/real-flow');
     const exportedRules = exportedJson.audit.result.findings.map((f) => f.ruleId);
@@ -155,6 +163,62 @@ test('real message → real injection → persisted history → exports', async 
     expect(markdown).toContain('# SEO audit:');
     expect(markdown).toContain('title\\-present');
     expect(markdown).toContain('Scores are preliminary');
+
+    const htmlDownloadPromise = dashboard.waitForEvent('download');
+    await dashboard.getByTestId('export-html').click();
+    const htmlDownload = await htmlDownloadPromise;
+    const htmlPath = resolve(import.meta.dirname, '../test-results/export-audit.html');
+    await htmlDownload.saveAs(htmlPath);
+    const reportHtml = readFileSync(htmlPath, 'utf8');
+    expect(reportHtml).toContain('Scores are preliminary');
+    expect(reportHtml).not.toContain('<script');
+    writeFileSync(
+      resolve(import.meta.dirname, '../docs/acceptance-evidence/sample-report.html'),
+      reportHtml,
+    );
+    writeFileSync(
+      resolve(import.meta.dirname, '../docs/acceptance-evidence/sample-report.md'),
+      markdown,
+    );
+
+    // Open the generated document in an isolated page and assert it stays offline,
+    // executes no scripts, and prints findings rather than hiding them.
+    const reportPage = await context.newPage();
+    const requests: string[] = [];
+    reportPage.on('request', (request) => requests.push(request.url()));
+    reportPage.on('dialog', (dialog) => void dialog.dismiss());
+    reportPage.on('console', (message) => {
+      if (message.type() === 'error') throw new Error(`Report console error: ${message.text()}`);
+    });
+    await reportPage.setContent(reportHtml);
+    await expect(reportPage.getByRole('heading', { name: 'Findings' })).toBeVisible();
+    await reportPage.emulateMedia({ colorScheme: 'light' });
+    await reportPage.screenshot({
+      path: resolve(import.meta.dirname, '../docs/acceptance-evidence/sample-report-light.png'),
+      fullPage: true,
+    });
+    await reportPage.emulateMedia({ colorScheme: 'dark' });
+    await reportPage.screenshot({
+      path: resolve(import.meta.dirname, '../docs/acceptance-evidence/sample-report-dark.png'),
+      fullPage: true,
+    });
+    await reportPage.emulateMedia({ media: 'print' });
+    await expect(reportPage.getByRole('heading', { name: 'Findings' })).toBeVisible();
+    expect(requests).toEqual([]);
+    expect(await reportPage.locator('script').count()).toBe(0);
+    await reportPage.close();
+
+    // Explicit opt-in adds page excerpt and keyword to JSON.
+    await dashboard.getByLabel('Include page text excerpt').check();
+    await dashboard.getByLabel('Include target keyword').check();
+    const optedDownloadPromise = dashboard.waitForEvent('download');
+    await dashboard.getByTestId('export-json').click();
+    const optedDownload = await optedDownloadPromise;
+    const optedPath = resolve(import.meta.dirname, '../test-results/export-audit-opted.json');
+    await optedDownload.saveAs(optedPath);
+    expect(readFileSync(optedPath, 'utf8')).toContain('leadText');
+    await dashboard.keyboard.press('Escape');
+    await expect(dashboard.getByRole('dialog')).toBeHidden();
   } finally {
     await context.close();
   }

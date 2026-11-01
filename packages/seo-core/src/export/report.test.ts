@@ -12,6 +12,7 @@ import {
   buildSiteAuditReportHtml,
   type SiteReportInput,
 } from './site-report.js';
+import { siteAuditToJson } from './site.js';
 
 const hostile =
   '<script>alert(1)</script> "><img onerror=alert(2)> javascript:alert(3) ` RTL \u202e';
@@ -81,7 +82,14 @@ const site: SiteReportInput = {
   },
   profileId: 'standard',
   ignoredRuleIds: ['ignored-rule'],
-  pages: [{ url: hostile, result: { score: { capReason: hostile } } }],
+  pages: [
+    {
+      url: hostile,
+      result: { score: { capReason: hostile } },
+      snapshot: { textSummary: { leadText: hostile } },
+      targetKeyword: hostile,
+    },
+  ],
 };
 
 describe('single-audit reports', () => {
@@ -194,5 +202,48 @@ describe('site-audit reports', () => {
     expect(html).not.toContain('page-200');
     expect(markdown).toContain('page\\-199');
     expect(markdown).not.toContain('page\\-200');
+  });
+
+  it('keeps site excerpts and target keywords private unless explicitly included', () => {
+    const html = buildSiteAuditReportHtml(site);
+    const markdown = buildSiteAuditMarkdown(site);
+    expect(html).not.toContain('Page text excerpt (opt-in)');
+    expect(html).not.toContain('Target keyword</dt>');
+    expect(markdown).not.toContain('Page text excerpt (opt-in)');
+    expect(markdown).not.toContain('Target keyword:');
+    const includedHtml = buildSiteAuditReportHtml(site, {
+      includePageTextExcerpt: true,
+      includeKeyword: true,
+    });
+    expect(includedHtml).toContain('<strong>Page excerpt:</strong>');
+    expect(includedHtml).toContain('Target keyword</th>');
+    expect(includedHtml).toContain('&lt;script&gt;');
+  });
+
+  it('omits site JSON excerpts and keywords by default', () => {
+    const session = {
+      origin: 'https://example.test',
+      status: 'completed',
+      startedAt: '2026-10-31T12:00:00Z',
+      ruleSetVersion: '0.5.0',
+    } as unknown as Parameters<typeof siteAuditToJson>[0];
+    const page = {
+      url: 'https://example.test/',
+      status: 'ok',
+      snapshot: { textSummary: { leadText: hostile } },
+      targetKeyword: 'stored private keyword',
+    } as unknown as Parameters<typeof siteAuditToJson>[1][number];
+    const defaults = siteAuditToJson(session, [page]);
+    expect(defaults).not.toContain('leadText');
+    expect(defaults).not.toContain(hostile);
+    expect(defaults).not.toContain('private keyword');
+    expect(defaults).not.toContain('stored private keyword');
+    const optedIn = siteAuditToJson(session, [page], {
+      includePageTextExcerpt: true,
+      includeKeyword: true,
+      targetKeywords: { [page.url]: 'private keyword' },
+    });
+    expect(optedIn).toContain('leadText');
+    expect(optedIn).toContain('private keyword');
   });
 });

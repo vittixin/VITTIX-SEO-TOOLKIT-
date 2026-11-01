@@ -6,7 +6,7 @@ import {
   ExportBrandingSchema,
   type Settings,
 } from '@vittix/shared';
-import { clearAllAudits, pruneAudits } from '@/src/storage/audits';
+import { clearAllLocalData, pruneAudits } from '@/src/storage/audits';
 import { getSettings, saveSettings } from '@/src/storage/settings';
 
 const RETENTION_OPTIONS = [
@@ -52,7 +52,7 @@ export function SettingsPanel() {
   async function handleClearAll() {
     setBusy(true);
     try {
-      await clearAllAudits();
+      await clearAllLocalData();
       setConfirmClear(false);
       setCleared(true);
       setSaved(false);
@@ -237,7 +237,8 @@ export function SettingsPanel() {
       <section className="rounded-xl border border-rose-200 bg-rose-50/50 p-5">
         <h3 className="text-sm font-semibold text-rose-900">Danger zone</h3>
         <p className="mt-0.5 text-sm text-rose-700">
-          Permanently delete every stored audit from this browser. This cannot be undone.
+          Permanently delete audit and site history, target keywords, rule overrides and stored logo
+          data from this browser. Retention preferences remain. This cannot be undone.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           {confirmClear ? (
@@ -266,12 +267,12 @@ export function SettingsPanel() {
               onClick={() => setConfirmClear(true)}
               className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
             >
-              <Trash2 className="size-4" aria-hidden /> Clear all audit data
+              <Trash2 className="size-4" aria-hidden /> Clear all data
             </button>
           )}
           {cleared ? (
             <span className="text-sm font-medium text-emerald-600" data-testid="clear-all-done">
-              All audit data deleted.
+              All local analysis data deleted.
             </span>
           ) : null}
         </div>

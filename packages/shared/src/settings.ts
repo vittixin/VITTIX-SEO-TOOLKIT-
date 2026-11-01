@@ -18,6 +18,14 @@ export const ExportBrandingSchema = z.object({
       /^data:image\/(?:png|jpeg|webp);base64,(?:[A-Za-z\d+/]{4})*(?:[A-Za-z\d+/]{2}==|[A-Za-z\d+/]{3}=)?$/,
     )
     .refine((value) => {
+      const [mediaType, payload] = value.slice(5).split(';base64,');
+      if (!payload) return false;
+      if (mediaType === 'image/png') return payload.startsWith('iVBORw0KGgo');
+      if (mediaType === 'image/jpeg') return payload.startsWith('/9j/');
+      if (mediaType === 'image/webp') return payload.startsWith('UklGR');
+      return false;
+    }, 'Logo bytes must match PNG, JPEG or WebP')
+    .refine((value) => {
       const encoded = value.slice(value.indexOf(',') + 1);
       const padding = encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0;
       return Math.floor((encoded.length * 3) / 4) - padding <= MAX_LOGO_BYTES;

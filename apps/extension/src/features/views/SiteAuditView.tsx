@@ -1,22 +1,10 @@
 import { useState } from 'react';
-import {
-  FileJson,
-  FileSpreadsheet,
-  Globe,
-  Info,
-  OctagonX,
-  Play,
-  RefreshCw,
-  ShieldQuestion,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { Globe, Info, OctagonX, Play, RefreshCw, ShieldQuestion, Trash2, X } from 'lucide-react';
 import { SITE_LIMITS } from '@vittix/shared';
-import { siteAuditToJson, sitePagesToCsv, type SiteReportInput } from '@vittix/seo-core';
-import type { AnalysisResult, SitePageRecord } from '@vittix/shared';
+import type { SitePageRecord } from '@vittix/shared';
 import { useSiteAudit } from '@/src/features/useSiteAudit';
 import { formatDate } from '@/src/lib/format';
-import { exportSiteReportHtml, exportSiteReportMarkdown } from '@/src/export/download';
+import { ExportDialog } from '@/src/components/ExportDialog';
 
 const STATUS_BADGES: Record<string, string> = {
   ok: 'bg-emerald-100 text-emerald-700',
@@ -29,35 +17,10 @@ const STATUS_BADGES: Record<string, string> = {
   'skipped-non-html': 'bg-sky-100 text-sky-700',
 };
 
-function download(filename: string, content: string, mime: string): void {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1_000);
-}
-
 export function SiteAuditView() {
   const site = useSiteAudit();
   const [confirmClear, setConfirmClear] = useState(false);
-
-  function siteReportInput(): SiteReportInput | null {
-    if (!site.session || !site.summary) return null;
-    return {
-      session: site.session,
-      summary: site.summary,
-      profileId: 'standard',
-      ignoredRuleIds: [],
-      pages: site.pages.map((page) => ({
-        url: page.url,
-        result: page.result as AnalysisResult | null,
-      })),
-    };
-  }
+  const [exportOpen, setExportOpen] = useState(false);
 
   const progressTotal = site.session?.maxPages ?? SITE_LIMITS.maxPagesDefault;
   const processed =
@@ -315,56 +278,18 @@ export function SiteAuditView() {
               />
               <button
                 type="button"
-                data-testid="site-export-json"
-                onClick={() =>
-                  site.session &&
-                  download(
-                    `vittix-site-audit-${site.session.id ?? 'latest'}.json`,
-                    siteAuditToJson(site.session, site.pages),
-                    'application/json',
-                  )
-                }
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                data-testid="site-open-export-dialog"
+                onClick={() => setExportOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-medium text-indigo-800 transition hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
               >
-                <FileJson className="size-3.5" aria-hidden /> Site JSON
+                Export site audit
               </button>
-              <button
-                type="button"
-                data-testid="site-export-html-report"
-                onClick={() => {
-                  const input = siteReportInput();
-                  if (input && site.session) exportSiteReportHtml(input, site.session.id);
-                }}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-medium text-indigo-800 transition hover:bg-indigo-50"
-              >
-                Site HTML report
-              </button>
-              <button
-                type="button"
-                data-testid="site-export-markdown-report"
-                onClick={() => {
-                  const input = siteReportInput();
-                  if (input && site.session) exportSiteReportMarkdown(input, site.session.id);
-                }}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-xs font-medium text-violet-800 transition hover:bg-violet-50"
-              >
-                Site Markdown
-              </button>
-              <button
-                type="button"
-                data-testid="site-export-csv"
-                onClick={() =>
-                  site.session &&
-                  download(
-                    `vittix-site-pages-${site.session.id ?? 'latest'}.csv`,
-                    sitePagesToCsv(site.session, site.pages),
-                    'text/csv',
-                  )
-                }
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-              >
-                <FileSpreadsheet className="size-3.5" aria-hidden /> Pages CSV
-              </button>
+              {exportOpen && site.session && site.summary ? (
+                <ExportDialog
+                  site={{ session: site.session, pages: site.pages, summary: site.summary }}
+                  onClose={() => setExportOpen(false)}
+                />
+              ) : null}
             </div>
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
               <table className="w-full text-sm">

@@ -36,7 +36,7 @@ export class VittixDatabase extends Dexie {
   targetKeywords!: EntityTable<TargetKeywordRow, 'url'>;
   originRuleSettings!: EntityTable<OriginRuleSettingsRow, 'origin'>;
 
-  constructor(name = DB_NAME, schemaVersion: 3 | 4 = 4) {
+  constructor(name = DB_NAME, schemaVersion: 1 | 2 | 3 | 4 = 4) {
     super(name);
     this.version(1).stores({
       // Primary key ++id; queryable: by url and by analyzedAt (ISO string,
@@ -44,19 +44,23 @@ export class VittixDatabase extends Dexie {
       audits: '++id, url, analyzedAt',
       settings: 'key',
     });
-    this.version(2).stores({
-      audits: '++id, url, analyzedAt',
-      settings: 'key',
-      siteAudits: '++id, origin, status, startedAt',
-      sitePages: '++id, sessionId, url, status',
-    });
-    this.version(3).stores({
-      audits: '++id, url, analyzedAt',
-      settings: 'key',
-      siteAudits: '++id, origin, status, startedAt',
-      sitePages: '++id, sessionId, url, status',
-      targetKeywords: 'url',
-    });
+    if (schemaVersion >= 2) {
+      this.version(2).stores({
+        audits: '++id, url, analyzedAt',
+        settings: 'key',
+        siteAudits: '++id, origin, status, startedAt',
+        sitePages: '++id, sessionId, url, status',
+      });
+    }
+    if (schemaVersion >= 3) {
+      this.version(3).stores({
+        audits: '++id, url, analyzedAt',
+        settings: 'key',
+        siteAudits: '++id, origin, status, startedAt',
+        sitePages: '++id, sessionId, url, status',
+        targetKeywords: 'url',
+      });
+    }
     if (schemaVersion >= 4) {
       this.version(4).stores({
         audits: '++id, url, analyzedAt',

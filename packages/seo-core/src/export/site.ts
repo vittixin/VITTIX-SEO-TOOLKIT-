@@ -3,15 +3,86 @@ import type { SitePageRecord, SiteSession, SiteSessionStatus } from '@vittix/sha
 export const SITE_AUDIT_EXPORT_FORMAT = 'vittix-site-audit';
 export const SITE_AUDIT_EXPORT_FORMAT_VERSION = 1;
 
-/** Serialize a full site audit (session + per-page records) as JSON. */
-export function siteAuditToJson(session: SiteSession, pages: SitePageRecord[]): string {
+export interface SiteAuditJsonOptions {
+  includePageTextExcerpt?: boolean;
+  includeKeyword?: boolean;
+  targetKeywords?: Readonly<Record<string, string>>;
+  profileId?: string;
+  ignoredRuleIds?: readonly string[];
+}
+
+/** Serialize a site audit; page text and per-URL keywords are explicit opt-ins. */
+export function siteAuditToJson(
+  session: SiteSession,
+  pages: SitePageRecord[],
+  options: SiteAuditJsonOptions = {},
+): string {
+  const safePages = pages.map((page) => {
+    const { targetKeyword: storedKeyword, ...pageWithoutKeyword } = page as SitePageRecord & {
+      targetKeyword?: string;
+    };
+    const snapshot = page.snapshot as {
+      textSummary?: Record<string, unknown>;
+      [key: string]: unknown;
+    } | null;
+    let safePage: SitePageRecord & { targetKeyword?: string } = { ...pageWithoutKeyword };
+    if (snapshot && typeof snapshot === 'object' && snapshot.textSummary) {
+      const { leadText, ...summary } = snapshot.textSummary;
+      safePage = {
+        ...safePage,
+        snapshot: {
+          ...snapshot,
+          textSummary: {
+            ...summary,
+            ...(options.includePageTextExcerpt ? { leadText } : {}),
+          },
+        },
+      };
+    }
+    if (options.includeKeyword && options.targetKeywords?.[page.url])
+      safePage.targetKeyword = options.targetKeywords[page.url];
+    void storedKeyword;
+    return safePage;
+  });
+  const ignoredRules = options.ignoredRuleIds
+    ? [...options.ignoredRuleIds]
+    : [
+        ...new Set(
+          pages.flatMap((page) => {
+            const result = page.result as {
+              findings?: { ruleId: string; ignored?: boolean }[];
+            } | null;
+            return (
+              result?.findings
+                ?.filter((finding) => finding.ignored)
+                .map((finding) => finding.ruleId) ?? []
+            );
+          }),
+        ),
+      ];
+  const scoreCapReasons = [
+    ...new Set(
+      pages
+        .map(
+          (page) =>
+            (page.result as { score?: { capReason?: string | null } } | null)?.score?.capReason,
+        )
+        .filter((reason): reason is string => Boolean(reason)),
+    ),
+  ];
   return JSON.stringify(
     {
       format: SITE_AUDIT_EXPORT_FORMAT,
       formatVersion: SITE_AUDIT_EXPORT_FORMAT_VERSION,
       generatedBy: 'Vittix SEO Toolkit',
+      reportMeta: {
+        profileId: options.profileId ?? 'unknown',
+        ruleSetVersion: session.ruleSetVersion ?? 'unknown',
+        ignoredRules,
+        scoreCapReasons,
+      },
       session,
-      pages,
+      pages: safePages,
     },
     null,
     2,

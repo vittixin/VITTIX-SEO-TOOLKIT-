@@ -71,4 +71,5 @@ export {
   siteAuditToJson,
   sitePagesToCsv,
   type SiteComparison,
+  type SiteAuditJsonOptions,
 } from './export/site.js';

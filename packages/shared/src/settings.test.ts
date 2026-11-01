@@ -44,7 +44,7 @@ describe('ExportBrandingSchema', () => {
       ExportBrandingSchema.safeParse({
         agencyName: 'Example Studio',
         accentColor: '#a1B2c3',
-        logoDataUri: 'data:image/png;base64,YWJj',
+        logoDataUri: 'data:image/png;base64,iVBORw0KGgo=',
       }).success,
     ).toBe(true);
   });

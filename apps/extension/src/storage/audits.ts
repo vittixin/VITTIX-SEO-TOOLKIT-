@@ -1,6 +1,12 @@
 import type { AuditRecord, AuditSummary, NewAuditRecord, Settings } from '@vittix/shared';
-import { AuditRecordSchema, countSeverities } from '@vittix/shared';
+import {
+  AuditRecordSchema,
+  DEFAULT_EXPORT_BRANDING,
+  countSeverities,
+  SETTINGS_KEY,
+} from '@vittix/shared';
 import { db } from './db';
+import { getSettings, saveSettings } from './settings';
 
 /**
  * Rows are validated at the read boundary: malformed or corrupt entries
@@ -74,11 +80,36 @@ export async function listAuditSummaries(limit = 200): Promise<AuditSummary[]> {
 }
 
 export async function deleteAudit(id: number): Promise<void> {
+  const audit = await db.audits.get(id);
   await db.audits.delete(id);
+  if (audit && !(await db.audits.where('url').equals(audit.url).count()))
+    await db.targetKeywords.delete(audit.url);
 }
 
 export async function clearAllAudits(): Promise<void> {
   await db.audits.clear();
+}
+
+/** Wipe user analysis data while preserving retention preferences and resetting branding. */
+export async function clearAllLocalData(): Promise<void> {
+  const settings = await getSettings();
+  await db.transaction(
+    'rw',
+    [db.audits, db.siteAudits, db.sitePages, db.targetKeywords, db.originRuleSettings, db.settings],
+    async () => {
+      await Promise.all([
+        db.audits.clear(),
+        db.sitePages.clear(),
+        db.siteAudits.clear(),
+        db.targetKeywords.clear(),
+        db.originRuleSettings.clear(),
+      ]);
+      await db.settings.put({
+        key: SETTINGS_KEY,
+        value: { ...settings, exportBranding: DEFAULT_EXPORT_BRANDING },
+      });
+    },
+  );
 }
 
 /**
@@ -87,6 +118,7 @@ export async function clearAllAudits(): Promise<void> {
  * strings. Best-effort — failures are swallowed by callers.
  */
 export async function pruneAudits(settings: Settings): Promise<void> {
+  const countBefore = await db.audits.count();
   if (settings.historyRetentionDays > 0) {
     const cutoffIso = new Date(
       Date.now() - settings.historyRetentionDays * 24 * 60 * 60 * 1000,
@@ -99,5 +131,20 @@ export async function pruneAudits(settings: Settings): Promise<void> {
     const excess = count - settings.maxStoredAudits;
     const oldestKeys = await db.audits.orderBy('analyzedAt').limit(excess).primaryKeys();
     await db.audits.bulkDelete(oldestKeys);
+  }
+
+  if ((await db.audits.count()) < countBefore) {
+    const rows = await db.audits.toArray();
+    const retainedUrls = new Set(rows.map((row) => row.url));
+    const keywords = await db.targetKeywords.toArray();
+    await db.targetKeywords.bulkDelete(
+      keywords.filter((row) => !retainedUrls.has(row.url)).map((row) => row.url),
+    );
+    const current = await getSettings();
+    if (current.exportBranding.logoDataUri !== null)
+      await saveSettings({
+        ...current,
+        exportBranding: { ...current.exportBranding, logoDataUri: null },
+      });
   }
 }

@@ -78,6 +78,15 @@ an export button. What you do with those files is entirely up to you.
 See [SECURITY.md](SECURITY.md) for the enforcement side (CI manifest checks,
 CSP, no remote code).
 
+## Phase B export contents
+
+- **JSON** includes the stored audit or site page records. Page excerpts (`leadText`) and target keywords are removed unless their corresponding export-dialog options are selected.
+- **CSV** contains finding rows for a single audit or a site page summary. It does not include page excerpts or target keywords; fields are protected against spreadsheet formula injection.
+- **HTML report** and **Markdown** include report summaries and findings. Previews/content statistics are optional. Page excerpts and target keywords are excluded unless explicitly selected. Ignored rules and score cap reasons are identified in reports.
+- Agency name, accent color, and an optional raster logo are used only when branding is selected for an export. Branding stays local. SVG logos are rejected; accepted image data is PNG, JPEG, or WebP up to 100 KB.
+- History retention pruning removes expired audits and their orphaned target keywords, and clears stored logo image data. “Clear all data” deletes audits, site audit rows, target keywords, and per-origin rule settings, and resets export branding. Retention preferences remain available after clearing.
+- Exports are generated in the extension and downloaded through the browser. HTML reports have no remote resources or executable scripts. Page-derived text is escaped before it is rendered in HTML or Markdown.
+
 ## Release-candidate verification (Phase 6)
 
 Verified against the final production build (`pnpm build:chrome`, 2026-10-31):

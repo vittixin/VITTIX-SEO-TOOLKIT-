@@ -77,6 +77,11 @@ everything locally. You can wipe all data from the options page at any time.
 See [docs/PRIVACY.md](docs/PRIVACY.md) and
 [docs/SECURITY.md](docs/SECURITY.md).
 
+Audits can be exported locally as JSON, CSV, a self-contained printable HTML
+report, or a Markdown issue ticket. Report excerpts and target keywords are
+excluded by default and can be included per export. Optional agency branding is
+stored locally; SVG logos are not accepted.
+
 ## Documentation
 
 - [Release readiness & store checklist](docs/RELEASE_CHECKLIST.md)

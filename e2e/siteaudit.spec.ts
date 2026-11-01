@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { extensionPageUrl, loadExtension } from './helpers/extension';
 
 /**
@@ -71,6 +73,7 @@ test('site audit: consent → crawl → summary → export', async () => {
     await dashboard.getByTestId('site-url-filter').fill('');
 
     // Exports produce real downloads.
+    await dashboard.getByTestId('site-open-export-dialog').click();
     const jsonDownload = dashboard.waitForEvent('download');
     await dashboard.getByTestId('site-export-json').click();
     expect((await jsonDownload).suggestedFilename()).toContain('vittix-site-audit');
@@ -83,6 +86,28 @@ test('site audit: consent → crawl → summary → export', async () => {
     await dashboard.getByTestId('site-export-html-report').click();
     const htmlReport = await htmlReportDownload;
     expect(htmlReport.suggestedFilename()).toContain('vittix-site-report');
+    const htmlPath = resolve(import.meta.dirname, '../test-results/export-site-report.html');
+    await htmlReport.saveAs(htmlPath);
+    const html = readFileSync(htmlPath, 'utf8');
+    const reportPage = await context.newPage();
+    const requests: string[] = [];
+    reportPage.on('request', (request) => requests.push(request.url()));
+    reportPage.on('dialog', (dialog) => void dialog.dismiss());
+    reportPage.on('console', (message) => {
+      if (message.type() === 'error')
+        throw new Error(`Site report console error: ${message.text()}`);
+    });
+    await reportPage.setContent(html);
+    await expect(
+      reportPage.getByRole('heading', { name: 'Top issues by page count' }),
+    ).toBeVisible();
+    expect(await reportPage.locator('script').count()).toBe(0);
+    expect(requests).toEqual([]);
+    await reportPage.emulateMedia({ media: 'print' });
+    await expect(
+      reportPage.getByRole('heading', { name: 'Top issues by page count' }),
+    ).toBeVisible();
+    await reportPage.close();
     const markdownReportDownload = dashboard.waitForEvent('download');
     await dashboard.getByTestId('site-export-markdown-report').click();
     const markdownReport = await markdownReportDownload;

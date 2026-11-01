@@ -131,7 +131,13 @@ commit history is the authoritative record):
 - **Hygiene**: AI session transcript removed from the repo, e2e version
   assertion fixed, docs synced with reality
 
-## Phase 5 — Power features (proposed)
+## Phase B — Reports (completed)
+
+- Local single-audit and site-audit HTML/Markdown reports, JSON and CSV exports
+- One accessible export dialog with opt-in page excerpts and target keywords
+- Optional locally stored export branding; raster logos only
+
+## Phase C — Power features (proposed)
 
 - Structured data depth: schema.org vocabulary validation, required-property
   checks (clearly scoped — syntax/structure-only today)

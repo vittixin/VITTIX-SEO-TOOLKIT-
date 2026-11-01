@@ -55,6 +55,11 @@ export interface SiteReportInput {
       }[];
       score?: { capReason?: string | null };
     } | null;
+    snapshot?: {
+      textStats?: { wordCount?: number; textSampleTruncated?: boolean };
+      textSummary?: { sentenceCount?: number; paragraphCount?: number; leadText?: string };
+    } | null;
+    targetKeyword?: string;
   }[];
 }
 
@@ -74,7 +79,7 @@ function duplicateList(title: string, groups: { value: string; urls: string[] }[
 }
 
 /** Build self-contained site-level HTML without DOM, browser, or network APIs. */
-export function buildSiteAuditReportHtml(
+function buildSiteAuditReportHtmlBase(
   input: SiteReportInput,
   options: SiteReportOptions = {},
 ): string {
@@ -101,17 +106,20 @@ export function buildSiteAuditReportHtml(
     : '';
   const incomplete =
     summary.incomplete || summary.pendingPages > 0 || session.status !== 'completed';
-  const ignored = [
-    ...new Set([
-      ...(input.ignoredRuleIds ?? options.ignoredRuleIds ?? []),
-      ...(input.pages ?? []).flatMap(
-        (page) =>
-          page.result?.findings
-            ?.filter((finding) => finding.ignored)
-            .map((finding) => finding.ruleId) ?? [],
-      ),
-    ]),
-  ];
+  const ignored =
+    options.includeIgnoredRules === false
+      ? []
+      : [
+          ...new Set([
+            ...(input.ignoredRuleIds ?? options.ignoredRuleIds ?? []),
+            ...(input.pages ?? []).flatMap(
+              (page) =>
+                page.result?.findings
+                  ?.filter((finding) => finding.ignored)
+                  .map((finding) => finding.ruleId) ?? [],
+            ),
+          ]),
+        ];
   const capReasons = [
     ...new Set(
       (input.pages ?? [])
@@ -146,12 +154,53 @@ export function buildSiteAuditReportHtml(
   );
 }
 
+/** Add excerpt/keyword content only when the export dialog explicitly opts in. */
+export function buildSiteAuditReportHtml(
+  input: SiteReportInput,
+  options: SiteReportOptions = {},
+): string {
+  const html = buildSiteAuditReportHtmlBase(input, options);
+  if (!options.includeContentStats && !options.includePageTextExcerpt && !options.includeKeyword)
+    return html;
+  const rows = (input.pages ?? [])
+    .slice(0, 200)
+    .map((page) => {
+      const stats = page.snapshot?.textStats;
+      const summary = page.snapshot?.textSummary;
+      return `<tr><td>${escapeReportHtml(page.url)}</td><td>${stats?.wordCount ?? 'Unavailable'}</td><td>${summary?.sentenceCount ?? 'Unavailable'}</td><td>${summary?.paragraphCount ?? 'Unavailable'}</td>${options.includeKeyword ? `<td>${escapeReportHtml(page.targetKeyword ?? 'Not set')}</td>` : ''}</tr>${options.includePageTextExcerpt && summary?.leadText ? `<tr><td colspan="${options.includeKeyword ? 5 : 4}"><strong>Page excerpt:</strong> ${escapeReportHtml(summary.leadText)}</td></tr>` : ''}`;
+    })
+    .join('');
+  const section = `<section><h2>Content summary (first 200 pages)</h2><table><thead><tr><th scope="col">URL</th><th scope="col">Words</th><th scope="col">Sentences</th><th scope="col">Paragraphs</th>${options.includeKeyword ? '<th scope="col">Target keyword</th>' : ''}</tr></thead><tbody>${rows}</tbody></table></section>`;
+  return html.replace('</footer>', `${section}</footer>`);
+}
+
 /** Markdown site summary; every page-derived value is escaped before output. */
 export function buildSiteAuditMarkdown(
   input: SiteReportInput,
   options: SiteReportOptions = {},
 ): string {
   const { session, summary } = input;
+  const ignoredRuleIds =
+    options.includeIgnoredRules === false
+      ? []
+      : [
+          ...new Set([
+            ...(input.ignoredRuleIds ?? options.ignoredRuleIds ?? []),
+            ...(input.pages ?? []).flatMap(
+              (page) =>
+                page.result?.findings
+                  ?.filter((finding) => finding.ignored)
+                  .map((finding) => finding.ruleId) ?? [],
+            ),
+          ]),
+        ];
+  const capReasons = [
+    ...new Set(
+      (input.pages ?? [])
+        .map((page) => page.result?.score?.capReason)
+        .filter((reason): reason is string => Boolean(reason)),
+    ),
+  ];
   const lines = [
     ...(options.branding?.agencyName
       ? [`> ${escapeReportMarkdown(options.branding.agencyName.slice(0, 80))}`, '']
@@ -253,15 +302,32 @@ export function buildSiteAuditMarkdown(
     ),
   );
   if (summary.pages.length > 200) lines.push('', 'See CSV for the full page list.');
+  if (options.includeContentStats || options.includePageTextExcerpt || options.includeKeyword) {
+    lines.push('', '## Content summary (first 200 pages)', '');
+    for (const page of (input.pages ?? []).slice(0, 200)) {
+      const stats = page.snapshot?.textStats;
+      const summaryForPage = page.snapshot?.textSummary;
+      lines.push(
+        `- ${escapeReportMarkdown(page.url)}: ${stats?.wordCount ?? 'Unavailable'} words, ${summaryForPage?.sentenceCount ?? 'Unavailable'} sentences, ${summaryForPage?.paragraphCount ?? 'Unavailable'} paragraphs${options.includeKeyword ? `; target keyword: ${escapeReportMarkdown(page.targetKeyword ?? 'Not set')}` : ''}`,
+      );
+      if (options.includePageTextExcerpt && summaryForPage?.leadText)
+        lines.push(`  - Page excerpt: ${escapeReportMarkdown(summaryForPage.leadText)}`);
+    }
+  }
+  if (capReasons.length)
+    lines.push(
+      '',
+      '## Score cap reasons',
+      '',
+      ...capReasons.map((reason) => `- ${escapeReportMarkdown(reason)}`),
+    );
   if (options.includeIgnoredRules !== false)
     lines.push(
       '',
       '## Ignored rules',
       '',
-      ...((input.ignoredRuleIds ?? options.ignoredRuleIds ?? []).length
-        ? (input.ignoredRuleIds ?? options.ignoredRuleIds ?? []).map(
-            (id) => `- ${escapeReportMarkdown(id)} — ignored`,
-          )
+      ...(ignoredRuleIds.length
+        ? ignoredRuleIds.map((id) => `- ${escapeReportMarkdown(id)} — ignored`)
         : ['None.']),
     );
   lines.push('', 'Scores are preliminary and are not ranking predictions.', '');

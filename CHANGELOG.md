@@ -6,6 +6,17 @@ in [docs/SEO_RULES.md](docs/SEO_RULES.md).
 
 ## Unreleased (0.1.0 hardening)
 
+### Added — Phase B reports
+
+- Local single-audit and site-audit HTML and Markdown reports, plus a unified
+  JSON/CSV/HTML/Markdown export dialog.
+- Explicit opt-ins for page excerpts and target keywords in reports and JSON.
+- Optional local agency branding with validated PNG/JPEG/WebP logos; SVG is
+  rejected. Clear-all and retention cleanup remove branding images and orphaned
+  keywords.
+- Self-contained print-friendly HTML reports with escaped page content and no
+  external resources or executable scripts.
+
 ### Changed — scoring rework (rule set v0.4.0)
 
 - **Blocking-issue score cap**: an error from a blocking rule (robots

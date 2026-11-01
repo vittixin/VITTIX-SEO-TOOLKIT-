@@ -2,6 +2,7 @@ import type { AuditRecord } from '@vittix/shared';
 import {
   auditToJson,
   buildAuditMarkdown,
+  buildAuditReportHtml,
   buildSiteAuditMarkdown,
   buildSiteAuditReportHtml,
   findingsToCsv,
@@ -38,6 +39,14 @@ export function exportAuditJson(
     `vittix-audit-${fileStamp(audit.analyzedAt)}-${audit.id ?? 'latest'}.json`,
     auditToJson(audit, options),
     'application/json',
+  );
+}
+
+export function exportAuditReportHtml(audit: AuditRecord, options: AuditReportOptions = {}): void {
+  downloadFile(
+    `vittix-audit-${fileStamp(audit.analyzedAt)}-${audit.id ?? 'latest'}.html`,
+    buildAuditReportHtml(audit, options),
+    'text/html;charset=utf-8',
   );
 }
 
@@ -103,4 +112,12 @@ export function exportSiteReportMarkdown(
     buildSiteAuditMarkdown(site, options),
     'text/markdown;charset=utf-8',
   );
+}
+
+export function exportSiteJson(filenameId: number | undefined, content: string): void {
+  downloadFile(`vittix-site-audit-${filenameId ?? 'latest'}.json`, content, 'application/json');
+}
+
+export function exportSiteCsv(filenameId: number | undefined, content: string): void {
+  downloadFile(`vittix-site-pages-${filenameId ?? 'latest'}.csv`, content, 'text/csv');
 }

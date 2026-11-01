@@ -81,6 +81,25 @@ blockers, not config options).
 
 ## Redirect behavior and threat-model change
 
+### Redirect behavior (measured)
+
+Measured in Playwright against the local HTTPS server on distinct ports and
+origins. `other.test` and `fixture.test` resolve to loopback only inside the
+test browser. The secondary origin's CORS header is present only for the CORS
+case. The crawler is still using `redirect: "follow"` in these measurements.
+
+| Redirect target                              | Destination received request? | Extension-page fetch result                                               | Current crawler record                                             | Rules observed                                                  |
+| -------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------- |
+| Different origin, permissive CORS            | Yes                           | Resolved, status 200, `redirected=true`, final URL visible                | `skipped-external-redirect`; final URL retained, body not analyzed | `redirect-present` info; `redirect-off-origin` warn             |
+| Different origin, no CORS                    | Yes                           | Rejected with generic `TypeError: Failed to fetch`; final URL unavailable | `failed`; requested URL retained; no response findings             | No redirect finding (failure is not attributable to a redirect) |
+| Same origin, final path disallowed by robots | Yes                           | Resolved, status 200, same-origin final URL visible                       | `ok`; body parsed and analyzed (known gap being fixed)             | Ordinary page findings and `redirect-present` info              |
+| `127.0.0.1` on a third port                  | Yes                           | Resolved, status 200, final URL visible                                   | `skipped-external-redirect`; final URL retained, body not analyzed | `redirect-present` info; `redirect-off-origin` warn             |
+
+The server-side request log is the evidence for whether the destination was
+contacted; a rejected Fetch promise does not mean that the server was not
+contacted. For no-CORS failures, the crawler cannot truthfully claim it
+observed an off-origin redirect because Fetch does not expose the final URL.
+
 - The extension-page probe confirmed `redirect: "manual"` produces an opaque
   response (`opaqueredirect`, status 0, no readable `Location`) for a redirect.
   To crawl canonical trailing-slash and scheme redirects, page requests now use

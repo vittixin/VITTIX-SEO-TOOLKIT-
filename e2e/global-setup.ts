@@ -1,10 +1,10 @@
 import { createServer } from 'node:https';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 export default async function globalSetup() {
-  const root = resolve(import.meta.dirname, '../test-results/local-server');
+  const root = resolve(import.meta.dirname, 'local-server');
   mkdirSync(root, { recursive: true });
   execFileSync(
     'powershell.exe',
@@ -14,13 +14,26 @@ export default async function globalSetup() {
       'Bypass',
       '-File',
       resolve(import.meta.dirname, 'generate-test-cert.ps1'),
+      '-OutputDirectory',
+      root,
     ],
     { stdio: 'ignore' },
   );
   const pfx = readFileSync(resolve(root, 'cert.pfx'));
+  const requestLog = resolve(root, 'requests.jsonl');
+  writeFileSync(requestLog, '');
+  let secondPort = 0;
+  let thirdPort = 0;
+  const recordRequest = (server: string, req: import('node:http').IncomingMessage) => {
+    appendFileSync(
+      requestLog,
+      `${JSON.stringify({ server, host: req.headers.host, path: new URL(req.url ?? '/', 'https://fixture.test').pathname })}\n`,
+    );
+  };
   const server = createServer({ pfx, passphrase: 'local-test-only' }, (req, res) => {
     const path = new URL(req.url ?? '/', 'https://fixture.test').pathname;
     const host = req.headers.host ?? 'fixture.test';
+    recordRequest('approved', req);
     if (path === '/robots.txt') {
       res.writeHead(200, { 'content-type': 'text/plain' });
       res.end(`User-agent: VittixBot\nCrawl-delay: 0.1\nSitemap: https://${host}/sitemap.xml.gz\n`);
@@ -77,6 +90,31 @@ export default async function globalSetup() {
       res.end();
       return;
     }
+    if (path === '/redirect-cors') {
+      res.writeHead(302, { location: `https://other.test:${secondPort}/cors-target` });
+      res.end();
+      return;
+    }
+    if (path === '/redirect-no-cors') {
+      res.writeHead(302, { location: `https://other.test:${secondPort}/no-cors-target` });
+      res.end();
+      return;
+    }
+    if (path === '/redirect-robots') {
+      res.writeHead(302, { location: '/blocked' });
+      res.end();
+      return;
+    }
+    if (path === '/blocked') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<title>Robots disallowed destination</title>');
+      return;
+    }
+    if (path === '/redirect-localhost') {
+      res.writeHead(302, { location: `https://127.0.0.1:${thirdPort}/local-target` });
+      res.end();
+      return;
+    }
     if (path === '/off-origin') {
       res.writeHead(302, { location: 'https://other.test/target' });
       res.end();
@@ -90,15 +128,66 @@ export default async function globalSetup() {
         server.address()?.port +
         '/slow">Slow</a><a href="https://fixture.test:' +
         server.address()?.port +
-        '/loop-a">Loop</a></body></html>',
+        '/loop-a">Loop</a><a href="https://fixture.test:' +
+        server.address()?.port +
+        '/redirect-cors">CORS redirect</a><a href="https://fixture.test:' +
+        server.address()?.port +
+        '/redirect-no-cors">No CORS redirect</a><a href="https://fixture.test:' +
+        server.address()?.port +
+        '/redirect-robots">Robots redirect</a><a href="https://fixture.test:' +
+        server.address()?.port +
+        '/redirect-localhost">Localhost redirect</a></body></html>',
     );
+  });
+  const second = createServer({ pfx, passphrase: 'local-test-only' }, (req, res) => {
+    recordRequest('second-origin', req);
+    if (req.url === '/cors-target') {
+      res.writeHead(200, { 'content-type': 'text/html', 'access-control-allow-origin': '*' });
+      res.end('<title>CORS redirect destination</title>');
+      return;
+    }
+    if (req.url === '/no-cors-target') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<title>No CORS destination</title>');
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  const third = createServer({ pfx, passphrase: 'local-test-only' }, (req, res) => {
+    recordRequest('localhost-origin', req);
+    res.writeHead(200, { 'content-type': 'text/html', 'access-control-allow-origin': '*' });
+    res.end('<title>Localhost redirect destination</title>');
   });
   await new Promise<void>((ok, fail) =>
     server.listen(0, '127.0.0.1', () => ok()).once('error', fail),
   );
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('local TLS server failed to bind');
-  writeFileSync(resolve(root, 'state.json'), JSON.stringify({ port: address.port }));
+  await Promise.all([
+    new Promise<void>((ok, fail) => second.listen(0, '127.0.0.1', () => ok()).once('error', fail)),
+    new Promise<void>((ok, fail) => third.listen(0, '127.0.0.1', () => ok()).once('error', fail)),
+  ]);
+  const secondAddress = second.address(),
+    thirdAddress = third.address();
+  if (
+    !secondAddress ||
+    typeof secondAddress === 'string' ||
+    !thirdAddress ||
+    typeof thirdAddress === 'string'
+  )
+    throw new Error('redirect fixture servers failed to bind');
+  secondPort = secondAddress.port;
+  thirdPort = thirdAddress.port;
+  writeFileSync(
+    resolve(root, 'state.json'),
+    JSON.stringify({ port: address.port, secondPort, thirdPort }),
+  );
   return async () =>
-    new Promise<void>((ok, fail) => server.close((error) => (error ? fail(error) : ok())));
+    Promise.all(
+      [server, second, third].map(
+        (target) =>
+          new Promise<void>((ok, fail) => target.close((error) => (error ? fail(error) : ok()))),
+      ),
+    );
 }

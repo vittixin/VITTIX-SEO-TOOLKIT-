@@ -316,7 +316,7 @@ test('site audit: consent → crawl → summary → export', async () => {
 test('site audit against a real local HTTPS server: robots, gzip sitemap, redirect, headers and slow response', async () => {
   test.setTimeout(120_000);
   const { port } = JSON.parse(
-    readFileSync(resolve(import.meta.dirname, '../test-results/local-server/state.json'), 'utf8'),
+    readFileSync(resolve(import.meta.dirname, 'local-server/state.json'), 'utf8'),
   ) as { port: number };
   const origin = `https://fixture.test:${port}`;
   const { context, extensionId } = await loadExtension('e2e', [
@@ -408,6 +408,145 @@ test('site audit against a real local HTTPS server: robots, gzip sitemap, redire
     expect(sitemap.entries?.some((entry) => entry.url.endsWith('/about/'))).toBe(true);
     expect(
       state.pages.some((row) => String(row.url).endsWith('/loop-a') && row.status === 'failed'),
+    ).toBe(true);
+  } finally {
+    await context.close();
+  }
+});
+
+test('measures followed redirect destinations, fetch outcomes, crawl records and findings', async () => {
+  test.setTimeout(120_000);
+  const { port, secondPort, thirdPort } = JSON.parse(
+    readFileSync(resolve(import.meta.dirname, 'local-server/state.json'), 'utf8'),
+  ) as { port: number; secondPort: number; thirdPort: number };
+  const origin = `https://fixture.test:${port}`;
+  const { context, extensionId } = await loadExtension('e2e', [
+    '--use-fake-ui-for-permission-flow',
+    '--host-resolver-rules=MAP fixture.test 127.0.0.1, MAP other.test 127.0.0.1',
+    '--ignore-certificate-errors',
+  ]);
+  try {
+    const dashboard = await context.newPage();
+    await dashboard.goto(extensionPageUrl(extensionId, 'dashboard.html'));
+    await dashboard.getByTestId('nav-site').click();
+    await dashboard.getByTestId('site-origin-input').fill(origin);
+    await dashboard.getByTestId('site-grant').click();
+    await expect(dashboard.getByTestId('site-consent')).toBeVisible({ timeout: 10000 });
+    const fetchOutcomes = await dashboard.evaluate(
+      async ({ origin, secondPort, thirdPort }) => {
+        const targets = {
+          cors: `${origin}/redirect-cors`,
+          noCors: `${origin}/redirect-no-cors`,
+          robots: `${origin}/redirect-robots`,
+          localhost: `${origin}/redirect-localhost`,
+        };
+        const result: Record<string, unknown> = {};
+        for (const [key, url] of Object.entries(targets)) {
+          try {
+            const response = await fetch(url, {
+              method: 'GET',
+              credentials: 'omit',
+              redirect: 'follow',
+            });
+            result[key] = {
+              outcome: 'resolved',
+              status: response.status,
+              url: response.url,
+              redirected: response.redirected,
+              type: response.type,
+            };
+          } catch (error) {
+            result[key] = {
+              outcome: 'rejected',
+              name: error instanceof Error ? error.name : 'unknown',
+              message: error instanceof Error ? error.message : String(error),
+            };
+          }
+        }
+        return { outcomes: result, expected: { secondPort, thirdPort } };
+      },
+      { origin, secondPort, thirdPort },
+    );
+    await dashboard.getByTestId('site-start').click();
+    await expect(dashboard.getByTestId('site-summary')).toBeVisible({ timeout: 45000 });
+    await expect(dashboard.getByTestId('site-cancel')).toHaveCount(0, { timeout: 45000 });
+    const pages = await dashboard.evaluate(async () => {
+      const req = indexedDB.open('vittix-seo');
+      const database = await new Promise<IDBDatabase>((resolve, reject) => {
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      const rows = await new Promise<Record<string, unknown>[]>((resolve, reject) => {
+        const get = database.transaction('sitePages').objectStore('sitePages').getAll();
+        get.onsuccess = () => resolve(get.result);
+        get.onerror = () => reject(get.error);
+      });
+      database.close();
+      return rows;
+    });
+    const requests = readFileSync(
+      resolve(import.meta.dirname, 'local-server/requests.jsonl'),
+      'utf8',
+    )
+      .trim()
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { server: string; path: string });
+    const measured = {
+      fetchOutcomes,
+      pages: pages
+        .filter((page) =>
+          ['redirect-cors', 'redirect-no-cors', 'redirect-robots', 'redirect-localhost'].some(
+            (path) => String(page.url).endsWith(path),
+          ),
+        )
+        .map((page) => ({
+          url: page.url,
+          status: page.status,
+          finalUrl: page.finalUrl,
+          error: page.error,
+          findings: (
+            (page.responseFindings as { ruleId: string; severity: string }[] | undefined) ?? []
+          ).map((f) => ({ ruleId: f.ruleId, severity: f.severity })),
+          resultFindings: (
+            (page.result as { findings?: { ruleId: string; severity: string }[] } | null)
+              ?.findings ?? []
+          ).map((f) => ({ ruleId: f.ruleId, severity: f.severity })),
+        })),
+      serverRequests: requests.filter((row) =>
+        /cors-target|no-cors-target|\/blocked|local-target/.test(row.path),
+      ),
+    };
+    console.log('measured redirect behavior', JSON.stringify(measured));
+    const outcomes = fetchOutcomes.outcomes as Record<
+      string,
+      { outcome: string; name?: string; status?: number; redirected?: boolean; url?: string }
+    >;
+    expect(outcomes.cors).toMatchObject({ outcome: 'resolved', status: 200, redirected: true });
+    expect(outcomes.noCors).toMatchObject({ outcome: 'rejected', name: 'TypeError' });
+    expect(outcomes.robots).toMatchObject({ outcome: 'resolved', status: 200, redirected: true });
+    expect(outcomes.localhost).toMatchObject({
+      outcome: 'resolved',
+      status: 200,
+      redirected: true,
+    });
+    expect(
+      measured.serverRequests.some(
+        (row) => row.server === 'second-origin' && row.path === '/cors-target',
+      ),
+    ).toBe(true);
+    expect(
+      measured.serverRequests.some(
+        (row) => row.server === 'second-origin' && row.path === '/no-cors-target',
+      ),
+    ).toBe(true);
+    expect(
+      measured.serverRequests.some((row) => row.server === 'approved' && row.path === '/blocked'),
+    ).toBe(true);
+    expect(
+      measured.serverRequests.some(
+        (row) => row.server === 'localhost-origin' && row.path === '/local-target',
+      ),
     ).toBe(true);
   } finally {
     await context.close();

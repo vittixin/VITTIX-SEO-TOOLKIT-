@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   countParagraphs,
   countSentences,
@@ -23,7 +23,7 @@ const INJECTOR_SRC = resolve(
   '../../../../apps/extension/src/extraction/snapshot-inject.ts',
 );
 
-function loadEmbeddedHelpers() {
+async function loadEmbeddedHelpers() {
   const source = readFileSync(INJECTOR_SRC, 'utf8');
   const start = source.indexOf('// === embedded-helpers:start');
   const end = source.indexOf('// === embedded-helpers:end ===');
@@ -31,10 +31,8 @@ function loadEmbeddedHelpers() {
   expect(end, 'embedded-helpers:end marker missing').toBeGreaterThan(start);
   // The embedded block is TypeScript (annotations on the helpers); strip
   // types with esbuild so the snippet is evaluable as plain JS.
-  const esbuild = require('esbuild') as {
-    transformSync: (input: string, opts: { loader: string }) => { code: string };
-  };
-  const snippet = esbuild.transformSync(source.slice(start, end), { loader: 'ts' }).code;
+  const { transformSync } = await import('esbuild');
+  const snippet = transformSync(source.slice(start, end), { loader: 'ts' }).code;
   const factory = new Function(
     `${snippet}; return { tokenize, topKeywords, fnv1a64Hex, countSentences: countSentencesEmb, countParagraphs: countParagraphsEmb };`,
   );
@@ -59,7 +57,10 @@ const CORPUS: Record<string, string> = {
 };
 
 describe('PRE-STEP: injector/seo-core helper parity', () => {
-  const embedded = loadEmbeddedHelpers();
+  let embedded: Awaited<ReturnType<typeof loadEmbeddedHelpers>>;
+  beforeAll(async () => {
+    embedded = await loadEmbeddedHelpers();
+  });
 
   function parity(name: string, text: string) {
     expect(embedded.tokenize(text)).toEqual(tokenizeWords(text));

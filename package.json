@@ -17,7 +17,7 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write . && eslint . --fix",
     "typecheck": "pnpm -r typecheck",
-    "test": "vitest run",
+    "test": "node scripts/verify-redirect-disclosure.mjs && vitest run",
     "test:watch": "vitest",
     "test:e2e": "pnpm build:chrome && pnpm --filter @vittix/extension build:e2e && playwright test",
     "clean": "pnpm -r clean",

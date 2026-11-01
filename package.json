@@ -14,6 +14,7 @@
     "build": "pnpm -r build",
     "build:chrome": "pnpm --filter @vittix/extension build:chrome",
     "bundle:report": "pnpm build:chrome && node scripts/bundle-report.mjs",
+    "entrypoint:graph": "node scripts/entrypoint-chunk-graph.mjs",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write . && eslint . --fix",
     "typecheck": "pnpm -r typecheck",

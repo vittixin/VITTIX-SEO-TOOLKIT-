@@ -191,6 +191,25 @@ test.describe('Vittix SEO Toolkit smoke tests', () => {
     }
   });
 
+  test('production popup and panel render their main UI within two seconds', async () => {
+    const { context, page, extensionId } = await loadExtension('production');
+    try {
+      for (const entrypoint of [
+        { file: 'popup.html', locator: page.getByTestId('analyze-button') },
+        { file: 'panel.html', locator: page.getByTestId('sidepanel-active-tab-help') },
+      ]) {
+        const startedAt = Date.now();
+        await page.goto(extensionPageUrl(extensionId, entrypoint.file));
+        await expect(entrypoint.locator).toBeVisible({ timeout: 2000 });
+        const renderTime = Date.now() - startedAt;
+        console.log(`production ${entrypoint.file} main UI visible in ${renderTime} ms`);
+        expect(renderTime, `${entrypoint.file} render time`).toBeLessThan(2000);
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
   test('production side panel has no activeTab grant and explains the toolbar path', async () => {
     const { context, page, extensionId } = await loadExtension('production');
     await context.route('https://fixture.test/**', (route) =>

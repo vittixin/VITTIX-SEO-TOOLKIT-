@@ -1,6 +1,15 @@
 (() => {
   const root = document.documentElement;
   let finished = false;
+  // Use the synchronously available cache for first paint so a cold IndexedDB
+  // open cannot keep an otherwise-ready extension page invisible.
+  try {
+    const cached = localStorage.getItem('vittix-theme');
+    root.dataset.theme = ['system', 'light', 'dark'].includes(cached) ? cached : 'system';
+  } catch {
+    root.dataset.theme = 'system';
+  }
+  root.removeAttribute('data-theme-loading');
   const finish = (candidate) => {
     if (finished) return;
     finished = true;

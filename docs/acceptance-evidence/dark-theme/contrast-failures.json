@@ -1,0 +1,7 @@
+{
+  "threshold": "4.5:1 for normal text",
+  "auditedVisibleTextNodeCount": 1112,
+  "failureCount": 0,
+  "commonColorPairs": [],
+  "failures": []
+}

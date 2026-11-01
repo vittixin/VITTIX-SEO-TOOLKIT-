@@ -11,6 +11,7 @@ import { browser } from 'wxt/browser';
 import { t } from '@/src/i18n';
 import { FRIENDLY_ERROR_MESSAGES, type AnalyzeSuccess, type ErrorCode } from '@vittix/shared';
 import { ScoreRing } from '@/src/components/ScoreRing';
+import { getLatestAudit } from '@/src/storage/audits';
 import { isAnalyzableUrl, pageHost } from '@/src/extraction/guards';
 import { formatDate } from '@/src/lib/format';
 import {
@@ -29,14 +30,41 @@ export function App({ sidePanel = false }: { sidePanel?: boolean }) {
   const [errorCode, setErrorCode] = useState<ErrorCode | null>(null);
   const [highlightMessage, setHighlightMessage] = useState<string | null>(null);
   const [sidePanelMessage, setSidePanelMessage] = useState<string | null>(null);
+  const [latestAudit, setLatestAudit] = useState<Awaited<ReturnType<typeof getLatestAudit>>>(null);
 
   useEffect(() => {
+    if (sidePanel) return;
     void (async () => {
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       const url = tab?.url ?? '';
       setHost(isAnalyzableUrl(url) ? pageHost(url) : null);
     })();
-  }, []);
+  }, [sidePanel]);
+
+  useEffect(() => {
+    if (!sidePanel) return;
+    let active = true;
+    const refreshLatestAudit = async () => {
+      const audit = await getLatestAudit();
+      if (active) setLatestAudit(audit);
+    };
+    void refreshLatestAudit();
+    const onMessage = (message: unknown) => {
+      if (
+        typeof message === 'object' &&
+        message !== null &&
+        'type' in message &&
+        message.type === 'vittix/audit-saved'
+      ) {
+        void refreshLatestAudit();
+      }
+    };
+    browser.runtime.onMessage.addListener(onMessage);
+    return () => {
+      active = false;
+      browser.runtime.onMessage.removeListener(onMessage);
+    };
+  }, [sidePanel]);
 
   async function handleAnalyze() {
     setStatus('analyzing');
@@ -132,6 +160,30 @@ export function App({ sidePanel = false }: { sidePanel?: boolean }) {
             )}
           </button>
         )}
+
+        {sidePanel && latestAudit ? (
+          <section
+            data-testid="sidepanel-latest-audit"
+            className="space-y-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+            aria-label="Latest saved audit"
+          >
+            <h2 className="text-sm font-semibold text-slate-900">Latest saved audit</h2>
+            <div className="flex items-center gap-3">
+              <ScoreRing score={latestAudit.result.score.total} size={72} />
+              <div className="min-w-0 text-sm">
+                <p className="font-semibold text-slate-800">{latestAudit.result.score.label}</p>
+                <p className="truncate text-xs text-slate-600">
+                  {latestAudit.title || latestAudit.url}
+                </p>
+                <p className="truncate text-xs text-slate-500">{latestAudit.url}</p>
+                <p className="text-xs text-slate-500">{formatDate(latestAudit.analyzedAt)}</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600">
+              Stored on this device. No page is read automatically.
+            </p>
+          </section>
+        ) : null}
 
         {status === 'error' && errorMessage ? (
           <div

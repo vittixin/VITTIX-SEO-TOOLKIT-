@@ -145,6 +145,10 @@ async function analyzeActiveTab(): Promise<AnalyzeResponse> {
       result,
     });
 
+    void browser.runtime
+      .sendMessage({ type: 'vittix/audit-saved', auditId })
+      .catch(() => undefined);
+
     void applyRetention(); // best-effort, never blocks the response
 
     return analyzeSuccess(

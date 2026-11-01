@@ -98,12 +98,14 @@ does not collect or transmit additional page data.
 
 The optional side panel requests the `sidePanel` permission only when the user
 clicks Enable side panel in the popup. Declining leaves the popup and dashboard
-available. Opening the panel does not analyze a page; each analysis requires a
-separate user click. It uses the same local extraction and storage flow.
+available. Opening the panel does not analyze or access a page; it reads the
+latest audit already stored in local IndexedDB and refreshes when a user-triggered
+toolbar or keyboard analysis is saved.
 
 Chrome grants `activeTab` access when you invoke Vittix from the toolbar or run
 Ctrl+Shift+U. A click inside the side panel does not grant page access; use the
-toolbar popup or shortcut to start analysis. Show on page also checks that the
+toolbar popup or shortcut to start analysis. The panel displays only stored
+results and receives a notification after a new result is saved. Show on page also checks that the
 active tab is still on the audited origin and refuses stale cross-origin
 requests after navigation.
 

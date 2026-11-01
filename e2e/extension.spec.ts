@@ -186,6 +186,46 @@ test.describe('Vittix SEO Toolkit smoke tests', () => {
       await expect(page.getByTestId('sidepanel-active-tab-help')).toContainText('Ctrl+Shift+U');
       await expect(page.getByTestId('analyze-button')).toHaveCount(0);
       await expect(page.getByTestId('analysis-summary')).toHaveCount(0);
+
+      const snapshot = buildSnapshot({
+        url: 'https://panel-fixture.test/fresh',
+        title: 'Fresh toolbar audit',
+        headings: [{ tag: 'h1', text: 'Panel result fixture' }],
+      });
+      const record = {
+        url: snapshot.url,
+        title: snapshot.title,
+        analyzedAt: '2026-11-01T00:00:00.000Z',
+        ruleSetVersion: RULE_SET_VERSION,
+        profileId: 'standard',
+        snapshot,
+        result: analyzeSnapshot(snapshot),
+      };
+      await page.evaluate(
+        (row) =>
+          new Promise<void>((resolve, reject) => {
+            const request = indexedDB.open('vittix-seo');
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+              const database = request.result;
+              const transaction = database.transaction('audits', 'readwrite');
+              transaction.objectStore('audits').add(row);
+              transaction.oncomplete = () => {
+                database.close();
+                resolve();
+              };
+              transaction.onerror = () => reject(transaction.error);
+            };
+          }),
+        record,
+      );
+      const notifier = await context.newPage();
+      await notifier.goto(extensionPageUrl(extensionId, 'popup.html'));
+      await notifier.evaluate(() => chrome.runtime.sendMessage({ type: 'vittix/audit-saved' }));
+      await expect(page.getByTestId('sidepanel-latest-audit')).toContainText('Fresh toolbar audit');
+      await expect(page.getByTestId('sidepanel-latest-audit')).toContainText('panel-fixture.test');
+      await expect(page.getByTestId('analysis-summary')).toHaveCount(0);
+      await notifier.close();
     } finally {
       await context.close();
     }

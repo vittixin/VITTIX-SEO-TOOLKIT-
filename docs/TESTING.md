@@ -88,13 +88,17 @@ the side panel does not see the active tab URL without that action gesture,
 and that a stored highlight request is rejected after the active tab changes
 origin. The test environment cannot synthesize Chrome's toolbar invocation;
 the popup's activeTab grant is therefore verified by the browser behavior and
-the required keyboard command is registered separately.
+the required keyboard command is registered separately. A production panel test
+stores a fixture audit, notifies from a second extension page, and verifies the
+panel refreshes from local IndexedDB without reading the active page.
 
 Measured with the production manifest: `activeTab` is installed, but
 `chrome.permissions.contains({origins: ["https://fixture.test/*"]})` is false
 and a message-triggered analysis from the side-panel page returns
 `ERR_NO_TAB_URL` / `Active tab URL unavailable (no access granted).` The panel
-now directs users to the toolbar popup or Ctrl+Shift+U. After same-tab
+directs users to the toolbar popup or Ctrl+Shift+U for analysis. When visible,
+it loads the latest saved audit from local IndexedDB and refreshes after a
+result-save notification; this reads no page content. After same-tab
 cross-origin navigation, Show on page returns a stale-audit message before
 calling `scripting.executeScript`; no host grant is present for the new
 origin.

@@ -35,7 +35,8 @@ export interface ExtractorLimits {
  * (documented duplication; the pipeline e2e test guards self-containment).
  */
 export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
-  // --- embedded helpers (copies of seo-core text-summary.ts) ------------------
+  // === embedded-helpers:start — parity-tested copies of seo-core text-summary.ts
+  // (do not reference anything outside this block from within it)
   const STOP_WORDS = [
     'a',
     'about',
@@ -183,6 +184,11 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
     }
     return hHigh.toString(16).padStart(8, '0') + hLow.toString(16).padStart(8, '0');
   };
+  const countSentencesEmb = (text: string): number =>
+    (text.match(/[.!?]+(\s|$)/g) ?? []).length || (text.trim() === '' ? 0 : 1);
+  const countParagraphsEmb = (text: string): number =>
+    text.split(/\n\s*\n/).filter((part) => part.trim() !== '').length;
+  // === embedded-helpers:end ===
 
   const notBlank = (value: string | null | undefined, max = 500): string | null => {
     const trimmed = value?.trim();
@@ -475,9 +481,8 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
     sample = '';
   }
   const wordCount = (sample.match(/\S+/g) ?? []).length;
-  const sentenceCount =
-    (sample.match(/[.!?]+(\s|$)/g) ?? []).length || (sample.trim() === '' ? 0 : 1);
-  const paragraphCount = sample.split(/\n\s*\n/).filter((part) => part.trim() !== '').length;
+  const sentenceCount = countSentencesEmb(sample);
+  const paragraphCount = countParagraphsEmb(sample);
 
   const omitted = {
     headings: Math.max(0, headingsSeen - headings.length),

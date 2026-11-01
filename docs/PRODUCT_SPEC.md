@@ -27,7 +27,7 @@ leaves the user's machine.
 
 ## MVP scope (delivered; current state as of rule set v0.4.0)
 
-Rule set: **37 rules** across 7 categories (metadata, headings, images,
+Rule set: **57 rules** across 7 categories (metadata, headings, images,
 links, content, social, technical) — see
 [SEO_RULES.md](SEO_RULES.md) for the authoritative list and severities.
 
@@ -54,7 +54,7 @@ links, content, social, technical) — see
 
 ## Quality bar (current)
 
-- **265 unit tests** (16 files) — schemas, all 37 rules, scoring math,
+- **265 unit tests** (16 files) — schemas, all 57 rules, scoring math,
   migration/compatibility, crawler security, limits parity
 - **10 Playwright E2E tests** — popup/dashboard/options smoke, real
   injection pipeline, real-flow persistence + exports, site audit,

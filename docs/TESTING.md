@@ -44,51 +44,47 @@
 
 Run: `pnpm test` · Watch: `pnpm test:watch`
 
-## E2E tests (Playwright 1.64)
+## E2E tests (Playwright)
 
-Seven tests, each with a fresh browser profile (clean IndexedDB):
+`pnpm test:e2e` builds both production and test-only packages, then runs the
+Playwright suite. The build identity is selected explicitly at each
+`loadExtension()` call; omitted arguments mean production.
 
-1. **Popup smoke** — popup renders; clicking Analyze on a chrome-extension://
-   page produces the friendly unsupported-page error (guard + error UI)
-2. **Dashboard smoke** — sidebar renders, empty overview state, navigation
-   through all nine sections
-3. **Options smoke** — settings render, two-step clear-all-data flow,
-   privacy information present
-4. **Pipeline** — the **real** `extractPageSnapshot` runs inside a **real**
-   rendered fixture page (served via route interception, no network); the
-   result must validate against `PageSnapshotSchema` and produce correct
-   v3 findings: aria-labelledby resolution, hidden-element exclusion +
-   counts (`[hidden]`, `aria-hidden` ancestor, `display:none`), hreflang
-   extraction incl. malformed/duplicate codes, inline-SVG stats, generic
-   internal anchors, JSON-LD structural warning, and remediation present on
-   every actionable finding
-5. **Real flow** — the full production pipeline: analyze message → URL guard
-   → real `chrome.scripting` injection on a real page → Zod validation →
-   seo-core analysis → Dexie persistence → dashboard rendering → **real
-   JSON/CSV file downloads** verified byte-for-byte
-6. **Keyboard command** — the `analyze-page` command is registered and bound
-7. **Site audit** — the REAL opt-in site-mode flow: consent prompt
-   (auto-accepted via Chromium's `--use-fake-ui-for-permission-flow` test
-   switch), real paced crawl of routed fixture pages, robots.txt honored
-   (`/b` skipped), cross-origin link never fetched, 403 recorded as
-   failed-auth, site summary rendered, filterable URL list, real site
-   JSON/CSV downloads. Cancellation, caps and rate limiting are covered by
-   the crawler unit tests (mocked fetch/storage); resume-after-tab-close is
-   implemented but only manually verifiable — NOT claimed as tested.
+### Production versus E2E manifest
 
-### The E2E build variant (test-only)
+`wxt.config.e2e.ts` spreads `BASE_MANIFEST`, then changes the extension name
+and adds persistent `host_permissions`:
 
-MV3 toolbar clicks and keyboard accelerators cannot be synthesized by
-automation (CDP keystrokes never reach Chrome's command dispatcher), so test 5
-runs against a **test-only build** (`wxt.config.e2e.ts` →
-`.output/chrome-mv3-e2e`) that is byte-identical to production except for two
-manifest keys: the name gains "(E2E TEST BUILD)" and a host permission is
-added for the single fixture origin (`https://fixture.test/*`). The
-`chrome.tabs.query` + `chrome.scripting.executeScript` path is then exercised
-for real. This artifact is never shipped; `pnpm verify:manifest` and CI audit
-only the production build, which keeps exactly `["activeTab", "scripting"]`.
-The production messaging path itself is proven by tests 1–3 (runtime message
-round-trips against the production build).
+| Manifest field              | Production                          | E2E test build                                                       | Effect                                                                                                                                    |
+| --------------------------- | ----------------------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `permissions`               | `activeTab`, `scripting`            | Same                                                                 | No difference.                                                                                                                            |
+| `optional_permissions`      | `sidePanel`                         | Same                                                                 | Runtime side-panel opt-in remains available in both.                                                                                      |
+| `host_permissions`          | Absent                              | `https://fixture.test/*`, `http://localhost/*`, `http://127.0.0.1/*` | E2E pages can be scripted and crawled without the production activeTab gesture or runtime host grant. Loopback patterns cover every port. |
+| `optional_host_permissions` | `https://*/*`, localhost, 127.0.0.1 | Same                                                                 | No difference in the runtime grant catalog.                                                                                               |
+| `name`                      | `Vittix SEO Toolkit`                | Adds `(E2E TEST BUILD)`                                              | Test artifact identification only.                                                                                                        |
+
+The suite has an assertion that these are the only manifest differences. Both
+builds retain the same `activeTab`/`scripting` permissions, `sidePanel` optional
+permission, commands, code, and UI. The extra E2E host permissions are a
+material behavior difference: they make fixture injection and loopback fetches
+work without the production user gesture or consent. They are never included
+in the production package.
+
+### Tests relying on test-only capabilities
+
+| E2E test(s)                                                                                               | Test-only capability and limitation                                                                                                                                                                                                                                   |
+| --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `page highlight is bounded...`                                                                            | Uses the E2E build, but calls the highlight function directly from Playwright on the fixture DOM. It tests overlay cleanup and safety, not production `activeTab` authorization.                                                                                      |
+| `permission probe...`, `side panel page renders...`, `sidePanel optional permission...`, theme preference | Use the E2E build. The runtime sidePanel probe uses `--use-fake-ui-for-permission-flow`; it proves the API permission is optional/requestable, not production activeTab access from the panel.                                                                        |
+| `real message → real injection...`                                                                        | Uses the E2E build and fixture `host_permissions`; this verifies the end-to-end extraction/persistence flow but bypasses production's toolbar-gesture grant.                                                                                                          |
+| Site audit tests in `siteaudit.spec.ts` and `siterestart.spec.ts`                                         | Use the E2E loopback/fixture host permissions. `--use-fake-ui-for-permission-flow` auto-accepts runtime prompts; HTTPS tests additionally map fixture hostnames to loopback and ignore the local test certificate. These tests do not prove production permission UX. |
+| Manifest parity test                                                                                      | Reads both built manifests and enforces the exact differences above.                                                                                                                                                                                                  |
+
+The remaining popup/dashboard/options smoke, pipeline, keyboard registration,
+stale dashboard state, and storage migration tests use the production build.
+Direct extension-page navigation is still not equivalent to clicking the
+toolbar action: production `activeTab` behavior is separately tested in the
+production-parity checks.
 
 ### Running e2e
 

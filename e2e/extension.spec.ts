@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { extensionPageUrl, loadExtension } from './helpers/extension';
 import { highlightOnPage } from '../apps/extension/src/highlight/overlay';
 
@@ -14,6 +16,41 @@ const SECTION_TITLES: Record<string, string> = {
 };
 
 test.describe('Vittix SEO Toolkit smoke tests', () => {
+  test('production and e2e manifests differ only by documented test host access', () => {
+    const production = JSON.parse(
+      readFileSync(
+        resolve(import.meta.dirname, '../apps/extension/.output/chrome-mv3/manifest.json'),
+        'utf8',
+      ),
+    ) as Record<string, unknown>;
+    const e2e = JSON.parse(
+      readFileSync(
+        resolve(
+          import.meta.dirname,
+          '../apps/extension/.output/chrome-mv3-e2e/chrome-mv3/manifest.json',
+        ),
+        'utf8',
+      ),
+    ) as Record<string, unknown>;
+
+    expect(e2e.permissions).toEqual(production.permissions);
+    expect(e2e.optional_permissions).toEqual(production.optional_permissions);
+    expect(e2e.optional_host_permissions).toEqual(production.optional_host_permissions);
+    expect(production.host_permissions).toBeUndefined();
+    expect(e2e.host_permissions).toEqual([
+      'https://fixture.test/*',
+      'http://localhost/*',
+      'http://127.0.0.1/*',
+    ]);
+    expect(e2e.name).toBe('Vittix SEO Toolkit (E2E TEST BUILD)');
+
+    const normalize = (manifest: Record<string, unknown>) =>
+      Object.fromEntries(
+        Object.entries(manifest).filter(([key]) => key !== 'name' && key !== 'host_permissions'),
+      );
+    expect(normalize(e2e)).toEqual(normalize(production));
+  });
+
   test('page highlight is bounded, dismissible, stale-safe and makes no requests', async () => {
     const { context, page } = await loadExtension('e2e');
     const requests: string[] = [];

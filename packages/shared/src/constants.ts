@@ -8,7 +8,7 @@ export const EXTENSION_NAME = 'Vittix SEO Toolkit';
 export const DB_NAME = 'vittix-seo';
 
 /**
- * Current page-snapshot schema version. Bump on breaking changes.
+ * Current page-snapshot schema version. Bump when adding snapshot fields.
  *
  * - v2: titleCount, descriptions[], canonicals[], links[].accessibleName,
  *   twitter:* meta fields, structuredData[].
@@ -21,15 +21,17 @@ export const DB_NAME = 'vittix-seo';
  *   (dimensions, loading/decoding/srcset/sizes, picture, fetchpriority,
  *   format, above-fold index), mixedContentSamples[], faviconPresent,
  *   pagination{prev,next}.
+ * - v5: textSummary.syllableCount and a locally stored leadText excerpt
+ *   (first 100 visible words, whitespace-normalized, capped at 800 chars).
  *
- * All v2/v3/v4 fields carry defaults, so records stored by earlier versions
- * remain readable (the schema accepts all four versions). See
+ * All v2/v3/v4/v5 additions carry defaults, so records stored by earlier
+ * versions remain readable (the schema accepts all five versions). See
  * docs/ROADMAP.md for the changelog of when each version landed.
  */
-export const SNAPSHOT_SCHEMA_VERSION = 4;
+export const SNAPSHOT_SCHEMA_VERSION = 5;
 
 /** Snapshot versions the schema can still read (legacy stored audits). */
-export const SNAPSHOT_SCHEMA_VERSIONS = [1, 2, 3, 4] as const;
+export const SNAPSHOT_SCHEMA_VERSIONS = [1, 2, 3, 4, 5] as const;
 
 /**
  * Hard bounds applied while extracting a page so that audits stay small and
@@ -58,6 +60,10 @@ export const SNAPSHOT_LIMITS = {
   hreflang: 10,
   /** Maximum keyword frequencies retained in the content summary. */
   keywords: 20,
+  /** Maximum visible words retained for keyword prominence. */
+  leadTextWords: 100,
+  /** Maximum characters retained for the lead-text excerpt. */
+  leadTextChars: 800,
   /** Maximum http:// resource samples retained on https pages. */
   mixedContentSamples: 10,
   /** Maximum images measured as above-the-fold candidates. */

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Search } from 'lucide-react';
 import type { AuditRecord } from '@vittix/shared';
-import { readingTimeMinutes } from '@vittix/seo-core';
+import { fleschReadingEase, keywordProminence, readingTimeMinutes } from '@vittix/seo-core';
 import { EmptyState } from '@/src/components/EmptyState';
 import { StatCard } from '@/src/components/StatCard';
 import { getTargetKeyword, saveTargetKeyword } from '@/src/storage/keywords';
@@ -59,6 +59,22 @@ export function ContentView({
   const lang = audit.snapshot.meta.lang?.split('-')[0]?.toLowerCase();
   const isEnglish = !lang || lang === 'en';
   const words = audit.snapshot.textStats.wordCount;
+  const hasV5TextSummary = audit.snapshot.schemaVersion >= 5;
+  const readingEase =
+    hasV5TextSummary && isEnglish
+      ? fleschReadingEase(words, summary.sentenceCount, summary.syllableCount, lang)
+      : null;
+  const prominence = keyword.trim()
+    ? keywordProminence(keyword, {
+        title: audit.snapshot.title,
+        h1Texts: audit.snapshot.headings
+          .filter((heading) => heading.tag === 'h1')
+          .map((heading) => heading.text),
+        description: audit.snapshot.meta.description ?? '',
+        url: audit.url,
+        first100Words: hasV5TextSummary ? summary.leadText : '',
+      })
+    : null;
   const keywordFindingsInactive = keyword.trim() === '';
 
   async function saveKeyword() {
@@ -88,8 +104,20 @@ export function ContentView({
       <p className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600">
         <BookOpen className="mr-1 inline size-4" aria-hidden />
         Flesch Reading Ease:{' '}
-        {isEnglish ? 'Not available from this stored snapshot' : 'Not available for this language'}.
+        {!isEnglish
+          ? 'Not available for this language'
+          : !hasV5TextSummary
+            ? 'Re-analyze this page to enable'
+            : readingEase === null
+              ? 'Not enough text to calculate'
+              : `${readingEase} (approximate)`}
       </p>
+      {!hasV5TextSummary ? (
+        <p role="status" className="text-xs text-slate-500">
+          This v1–v4 stored audit has no syllable total or lead excerpt. Re-analyze this page to
+          enable.
+        </p>
+      ) : null}
       {audit.snapshot.textStats.textSampleTruncated ? (
         <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
           Text sample was truncated; content statistics cover a partial sample.
@@ -144,33 +172,16 @@ export function ContentView({
             Keyword rules are active for the next analysis. Re-analyze to refresh findings.
           </p>
         )}
-        {keyword.trim() ? (
+        {keyword.trim() && prominence ? (
           <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
+            <Prominence label="Title" value={prominence.inTitle} />
+            <Prominence label="H1" value={prominence.inH1} />
+            <Prominence label="Description" value={prominence.inDescription} />
+            <Prominence label="URL" value={prominence.inUrl} />
             <Prominence
-              label="Title"
-              value={audit.snapshot.title.toLowerCase().includes(keyword.trim().toLowerCase())}
+              label="First 100 words"
+              value={hasV5TextSummary && summary.leadText ? prominence.inFirst100Words : null}
             />
-            <Prominence
-              label="H1"
-              value={audit.snapshot.headings.some(
-                (heading) =>
-                  heading.tag === 'h1' &&
-                  heading.text.toLowerCase().includes(keyword.trim().toLowerCase()),
-              )}
-            />
-            <Prominence
-              label="Description"
-              value={(audit.snapshot.meta.description ?? '')
-                .toLowerCase()
-                .includes(keyword.trim().toLowerCase())}
-            />
-            <Prominence
-              label="URL"
-              value={audit.url
-                .toLowerCase()
-                .includes(keyword.trim().toLowerCase().replaceAll(' ', '-'))}
-            />
-            <Prominence label="First 100 words" value={null} />
           </div>
         ) : null}
         <button

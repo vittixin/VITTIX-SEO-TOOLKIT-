@@ -137,7 +137,7 @@ export const SvgStatsSchema = z.object({
 });
 export type SvgStats = z.infer<typeof SvgStatsSchema>;
 
-/** Bounded content summary computed at extraction time (v4). */
+/** Bounded content summary computed at extraction time (v4/v5). */
 export const TextSummarySchema = z.object({
   sentenceCount: nonNegativeInt.default(0),
   paragraphCount: nonNegativeInt.default(0),
@@ -148,6 +148,10 @@ export const TextSummarySchema = z.object({
     .default([]),
   /** SHA-256 of the normalized text sample (duplicate detection later). */
   sampleHash: z.string().default(''),
+  /** English heuristic syllable total used by Flesch Reading Ease (v5). */
+  syllableCount: nonNegativeInt.default(0),
+  /** Locally stored lead excerpt: first visible 100 words, at most 800 chars (v5). */
+  leadText: z.string().max(SNAPSHOT_LIMITS.leadTextChars).default(''),
 });
 export type TextSummary = z.infer<typeof TextSummarySchema>;
 
@@ -162,7 +166,7 @@ export type Pagination = z.infer<typeof PaginationSchema>;
  * A bounded, serializable snapshot of a page. This is the ONLY data the
  * extractor takes out of a page — nothing else is collected or transmitted.
  *
- * v2/v3/v4 fields carry defaults so stored audits from earlier versions
+ * v2/v3/v4/v5 fields carry defaults so stored audits from earlier versions
  * still validate. Fresh extractions always use the current
  * SNAPSHOT_SCHEMA_VERSION.
  */
@@ -172,6 +176,7 @@ export const PageSnapshotSchema = z.object({
     z.literal(SNAPSHOT_SCHEMA_VERSIONS[1]),
     z.literal(SNAPSHOT_SCHEMA_VERSIONS[2]),
     z.literal(SNAPSHOT_SCHEMA_VERSIONS[3]),
+    z.literal(SNAPSHOT_SCHEMA_VERSIONS[4]),
   ]),
   url: z.string().min(1),
   title: z.string(),
@@ -213,7 +218,7 @@ export const PageSnapshotSchema = z.object({
   /** Inline SVG accessibility stats. (v3) */
   svg: SvgStatsSchema.prefault({ total: 0, unnamed: 0 }),
   textStats: TextStatsSchema,
-  /** Bounded content summary: counts, top keywords, sample hash. (v4) */
+  /** Bounded content summary: counts, keywords and sample hash (v4), plus readability and lead text (v5). */
   textSummary: TextSummarySchema.prefault({}),
   /** http:// resource URLs found on https pages (bounded samples). (v4) */
   mixedContentSamples: z

@@ -20,6 +20,8 @@ export const EXTRACTOR_LIMITS: ExtractorLimits = {
   structuredData: SNAPSHOT_LIMITS.structuredData,
   hreflang: SNAPSHOT_LIMITS.hreflang,
   keywords: SNAPSHOT_LIMITS.keywords,
+  leadTextWords: SNAPSHOT_LIMITS.leadTextWords,
+  leadTextChars: SNAPSHOT_LIMITS.leadTextChars,
   mixedContentSamples: SNAPSHOT_LIMITS.mixedContentSamples,
   foldCandidates: SNAPSHOT_LIMITS.foldCandidates,
 };

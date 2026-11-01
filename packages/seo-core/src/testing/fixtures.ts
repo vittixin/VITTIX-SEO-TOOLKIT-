@@ -2,13 +2,13 @@ import type { ImageEntry, PageMeta, PageSnapshot } from '@vittix/shared';
 import { SNAPSHOT_SCHEMA_VERSION } from '@vittix/shared';
 
 /**
- * Test-only snapshot builder for the v4 schema. Not exported from the
- * package index. New-in-v4 fields default to healthy values (no omissions,
+ * Test-only snapshot builder for the v5 schema. Not exported from the
+ * package index. New-in-v4/v5 fields default to healthy values (no omissions,
  * no hidden content, no SVG, healthy content summary) so tests only specify
  * what a rule exercises.
  */
 
-/** Full v4 image entry with defaulted performance attributes. */
+/** Full image entry with v4 performance and fold attributes. */
 export function defaultImage(src: string, alt: string | null): ImageEntry {
   return {
     src,
@@ -146,6 +146,8 @@ export function buildSnapshot(
         { term: 'content', count: 4 },
       ],
       sampleHash: '0'.repeat(16),
+      syllableCount: 100,
+      leadText: 'Example page content for keyword prominence checks.',
     },
     mixedContentSamples: overrides.mixedContentSamples ?? [],
     faviconPresent: overrides.faviconPresent ?? true,

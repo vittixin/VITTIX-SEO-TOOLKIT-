@@ -226,6 +226,24 @@ export function estimateSyllables(word: string): number {
   return Math.max(1, groups === null ? 1 : groups.length);
 }
 
+/** Total syllables under the same approximate English vowel-group heuristic. */
+export function countSyllables(text: string): number {
+  const words = text.trim() === '' ? [] : text.trim().split(/\s+/);
+  return words.reduce((total, word) => total + estimateSyllables(word), 0);
+}
+
+/** Normalize visible text and retain its first bounded words for local prominence checks. */
+export function extractLeadText(text: string, wordLimit: number, charLimit: number): string {
+  if (wordLimit <= 0 || charLimit <= 0) return '';
+  return text
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .slice(0, wordLimit)
+    .join(' ')
+    .slice(0, charLimit);
+}
+
 /**
  * Flesch Reading Ease for ENGLISH text. Returns null for other languages —
  * the syllable heuristic is English-specific and the UI says so.

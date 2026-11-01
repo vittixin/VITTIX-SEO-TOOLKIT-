@@ -7,6 +7,7 @@ import { getTargetKeyword } from '@/src/storage/keywords';
 
 export function ExportView({ audit }: { audit: AuditRecord | null }) {
   const [includeKeyword, setIncludeKeyword] = useState(false);
+  const [includeExcerpt, setIncludeExcerpt] = useState(false);
   if (!audit) {
     return (
       <EmptyState icon={Search} title="Nothing to export yet">
@@ -28,7 +29,10 @@ export function ExportView({ audit }: { audit: AuditRecord | null }) {
           data-testid="export-json"
           onClick={() =>
             void getTargetKeyword(audit.url).then((keyword) =>
-              exportAuditJson(audit, includeKeyword ? keyword : undefined),
+              exportAuditJson(audit, {
+                targetKeyword: includeKeyword ? keyword : undefined,
+                includePageTextExcerpt: includeExcerpt,
+              }),
             )
           }
           className="group flex flex-col items-start gap-2 rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-indigo-300 hover:shadow"
@@ -73,6 +77,15 @@ export function ExportView({ audit }: { audit: AuditRecord | null }) {
           aria-label="Include target keyword in JSON export"
         />
         Include the locally stored target keyword in JSON export
+      </label>
+      <label className="flex items-center gap-2 text-sm text-slate-700">
+        <input
+          type="checkbox"
+          checked={includeExcerpt}
+          onChange={(event) => setIncludeExcerpt(event.target.checked)}
+          aria-label="Include page text excerpt in JSON export"
+        />
+        Include page text excerpt in JSON export
       </label>
     </div>
   );

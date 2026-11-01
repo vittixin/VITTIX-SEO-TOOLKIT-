@@ -128,6 +128,8 @@ vi.mock('@/src/site/extract-html', () => ({
       paragraphCount: 1,
       keywords: [],
       sampleHash: '',
+      syllableCount: 0,
+      leadText: '',
     },
     mixedContentSamples: [],
     faviconPresent: false,

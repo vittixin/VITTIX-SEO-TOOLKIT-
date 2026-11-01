@@ -32,6 +32,7 @@ test('real message → real injection → persisted history → exports', async 
 <body>
   <h1>Real flow main heading</h1>
   <h2>Details</h2>
+  <p>Fixture content starts here. This visible paragraph provides enough English words and sentences to calculate a rough reading ease score. A fixture phrase appears early so first one hundred word prominence can be checked accurately.</p>
   <img src="/img/a.png" alt="A fixture chart" />
   <a href="/other">Another fixture page</a>
 </body>
@@ -84,11 +85,13 @@ test('real message → real injection → persisted history → exports', async 
 
     await dashboard.getByTestId('nav-content').click();
     await expect(dashboard.getByText('Top keywords and phrases')).toBeVisible();
+    await expect(dashboard.getByText(/Flesch Reading Ease:.*approximate/)).toBeVisible();
     await dashboard.getByLabel('Target keyword').fill('fixture');
     await dashboard.getByRole('button', { name: 'Save keyword' }).click();
     await expect(
       dashboard.getByText('Keyword rules are active for the next analysis.'),
     ).toBeVisible();
+    await expect(dashboard.getByText('First 100 words: present')).toBeVisible();
     await dashboard.screenshot({
       path: resolve(import.meta.dirname, '../docs/acceptance-evidence/13-content.png'),
       fullPage: true,

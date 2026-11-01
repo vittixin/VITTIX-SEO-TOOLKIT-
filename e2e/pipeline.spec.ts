@@ -42,6 +42,8 @@ test('real extraction → validation → analysis pipeline', async () => {
   <script type="application/ld+json">{ "name": "Fixture page without schema structure" }</script>
 </head>
 <body>
+  <div style="display:none">hidden secret lead phrase</div>
+  <div aria-hidden="true">aria hidden secret phrase</div>
   <h1>Fixture main heading</h1>
   <h2 hidden>Hidden heading — must not be analyzed</h2>
   <div aria-hidden="true"><h2>Another hidden heading</h2></div>
@@ -79,6 +81,11 @@ test('real extraction → validation → analysis pipeline', async () => {
 
     // 2. Extraction correctness on the fixture.
     expect(snapshot.title).toBe('Vittix Fixture Page With A Good Long Title');
+    expect(snapshot.schemaVersion).toBe(5);
+    expect(snapshot.textSummary.syllableCount).toBeGreaterThan(0);
+    expect(snapshot.textSummary.leadText).toContain('Fixture main heading');
+    expect(snapshot.textSummary.leadText).not.toContain('hidden secret');
+    expect(snapshot.textSummary.leadText).not.toContain('aria hidden secret');
     expect(snapshot.meta.canonical).toBe('https://fixture.test/page');
     // Hidden headings (hidden attr + aria-hidden ancestor) are excluded from
     // analysis collections but counted.

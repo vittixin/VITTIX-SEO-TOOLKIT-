@@ -56,6 +56,17 @@ function v2Snapshot(): Record<string, unknown> {
   };
 }
 
+/** A real stored v4 row predates the syllable and lead-text fields. */
+function v4Snapshot(): Record<string, unknown> {
+  const base = PageSnapshotSchema.parse({ ...v2Snapshot(), schemaVersion: 4 });
+  const textSummary = Object.fromEntries(
+    Object.entries(base.textSummary).filter(
+      ([key]) => key !== 'syllableCount' && key !== 'leadText',
+    ),
+  );
+  return { ...base, schemaVersion: 4, textSummary };
+}
+
 function wrapAudit(snapshot: Record<string, unknown>) {
   // Normalize through the schema first (as the real pipeline does) so
   // legacy rows get their v3 defaults before analysis.
@@ -91,9 +102,16 @@ describe('stored-record migration and compatibility', () => {
     expect(parsed.data.snapshot.omitted.links).toBe(0);
   });
 
-  it('accepts the current v3 snapshot', () => {
+  it('accepts the current v5 snapshot', () => {
     const record = wrapAudit({ ...v2Snapshot(), schemaVersion: SNAPSHOT_SCHEMA_VERSION });
     expect(AuditRecordSchema.safeParse(record).success).toBe(true);
+  });
+
+  it('accepts a stored v4 audit and applies v5 defaults', () => {
+    const parsed = AuditRecordSchema.parse(wrapAudit(v4Snapshot()));
+    expect(parsed.snapshot.schemaVersion).toBe(4);
+    expect(parsed.snapshot.textSummary.syllableCount).toBe(0);
+    expect(parsed.snapshot.textSummary.leadText).toBe('');
   });
 
   it('rejects a snapshot from an unknown future version', () => {

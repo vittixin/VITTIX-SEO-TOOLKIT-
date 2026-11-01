@@ -54,7 +54,7 @@ User clicks "Analyze Current Page" (popup)
 `extractPageSnapshot(limits)` is serialized with `func.toString()` and must
 therefore be fully self-contained (no module-scope references — enforced by a
 Playwright pipeline test that runs the real function inside a real page). It
-returns a bounded `PageSnapshot` (schema **v3**): ≤300 headings, ≤500 images,
+returns a bounded `PageSnapshot` (schema **v5**): ≤300 headings, ≤500 images,
 ≤500 links, ≤100 kB text sample, whitelisted meta fields (including all
 `twitter:*` tags), all meta-description/canonical/robots values (≤5 each),
 hreflang entries (≤10), link accessible names (aria-labelledby → aria-label →
@@ -65,6 +65,11 @@ text → img alt → svg title), inline-SVG accessibility stats, JSON-LD blocks
 counted — stylesheet-driven hiding is a documented limitation. Totals are
 preserved even when collections are truncated, and `result.truncated` flags
 partial captures. Nothing is fetched, nothing is sent.
+
+The content summary stores an English-heuristic syllable count and a local
+lead excerpt (first 100 visible words, maximum 800 characters). Both
+extractors share the same summary semantics; the injector's self-contained
+copy is parity-tested against `seo-core`.
 
 ### Rule engine (`packages/seo-core/src/analyzers/`)
 

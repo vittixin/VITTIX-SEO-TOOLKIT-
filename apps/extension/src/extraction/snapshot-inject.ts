@@ -18,12 +18,14 @@ export interface ExtractorLimits {
   structuredData: number;
   hreflang: number;
   keywords: number;
+  leadTextWords: number;
+  leadTextChars: number;
   mixedContentSamples: number;
   foldCandidates: number;
 }
 
 /**
- * One-shot page extraction (snapshot schema v4). Runs in the page's ISOLATED
+ * One-shot page extraction (snapshot schema v5). Runs in the page's ISOLATED
  * world (no access to page JavaScript variables). Reads only what the SEO
  * analyzers need, caps every collection, and returns a plain serializable
  * object. Nothing is fetched and nothing is transmitted.
@@ -188,6 +190,29 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
     (text.match(/[.!?]+(\s|$)/g) ?? []).length || (text.trim() === '' ? 0 : 1);
   const countParagraphsEmb = (text: string): number =>
     text.split(/\n\s*\n/).filter((part) => part.trim() !== '').length;
+  const estimateSyllablesEmb = (word: string): number => {
+    const clean = word.toLowerCase().replace(/[^a-z]/g, '');
+    if (clean === '') return 0;
+    if (clean.length <= 3) return 1;
+    const trimmed = clean.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '').replace(/^y/, '');
+    const groups = trimmed.match(/[aeiouy]{1,2}/g);
+    return Math.max(1, groups === null ? 1 : groups.length);
+  };
+  const countSyllablesEmb = (text: string): number =>
+    (text.trim() === '' ? [] : text.trim().split(/\s+/)).reduce(
+      (total, word) => total + estimateSyllablesEmb(word),
+      0,
+    );
+  const extractLeadTextEmb = (text: string, wordLimit: number, charLimit: number): string =>
+    wordLimit <= 0 || charLimit <= 0
+      ? ''
+      : text
+          .replace(/\s+/g, ' ')
+          .trim()
+          .split(' ')
+          .slice(0, wordLimit)
+          .join(' ')
+          .slice(0, charLimit);
   // === embedded-helpers:end ===
 
   const notBlank = (value: string | null | undefined, max = 500): string | null => {
@@ -212,6 +237,40 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
       if (/(^|;)\s*visibility\s*:\s*hidden/.test(lowered)) return true;
     }
     return false;
+  };
+
+  const collectVisibleBodyText = (charLimit: number): string => {
+    const root = document.body;
+    if (root === null) return '';
+    const parts: string[] = [];
+    let charCount = 0;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node !== null && charCount < charLimit + 1) {
+      let parent = node.parentElement;
+      let hidden = false;
+      while (parent !== null) {
+        if (
+          isHidden(parent) ||
+          ['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(parent.tagName)
+        ) {
+          hidden = true;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+      const text = (node.nodeValue ?? '').replace(/\s+/g, ' ').trim();
+      if (!hidden && text !== '') {
+        const remaining = Math.max(0, charLimit + 1 - charCount);
+        const clipped = text.slice(0, remaining);
+        if (clipped !== '') {
+          parts.push(clipped);
+          charCount += clipped.length + 1;
+        }
+      }
+      node = walker.nextNode();
+    }
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
   };
 
   /** Resolve aria-labelledby (one or more space-separated IDREFs). */
@@ -483,6 +542,12 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
   const wordCount = (sample.match(/\S+/g) ?? []).length;
   const sentenceCount = countSentencesEmb(sample);
   const paragraphCount = countParagraphsEmb(sample);
+  const syllableCount = countSyllablesEmb(sample);
+  const leadText = extractLeadTextEmb(
+    collectVisibleBodyText(limits.leadTextChars),
+    limits.leadTextWords,
+    limits.leadTextChars,
+  );
 
   const omitted = {
     headings: Math.max(0, headingsSeen - headings.length),
@@ -496,7 +561,7 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
 
   return {
     // Keep in sync with SNAPSHOT_SCHEMA_VERSION in @vittix/shared.
-    schemaVersion: 4,
+    schemaVersion: 5,
     url: location.href,
     title: (document.title ?? '').slice(0, 500),
     titleCount: document.querySelectorAll('title').length,
@@ -523,6 +588,8 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
       paragraphCount,
       keywords: topKeywords(sample, limits.keywords),
       sampleHash: fnv1a64Hex(sample),
+      syllableCount,
+      leadText,
     },
     mixedContentSamples,
     faviconPresent,

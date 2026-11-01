@@ -1,5 +1,16 @@
 # Roadmap
 
+## Snapshot schema v5 (Phase A follow-up, 2026-11-01)
+
+- Added defaulted `textSummary.syllableCount` and `textSummary.leadText` for
+  stored v1–v4 compatibility.
+- The lead excerpt is the first 100 visible words, whitespace-normalized and
+  capped at 800 characters. It is local IndexedDB data and is excluded from
+  JSON/CSV exports unless the user opts into the JSON excerpt checkbox.
+- Both live-DOM and fetched-HTML extractors apply the existing hidden-element
+  checks. Injector helper parity is guarded against the pure `seo-core`
+  implementation.
+
 ## Phase 0 — Foundation (DONE, 2026-10-30)
 
 Monorepo, extension shell (popup/dashboard/options/background), analysis

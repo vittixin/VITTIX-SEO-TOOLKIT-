@@ -24,6 +24,8 @@ describe('EXTRACTOR_LIMITS — single source of truth', () => {
       structuredData: SNAPSHOT_LIMITS.structuredData,
       hreflang: SNAPSHOT_LIMITS.hreflang,
       keywords: SNAPSHOT_LIMITS.keywords,
+      leadTextWords: SNAPSHOT_LIMITS.leadTextWords,
+      leadTextChars: SNAPSHOT_LIMITS.leadTextChars,
       mixedContentSamples: SNAPSHOT_LIMITS.mixedContentSamples,
       foldCandidates: SNAPSHOT_LIMITS.foldCandidates,
     });
@@ -42,6 +44,8 @@ describe('EXTRACTOR_LIMITS — single source of truth', () => {
       'structuredData',
       'hreflang',
       'keywords',
+      'leadTextWords',
+      'leadTextChars',
       'mixedContentSamples',
       'foldCandidates',
     ].sort();

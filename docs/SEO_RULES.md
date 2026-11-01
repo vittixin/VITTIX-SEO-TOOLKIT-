@@ -1,9 +1,14 @@
-# SEO Rules — Rule Set v0.4.0
+# SEO Rules — Rule Set v0.5.0
 
-All rules are pure functions of a validated `PageSnapshot` (schema **v3**):
+All rules are pure functions of a validated `PageSnapshot` (schema **v5**):
 the same snapshot always produces the same findings, in the same order
 (findings are sorted by severity, then `ruleId`). Every non-pass finding
 carries `evidence` (what was found) and `remediation` (how to fix it).
+
+Schema v5 also retains an English-heuristic syllable count and the first 100
+visible body words (maximum 800 characters) locally for readability and
+keyword-prominence display. The excerpt is omitted from JSON export by
+default; CSV exports do not contain it.
 
 Severities:
 

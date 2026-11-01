@@ -48,11 +48,29 @@ describe('optional local keyword JSON export', () => {
   it('omits the target keyword unless explicitly requested', () => {
     const audit = buildAudit();
     const omitted = JSON.parse(auditToJson(audit)) as { audit: Record<string, unknown> };
-    const included = JSON.parse(auditToJson(audit, 'coffee grinder')) as {
+    const included = JSON.parse(auditToJson(audit, { targetKeyword: 'coffee grinder' })) as {
       audit: Record<string, unknown>;
     };
     expect(omitted.audit).not.toHaveProperty('targetKeyword');
     expect(included.audit.targetKeyword).toBe('coffee grinder');
+  });
+
+  it('omits the lead-text excerpt from JSON unless explicitly requested', () => {
+    const base = buildAudit();
+    const audit = {
+      ...base,
+      snapshot: {
+        ...base.snapshot,
+        textSummary: { ...base.snapshot.textSummary, leadText: 'private local excerpt' },
+      },
+    };
+    const omitted = JSON.parse(auditToJson(audit)) as { audit: AuditRecord };
+    const included = JSON.parse(auditToJson(audit, { includePageTextExcerpt: true })) as {
+      audit: AuditRecord;
+    };
+    expect(omitted.audit.snapshot.textSummary).not.toHaveProperty('leadText');
+    expect(included.audit.snapshot.textSummary.leadText).toBe('private local excerpt');
+    expect(findingsToCsv(audit)).not.toContain('private local excerpt');
   });
 });
 

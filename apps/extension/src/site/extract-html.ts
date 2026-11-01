@@ -2,7 +2,14 @@ import type { ExtractorLimits } from '../extraction/snapshot-inject';
 import { EXTRACTOR_LIMITS } from '../extraction/limits';
 import type { PageMeta, PageSnapshot } from '@vittix/shared';
 import { SNAPSHOT_SCHEMA_VERSION } from '@vittix/shared';
-import { countParagraphs, countSentences, fnv1a64Hex, topKeywords } from '@vittix/seo-core';
+import {
+  countParagraphs,
+  countSentences,
+  countSyllables,
+  extractLeadText,
+  fnv1a64Hex,
+  topKeywords,
+} from '@vittix/seo-core';
 
 export type SiteExtractorLimits = ExtractorLimits;
 
@@ -43,6 +50,40 @@ export function parsePageSnapshot(
       if (/(^|;)\s*visibility\s*:\s*hidden/.test(lowered)) return true;
     }
     return false;
+  };
+
+  const collectVisibleBodyText = (charLimit: number): string => {
+    const root = doc.body;
+    if (root === null) return '';
+    const parts: string[] = [];
+    let charCount = 0;
+    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node !== null && charCount < charLimit + 1) {
+      let parent = node.parentElement;
+      let hidden = false;
+      while (parent !== null) {
+        if (
+          isHidden(parent) ||
+          ['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(parent.tagName)
+        ) {
+          hidden = true;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+      const text = (node.nodeValue ?? '').replace(/\s+/g, ' ').trim();
+      if (!hidden && text !== '') {
+        const remaining = Math.max(0, charLimit + 1 - charCount);
+        const clipped = text.slice(0, remaining);
+        if (clipped !== '') {
+          parts.push(clipped);
+          charCount += clipped.length + 1;
+        }
+      }
+      node = walker.nextNode();
+    }
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
   };
 
   const resolveLabelledBy = (el: Element): string => {
@@ -301,6 +342,12 @@ export function parsePageSnapshot(
   const wordCount = (sample.match(/\S+/g) ?? []).length;
   const sentenceCount = countSentences(sample) || 0;
   const paragraphCount = countParagraphs(sample);
+  const syllableCount = countSyllables(sample);
+  const leadText = extractLeadText(
+    collectVisibleBodyText(limits.leadTextChars),
+    limits.leadTextWords,
+    limits.leadTextChars,
+  );
 
   const omitted = {
     headings: Math.max(0, headingsSeen - headings.length),
@@ -342,6 +389,8 @@ export function parsePageSnapshot(
       paragraphCount,
       keywords: topKeywords(sample, pageLang, limits.keywords),
       sampleHash: fnv1a64Hex(sample),
+      syllableCount,
+      leadText,
     },
     mixedContentSamples,
     faviconPresent,

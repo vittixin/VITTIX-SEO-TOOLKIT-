@@ -21,10 +21,13 @@ function fileStamp(iso: string): string {
   return iso.replace(/[:.]/g, '-').slice(0, 19);
 }
 
-export function exportAuditJson(audit: AuditRecord, targetKeyword?: string): void {
+export function exportAuditJson(
+  audit: AuditRecord,
+  options: { targetKeyword?: string; includePageTextExcerpt?: boolean } = {},
+): void {
   downloadFile(
     `vittix-audit-${fileStamp(audit.analyzedAt)}-${audit.id ?? 'latest'}.json`,
-    auditToJson(audit, targetKeyword),
+    auditToJson(audit, options),
     'application/json',
   );
 }

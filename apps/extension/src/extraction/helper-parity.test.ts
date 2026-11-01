@@ -5,6 +5,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import {
   countParagraphs,
   countSentences,
+  countSyllables,
+  extractLeadText,
   fnv1a64Hex,
   tokenizeWords,
   topKeywords,
@@ -34,7 +36,7 @@ async function loadEmbeddedHelpers() {
   const { transformSync } = await import('esbuild');
   const snippet = transformSync(source.slice(start, end), { loader: 'ts' }).code;
   const factory = new Function(
-    `${snippet}; return { tokenize, topKeywords, fnv1a64Hex, countSentences: countSentencesEmb, countParagraphs: countParagraphsEmb };`,
+    `${snippet}; return { tokenize, topKeywords, fnv1a64Hex, countSentences: countSentencesEmb, countParagraphs: countParagraphsEmb, countSyllables: countSyllablesEmb, extractLeadText: extractLeadTextEmb };`,
   );
   return factory() as {
     tokenize: (text: string) => string[];
@@ -42,6 +44,8 @@ async function loadEmbeddedHelpers() {
     fnv1a64Hex: (text: string) => string;
     countSentences: (text: string) => number;
     countParagraphs: (text: string) => number;
+    countSyllables: (text: string) => number;
+    extractLeadText: (text: string, wordLimit: number, charLimit: number) => string;
   };
 }
 
@@ -68,6 +72,8 @@ describe('PRE-STEP: injector/seo-core helper parity', () => {
     expect(embedded.fnv1a64Hex(text)).toBe(fnv1a64Hex(text));
     expect(embedded.countSentences(text)).toBe(countSentences(text));
     expect(embedded.countParagraphs(text)).toBe(countParagraphs(text));
+    expect(embedded.countSyllables(text)).toBe(countSyllables(text));
+    expect(embedded.extractLeadText(text, 100, 800)).toBe(extractLeadText(text, 100, 800));
   }
 
   it.each(Object.entries(CORPUS))('parity over %s corpus', (name, text) => {

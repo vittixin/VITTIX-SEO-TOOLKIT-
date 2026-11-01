@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PageSnapshotSchema, type ImageEntry, type PageSnapshot } from './snapshot.js';
 import { SNAPSHOT_LIMITS, SNAPSHOT_SCHEMA_VERSION } from './constants.js';
 
-/** Full v4 image entry with defaulted performance attributes. */
+/** Full v5 image entry with defaulted performance attributes. */
 export function img(src: string, alt: string | null): ImageEntry {
   return {
     src,
@@ -85,6 +85,8 @@ export function buildSnapshot(overrides: Partial<PageSnapshot> = {}): PageSnapsh
       paragraphCount: 1,
       keywords: [{ term: 'example page', count: 2 }],
       sampleHash: '0'.repeat(16),
+      syllableCount: 58,
+      leadText: 'Example page lead excerpt.',
     },
     mixedContentSamples: [],
     faviconPresent: true,
@@ -95,10 +97,39 @@ export function buildSnapshot(overrides: Partial<PageSnapshot> = {}): PageSnapsh
   return { ...base, ...overrides };
 }
 
-describe('PageSnapshotSchema (v2)', () => {
-  it('accepts a valid v2 snapshot', () => {
+describe('PageSnapshotSchema (v5)', () => {
+  it('accepts a valid v5 snapshot', () => {
     const result = PageSnapshotSchema.safeParse(buildSnapshot());
     expect(result.success).toBe(true);
+  });
+
+  it('accepts a stored v4 snapshot and defaults v5 text summary fields', () => {
+    const v5 = buildSnapshot();
+    const v4Summary = Object.fromEntries(
+      Object.entries(v5.textSummary).filter(
+        ([key]) => key !== 'syllableCount' && key !== 'leadText',
+      ),
+    );
+    const parsed = PageSnapshotSchema.parse({
+      ...v5,
+      schemaVersion: 4,
+      textSummary: v4Summary,
+    });
+    expect(parsed.schemaVersion).toBe(4);
+    expect(parsed.textSummary.syllableCount).toBe(0);
+    expect(parsed.textSummary.leadText).toBe('');
+  });
+
+  it('enforces the lead-text character limit', () => {
+    const result = PageSnapshotSchema.safeParse(
+      buildSnapshot({
+        textSummary: {
+          ...buildSnapshot().textSummary,
+          leadText: 'x'.repeat(SNAPSHOT_LIMITS.leadTextChars + 1),
+        },
+      }),
+    );
+    expect(result.success).toBe(false);
   });
 
   it('still accepts legacy v1 snapshots (stored Phase 0 records)', () => {

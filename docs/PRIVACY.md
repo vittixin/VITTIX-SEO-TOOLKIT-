@@ -9,8 +9,13 @@ When — and only when — you click _Analyze Current Page_, the extension reads
 bounded snapshot of the current tab: title and head metadata (description,
 canonical, robots, viewport, charset, lang, Open Graph, twitter:card), the
 first 300 headings, first 500 images (src + alt), first 500 links
-(href/text/rel/target), and a capped body-text sample used only to count
-words. That is everything.
+(href/text/rel/target), and a capped body-text sample for word, sentence,
+keyword and approximate syllable counts. Snapshot v5 also stores the first
+100 visible body words (whitespace-normalized, maximum 800 characters) as a
+lead excerpt for keyword prominence. Hidden content is excluded using the
+extractor's documented hidden-element checks. These fields are stored only
+in local IndexedDB. The JSON export omits the excerpt unless you opt in with
+the “Include page text excerpt” checkbox; CSV exports never include it.
 
 ## What is never collected
 
@@ -23,6 +28,8 @@ words. That is everything.
 
 - Snapshots, analysis results and settings are stored in the extension's own
   **IndexedDB** on your machine (`vittix-seo` database via Dexie)
+- The v5 lead excerpt is page text. It remains local unless you explicitly
+  include it in a JSON export.
 - No cloud, no sync, no analytics, no telemetry, no crash reporting
 
 ## Network activity
@@ -77,8 +84,9 @@ Verified against the final production build (`pnpm build:chrome`, 2026-10-31):
 
 - **Stored page content** (site + single-page mode): title, head metadata,
   headings, image src/alt, link href/text/rel, hreflang, JSON-LD blocks and
-  a body-text sample for word counting — bounded by the caps documented in
-  SEO_RULES.md, stored locally in IndexedDB, never transmitted.
+  a bounded body-text sample plus a maximum 800-character visible lead
+  excerpt — bounded by the caps documented in SEO_RULES.md, stored locally
+  in IndexedDB, never transmitted by the extension.
 - **Single-page mode network scan**: the only network-capable API in the
   bundle is inside React DOM's internal `<link rel="preload">` helper,
   which the extension never renders — zero requests are made. (Strings

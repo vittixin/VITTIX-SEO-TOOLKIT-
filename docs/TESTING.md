@@ -83,8 +83,21 @@ in the production package.
 The remaining popup/dashboard/options smoke, pipeline, keyboard registration,
 stale dashboard state, and storage migration tests use the production build.
 Direct extension-page navigation is still not equivalent to clicking the
-toolbar action: production `activeTab` behavior is separately tested in the
-production-parity checks.
+toolbar action. Production-only parity checks now verify that analysis from
+the side panel does not see the active tab URL without that action gesture,
+and that a stored highlight request is rejected after the active tab changes
+origin. The test environment cannot synthesize Chrome's toolbar invocation;
+the popup's activeTab grant is therefore verified by the browser behavior and
+the required keyboard command is registered separately.
+
+Measured with the production manifest: `activeTab` is installed, but
+`chrome.permissions.contains({origins: ["https://fixture.test/*"]})` is false
+and a message-triggered analysis from the side-panel page returns
+`ERR_NO_TAB_URL` / `Active tab URL unavailable (no access granted).` The panel
+now directs users to the toolbar popup or Ctrl+Shift+U. After same-tab
+cross-origin navigation, Show on page returns a stale-audit message before
+calling `scripting.executeScript`; no host grant is present for the new
+origin.
 
 ### Running e2e
 

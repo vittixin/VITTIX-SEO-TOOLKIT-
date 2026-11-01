@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { extensionPageUrl, loadExtension } from './helpers/extension';
 import { highlightOnPage } from '../apps/extension/src/highlight/overlay';
+import { analyzeSnapshot } from '../packages/seo-core/src/analyze';
+import { buildSnapshot } from '../packages/seo-core/src/testing/fixtures';
+import { RULE_SET_VERSION } from '../packages/seo-core/src/rules';
 
 const SECTION_TITLES: Record<string, string> = {
   metadata: 'Metadata',
@@ -151,11 +154,135 @@ test.describe('Vittix SEO Toolkit smoke tests', () => {
   });
 
   test('side panel page renders without automatic analysis', async () => {
-    const { context, page, extensionId } = await loadExtension('e2e');
+    const { context, page, extensionId } = await loadExtension('production');
     try {
       await page.goto(extensionPageUrl(extensionId, 'panel.html'));
-      await expect(page.getByTestId('analyze-button')).toBeEnabled();
+      await expect(page.getByTestId('sidepanel-active-tab-help')).toBeVisible();
+      await expect(page.getByTestId('sidepanel-active-tab-help')).toContainText('Ctrl+Shift+U');
+      await expect(page.getByTestId('analyze-button')).toHaveCount(0);
       await expect(page.getByTestId('analysis-summary')).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('production side panel has no activeTab grant and explains the toolbar path', async () => {
+    const { context, page, extensionId } = await loadExtension('production');
+    await context.route('https://fixture.test/**', (route) =>
+      route.fulfill({ contentType: 'text/html', body: '<h1>Production permission probe</h1>' }),
+    );
+    try {
+      await page.goto(extensionPageUrl(extensionId, 'panel.html'));
+      await expect(page.getByTestId('sidepanel-active-tab-help')).toContainText(
+        'Click the Vittix toolbar icon and use Analyze, or press Ctrl+Shift+U',
+      );
+      const target = await context.newPage();
+      await target.goto('https://fixture.test/permission-probe');
+      await target.bringToFront();
+
+      const outcome = await page.evaluate(async () => {
+        const active = await chrome.tabs.query({ active: true, currentWindow: true });
+        const hasExplicitHost = await chrome.permissions.contains({
+          origins: ['https://fixture.test/*'],
+        });
+        const manifest = chrome.runtime.getManifest();
+        const response = await chrome.runtime.sendMessage({ type: 'vittix/analyze-active-tab' });
+        return {
+          activeUrl: active[0]?.url,
+          hasExplicitHost,
+          requiredActiveTab: manifest.permissions?.includes('activeTab') ?? false,
+          response,
+        };
+      });
+
+      console.log('production side panel permission probe', JSON.stringify(outcome));
+      // activeTab is installed, but no action/command gesture granted it for
+      // this tab, so Chrome withholds the tab URL from tabs.query.
+      expect(outcome.activeUrl).toBeUndefined();
+      expect(outcome.requiredActiveTab).toBe(true);
+      expect(outcome.hasExplicitHost).toBe(false);
+      expect(outcome.response.ok).toBe(false);
+      expect(outcome.response.error.code).toBe('ERR_NO_TAB_URL');
+      expect(outcome.response.error.message).toBe(
+        'Active tab URL unavailable (no access granted).',
+      );
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('production Show on page refuses a stale audit after same-tab cross-origin navigation', async () => {
+    const { context, page, extensionId } = await loadExtension('production');
+    await context.route('https://fixture.test/**', (route) =>
+      route.fulfill({ contentType: 'text/html', body: '<h1>Audited page</h1>' }),
+    );
+    await context.route('https://other.test/**', (route) =>
+      route.fulfill({ contentType: 'text/html', body: '<h1>Different page</h1>' }),
+    );
+    try {
+      await page.goto(extensionPageUrl(extensionId, 'popup.html'));
+      const target = await context.newPage();
+      await target.goto('https://fixture.test/audited');
+      await target.bringToFront();
+
+      const snapshot = buildSnapshot({
+        url: 'https://fixture.test/audited',
+        headings: [{ tag: 'h1', text: 'Audited page' }],
+      });
+      const record = {
+        url: snapshot.url,
+        title: snapshot.title,
+        analyzedAt: '2026-11-01T00:00:00.000Z',
+        ruleSetVersion: RULE_SET_VERSION,
+        profileId: 'standard',
+        snapshot,
+        result: analyzeSnapshot(snapshot),
+      };
+      const auditId = await page.evaluate(
+        (row) =>
+          new Promise<number>((resolve, reject) => {
+            const request = indexedDB.open('vittix-seo');
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+              const database = request.result;
+              const add = database
+                .transaction('audits', 'readwrite')
+                .objectStore('audits')
+                .add(row);
+              add.onsuccess = () => {
+                resolve(Number(add.result));
+                database.close();
+              };
+              add.onerror = () => reject(add.error);
+            };
+          }),
+        record,
+      );
+
+      await target.goto('https://other.test/different');
+      await target.bringToFront();
+      const outcome = await page.evaluate(async (id) => {
+        const active = await chrome.tabs.query({ active: true, currentWindow: true });
+        const hasHost = await chrome.permissions.contains({ origins: ['https://other.test/*'] });
+        const response = await chrome.runtime.sendMessage({
+          type: 'vittix/show-highlights',
+          auditId: id,
+        });
+        return { activeUrl: active[0]?.url, hasHost, response };
+      }, auditId);
+
+      console.log('production stale-highlight probe', JSON.stringify(outcome));
+      // The target page was navigated to other.test in the same tab; without
+      // a fresh user gesture Chrome withholds its URL and the stored audit is
+      // rejected before any scripting attempt.
+      expect(outcome.activeUrl).toBeUndefined();
+      expect(outcome.hasHost).toBe(false);
+      expect(outcome.response).toEqual({
+        ok: false,
+        message:
+          'The active page differs from this audit. Re-analyze the active page before showing highlights.',
+      });
+      await expect(target.getByRole('status')).toHaveCount(0);
     } finally {
       await context.close();
     }

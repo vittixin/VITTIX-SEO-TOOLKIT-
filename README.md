@@ -13,6 +13,7 @@ history lives in local IndexedDB until you delete or export it.
 ## Features
 
 - **One-click audit** from the toolbar popup (user-triggered `activeTab`; keyboard command Ctrl+Shift+U with score badge)
+- **Side-panel access note** � a click inside the panel cannot grant `activeTab`; start analysis from the toolbar icon or Ctrl+Shift+U.
 - **Metadata analyzer** — title (chars + estimated pixel width), description, canonical, viewport responsiveness, lang format, robots directives, hreflang, Open Graph/Twitter cards
 - **Heading analyzer** — single-h1 and outline-order checks
 - **Image analyzer** — alt coverage incl. decorative detection and quality heuristics

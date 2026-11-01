@@ -101,6 +101,12 @@ clicks Enable side panel in the popup. Declining leaves the popup and dashboard
 available. Opening the panel does not analyze a page; each analysis requires a
 separate user click. It uses the same local extraction and storage flow.
 
+Chrome grants `activeTab` access when you invoke Vittix from the toolbar or run
+Ctrl+Shift+U. A click inside the side panel does not grant page access; use the
+toolbar popup or shortcut to start analysis. Show on page also checks that the
+active tab is still on the audited origin and refuses stale cross-origin
+requests after navigation.
+
 Theme preference is stored with local settings and is not exported. The English
 message catalog contains static interface strings; page-derived evidence and
 rule guidance remain local and untranslated.

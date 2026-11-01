@@ -175,7 +175,18 @@ async function showAuditHighlights(auditId: number): Promise<{ ok: boolean; mess
   if (!audit) return { ok: false, message: 'Saved audit not found — re-analyze this page.' };
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (tab?.id === undefined) {
-    return { ok: false, message: 'Open the popup on the page to use Show on page.' };
+    return {
+      ok: false,
+      message: 'Open the popup on the analyzed page to use Show on page.',
+    };
+  }
+  const activeUrl = tab.url ?? tab.pendingUrl;
+  if (!activeUrl || new URL(activeUrl).origin !== new URL(audit.url).origin) {
+    return {
+      ok: false,
+      message:
+        'The active page differs from this audit. Re-analyze the active page before showing highlights.',
+    };
   }
   const locators = [...audit.snapshot.headings, ...audit.snapshot.images, ...audit.snapshot.links]
     .map((entry) => entry.locator)
@@ -192,7 +203,11 @@ async function showAuditHighlights(auditId: number): Promise<{ ok: boolean; mess
       message: 'Highlights shown on the page. Dismiss the page notice to clear them.',
     };
   } catch {
-    return { ok: false, message: 'Open the popup on the page to use Show on page.' };
+    return {
+      ok: false,
+      message:
+        'Page access is unavailable. Click the toolbar icon or use Ctrl+Shift+U to grant page access, then analyze this page again.',
+    };
   }
 }
 

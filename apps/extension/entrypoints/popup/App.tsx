@@ -101,23 +101,37 @@ export function App({ sidePanel = false }: { sidePanel?: boolean }) {
           )}
         </div>
 
-        <button
-          type="button"
-          data-testid="analyze-button"
-          onClick={() => void handleAnalyze()}
-          disabled={status === 'analyzing'}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {status === 'analyzing' ? (
-            <>
-              <RefreshCw className="size-4 animate-spin" aria-hidden /> Inspecting page…
-            </>
-          ) : status === 'done' ? (
-            <>Re-analyze Page</>
-          ) : (
-            <>{t('buttonAnalyze')}</>
-          )}
-        </button>
+        {sidePanel ? (
+          <aside
+            data-testid="sidepanel-active-tab-help"
+            className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+          >
+            <p className="font-semibold">Start analysis from the page</p>
+            <p className="mt-1">
+              Chrome grants page access after you invoke Vittix from the toolbar. Click the Vittix
+              toolbar icon and use Analyze, or press Ctrl+Shift+U to analyze directly. A click in
+              this side panel cannot grant activeTab access.
+            </p>
+          </aside>
+        ) : (
+          <button
+            type="button"
+            data-testid="analyze-button"
+            onClick={() => void handleAnalyze()}
+            disabled={status === 'analyzing'}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {status === 'analyzing' ? (
+              <>
+                <RefreshCw className="size-4 animate-spin" aria-hidden /> Inspecting page…
+              </>
+            ) : status === 'done' ? (
+              <>Re-analyze Page</>
+            ) : (
+              <>{t('buttonAnalyze')}</>
+            )}
+          </button>
+        )}
 
         {status === 'error' && errorMessage ? (
           <div

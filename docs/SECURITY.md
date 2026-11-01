@@ -5,7 +5,8 @@
 The extension requests **exactly**:
 
 - `activeTab` — temporary access to the current tab, granted when the user
-  clicks the toolbar action; revoked on navigation
+  clicks the toolbar action or invokes the keyboard command; Chrome withholds
+  access after a cross-origin navigation. A side-panel click does not grant it.
 - `scripting` — required to run the one-shot extraction function in that tab
 
 Explicitly **not** requested: `tabs`, `history`, `downloads`, `storage`,

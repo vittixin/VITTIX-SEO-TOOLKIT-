@@ -64,6 +64,7 @@ function bundleReportPlugin(): Plugin {
 export const BASE_MANIFEST = {
   name: 'Vittix SEO Toolkit',
   short_name: 'Vittix',
+  default_locale: 'en',
   description:
     'Privacy-first SEO audits for metadata, headings, images and links. All analysis is local — nothing ever leaves your browser.',
   permissions: ['activeTab', 'scripting'],

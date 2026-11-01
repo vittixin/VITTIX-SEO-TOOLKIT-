@@ -3,6 +3,8 @@ import { browser } from 'wxt/browser';
 import { RULE_SET_VERSION } from '@vittix/seo-core';
 import { SITE_REDIRECT_DISCLOSURE } from '@vittix/shared';
 import { SettingsPanel } from '@/src/components/SettingsPanel';
+import { ThemeToggle } from '@/src/components/ThemeToggle';
+import { t } from '@/src/i18n';
 
 const PRIVACY_POINTS: { title: string; body: string }[] = [
   {
@@ -40,6 +42,11 @@ export function App() {
         </header>
 
         <SettingsPanel />
+
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold text-slate-900">{t('headingAppearance')}</h2>
+          <ThemeToggle />
+        </section>
 
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900">

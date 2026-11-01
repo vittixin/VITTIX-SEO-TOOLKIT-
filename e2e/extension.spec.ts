@@ -194,6 +194,50 @@ test.describe('Vittix SEO Toolkit smoke tests', () => {
     }
   });
 
+  test('theme preference is saved and applied before dashboard content', async () => {
+    const { context, page, extensionId } = await loadExtension('e2e');
+    try {
+      await page.goto(extensionPageUrl(extensionId, 'dashboard.html'));
+      await page.getByTestId('nav-settings').click();
+      const theme = page.getByLabel('Theme');
+      await expect(theme).toBeVisible();
+      await theme.selectOption('dark');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+      await expect
+        .poll(() => page.evaluate(() => localStorage.getItem('vittix-theme')))
+        .toBe('dark');
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              new Promise<string | undefined>((resolve) => {
+                const request = indexedDB.open('vittix-seo');
+                request.onsuccess = () => {
+                  const database = request.result;
+                  const get = database
+                    .transaction('settings')
+                    .objectStore('settings')
+                    .get('app-settings');
+                  get.onsuccess = () => {
+                    resolve(get.result?.value?.theme);
+                    database.close();
+                  };
+                };
+              }),
+          ),
+        )
+        .toBe('dark');
+      await page.reload();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+      await page.getByTestId('nav-settings').click();
+      await expect(page.getByLabel('Theme')).toHaveValue('dark');
+      await page.getByLabel('Theme').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: 'docs/acceptance-evidence/d6-theme-dark.png', fullPage: true });
+    } finally {
+      await context.close();
+    }
+  });
+
   test('options page renders settings, clear-data flow and privacy information', async () => {
     const { context, page, extensionId } = await loadExtension();
     try {

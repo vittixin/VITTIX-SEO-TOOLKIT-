@@ -55,10 +55,32 @@ export async function launchExtensionContext(
   });
 
   // The MV3 service worker registers at launch; it may stop again quickly,
-  // so grab the ID as soon as it appears.
+  // so grab the ID as soon as it appears. Recent Chromium versions defer
+  // service-worker startup until an extension page is opened, so use the
+  // browser's test-only extension inventory to wake it when needed.
   let worker = context.serviceWorkers()[0] ?? null;
   if (!worker) {
-    worker = await context.waitForEvent('serviceworker', { timeout: 20_000 }).catch(() => null);
+    const inventory = await context.newPage();
+    await inventory.goto('chrome://extensions-internals');
+    const records = JSON.parse(await inventory.locator('body').innerText()) as {
+      id: string;
+      path: string;
+      name: string;
+    }[];
+    const normalizePath = (value: string) => value.replaceAll('/', '\\').toLowerCase();
+    const extension =
+      records.find((record) => normalizePath(record.path) === normalizePath(extensionDir)) ??
+      records.find((record) => record.name.startsWith('Vittix SEO Toolkit'));
+    await inventory.close();
+    if (extension) {
+      const wakePage = await context.newPage();
+      await wakePage.goto(`chrome-extension://${extension.id}/dashboard.html`);
+      worker = context.serviceWorkers()[0] ?? null;
+      if (!worker) {
+        worker = await context.waitForEvent('serviceworker', { timeout: 20_000 }).catch(() => null);
+      }
+      await wakePage.close();
+    }
   }
   if (!worker) {
     await context.close();

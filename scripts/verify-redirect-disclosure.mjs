@@ -4,6 +4,11 @@ const sourcePath = 'packages/shared/src/site.ts';
 const source = readFileSync(sourcePath, 'utf8');
 const disclosure = source.match(/export const SITE_REDIRECT_DISCLOSURE =\s*'([^']+)';/)?.[1];
 if (!disclosure) throw new Error(`Could not read SITE_REDIRECT_DISCLOSURE from ${sourcePath}`);
+const localePath = 'apps/extension/public/_locales/en/messages.json';
+const localeMessages = JSON.parse(readFileSync(localePath, 'utf8'));
+if (localeMessages.siteConsentRedirect?.message !== disclosure) {
+  throw new Error('English siteConsentRedirect message must match SITE_REDIRECT_DISCLOSURE');
+}
 
 const requiredDocs = [
   'README.md',

@@ -13,6 +13,9 @@
   keeps locator values empty.
 - Added an opt-in side panel behind the optional `sidePanel` permission. The
   panel reuses the popup's user-triggered analyze flow and does not auto-run.
+- Added persisted light/dark/system appearance settings and an early theme
+  bootstrap for popup, dashboard, options, and side panel. Added English Chrome
+  message-catalog groundwork for navigation, common actions, and consent text.
 
 ## Unreleased — Phase C redirect observations, duplicate heuristics, link graph, and comparisons
 

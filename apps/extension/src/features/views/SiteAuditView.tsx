@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Globe, Info, OctagonX, Play, RefreshCw, ShieldQuestion, Trash2, X } from 'lucide-react';
 import { SITE_LIMITS, SITE_REDIRECT_DISCLOSURE } from '@vittix/shared';
+import { t } from '@/src/i18n';
 import { isDevelopmentOrigin } from '@vittix/seo-core';
 import type { SitePageRecord } from '@vittix/shared';
 import { useSiteAudit } from '@/src/features/useSiteAudit';
@@ -19,6 +20,7 @@ const STATUS_BADGES: Record<string, string> = {
 };
 
 export function SiteAuditView() {
+  const redirectDisclosure = t('siteConsentRedirect') || SITE_REDIRECT_DISCLOSURE;
   const site = useSiteAudit();
   const [confirmClear, setConfirmClear] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -42,9 +44,9 @@ export function SiteAuditView() {
       <div className="flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
         <Info className="mt-0.5 size-5 shrink-0" aria-hidden />
         <p>
-          <strong>Site mode performs network activity.</strong> It uses credential-free GET
-          requests, stores and analyzes results locally, and honors robots rules for discovered
-          URLs. {SITE_REDIRECT_DISCLOSURE}
+          <strong>{t('headingSiteConsent')}</strong> It uses credential-free GET requests, stores
+          and analyzes results locally, and honors robots rules for discovered URLs.{' '}
+          {redirectDisclosure}
         </p>
       </div>
 
@@ -112,7 +114,7 @@ export function SiteAuditView() {
                   onChange={(event) => site.setConsented(event.target.checked)}
                   aria-label="Confirm redirect request disclosure for this audit"
                 />
-                <span>{SITE_REDIRECT_DISCLOSURE}</span>
+                <span>{redirectDisclosure}</span>
               </label>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
@@ -203,7 +205,7 @@ export function SiteAuditView() {
                         onChange={(event) => site.setConsented(event.target.checked)}
                         aria-label="Confirm redirect request disclosure before resuming this audit"
                       />
-                      <span>{SITE_REDIRECT_DISCLOSURE}</span>
+                      <span>{redirectDisclosure}</span>
                     </label>
                     <button
                       type="button"

@@ -101,6 +101,10 @@ clicks Enable side panel in the popup. Declining leaves the popup and dashboard
 available. Opening the panel does not analyze a page; each analysis requires a
 separate user click. It uses the same local extraction and storage flow.
 
+Theme preference is stored with local settings and is not exported. The English
+message catalog contains static interface strings; page-derived evidence and
+rule guidance remain local and untranslated.
+
 Site audits accept HTTPS origins and, for development only, `http://localhost`
 or `http://127.0.0.1`. These are optional runtime host patterns; Chrome match
 patterns ignore ports, so approving either host can cover any port on that host.

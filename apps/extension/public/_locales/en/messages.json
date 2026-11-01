@@ -1,0 +1,56 @@
+{
+  "navOverview": {
+    "message": "Overview"
+  },
+  "navMetadata": {
+    "message": "Metadata"
+  },
+  "navHeadings": {
+    "message": "Headings"
+  },
+  "navImages": {
+    "message": "Images"
+  },
+  "navLinks": {
+    "message": "Links"
+  },
+  "navFindings": {
+    "message": "Findings"
+  },
+  "navHistory": {
+    "message": "History"
+  },
+  "navSite": {
+    "message": "Site Audit"
+  },
+  "navPreviews": {
+    "message": "Previews"
+  },
+  "navContent": {
+    "message": "Content"
+  },
+  "navExport": {
+    "message": "Export"
+  },
+  "navSettings": {
+    "message": "Settings"
+  },
+  "buttonAnalyze": {
+    "message": "Analyze Current Page"
+  },
+  "buttonShowOnPage": {
+    "message": "Show on page"
+  },
+  "headingSiteConsent": {
+    "message": "Site mode performs network activity."
+  },
+  "siteConsentRedirect": {
+    "message": "A redirect on the audited site may cause the browser to send one credential-free GET request to the redirect destination before the extension can check its origin, permission, or robots rules. A redirect chain may cause one such request per hop. The extension discards a destination response body when its final URL is outside the approved origin or disallowed by robots.txt; it does not analyze or enqueue that page. For localhost or 127.0.0.1 audits, a redirect can reach another local-network service."
+  },
+  "headingAppearance": {
+    "message": "Appearance"
+  },
+  "labelTheme": {
+    "message": "Theme"
+  }
+}

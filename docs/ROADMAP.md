@@ -1,5 +1,10 @@
 # Roadmap
 
+## Theme and i18n groundwork
+
+- Popup, dashboard, options and side-panel documents load the saved light/dark/system theme before their app modules. Settings persist the choice locally.
+- Static navigation, common actions, and site redirect consent use Chrome's English message catalog. Rule evidence and remediation remain English in seo-core.
+
 ## Phase D Part 1 — localhost/dev-origin support
 
 - Added optional site-audit origins for `http://localhost/*` and

@@ -8,6 +8,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { browser } from 'wxt/browser';
+import { t } from '@/src/i18n';
 import { FRIENDLY_ERROR_MESSAGES, type AnalyzeSuccess, type ErrorCode } from '@vittix/shared';
 import { ScoreRing } from '@/src/components/ScoreRing';
 import { isAnalyzableUrl, pageHost } from '@/src/extraction/guards';
@@ -114,7 +115,7 @@ export function App({ sidePanel = false }: { sidePanel?: boolean }) {
           ) : status === 'done' ? (
             <>Re-analyze Page</>
           ) : (
-            <>Analyze Current Page</>
+            <>{t('buttonAnalyze')}</>
           )}
         </button>
 
@@ -140,7 +141,7 @@ export function App({ sidePanel = false }: { sidePanel?: boolean }) {
             className="w-full rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
             aria-label="Show analyzed elements on the page"
           >
-            Show on page
+            {t('buttonShowOnPage')}
           </button>
         ) : null}
         {highlightMessage ? (

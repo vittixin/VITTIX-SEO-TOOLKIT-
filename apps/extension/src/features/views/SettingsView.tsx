@@ -2,6 +2,8 @@ import { SettingsPanel } from '@/src/components/SettingsPanel';
 import { useEffect, useMemo, useState } from 'react';
 import { RULE_IDS, SCORING_PROFILES, type ProfileId } from '@vittix/seo-core';
 import type { AuditRecord, Severity } from '@vittix/shared';
+import { ThemeToggle } from '@/src/components/ThemeToggle';
+import { t } from '@/src/i18n';
 import {
   getOriginRuleSettings,
   resetOriginRuleSettings,
@@ -186,6 +188,10 @@ export function SettingsView({ audit }: { audit?: AuditRecord | null }) {
         ) : null}
       </section>
       <SettingsPanel />
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 className="mb-3 font-semibold">{t('headingAppearance')}</h3>
+        <ThemeToggle />
+      </section>
     </div>
   );
 }

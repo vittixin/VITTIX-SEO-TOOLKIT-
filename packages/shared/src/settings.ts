@@ -45,6 +45,7 @@ export const DEFAULT_EXPORT_BRANDING: ExportBranding = {
  * Site-audit fields are optional-with-defaults so pre-Phase-3 rows parse.
  */
 export const SettingsSchema = z.object({
+  theme: z.enum(['light', 'dark', 'system']).default('system'),
   /** Days to keep audits. 0 = keep forever. */
   historyRetentionDays: z.number().int().min(0).max(3650),
   /** Hard cap on stored audits (oldest pruned first). */
@@ -68,6 +69,7 @@ export const SettingsSchema = z.object({
 export type Settings = z.infer<typeof SettingsSchema>;
 
 export const DEFAULT_SETTINGS: Settings = {
+  theme: 'system',
   historyRetentionDays: 90,
   maxStoredAudits: 200,
   siteAuditMaxPages: SITE_LIMITS.maxPagesDefault,

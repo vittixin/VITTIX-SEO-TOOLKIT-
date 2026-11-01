@@ -18,6 +18,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { browser } from 'wxt/browser';
+import { t } from '@/src/i18n';
 import { useAudits } from '@/src/features/useAudits';
 import { OverviewView } from '@/src/features/views/OverviewView';
 import { analyzeSnapshot, isDevelopmentOrigin } from '@vittix/seo-core';
@@ -74,18 +75,18 @@ type Section =
   | 'settings';
 
 const NAV: { id: Section; label: string; icon: LucideIcon }[] = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'metadata', label: 'Metadata', icon: FileText },
-  { id: 'headings', label: 'Headings', icon: Heading },
-  { id: 'images', label: 'Images', icon: Image },
-  { id: 'links', label: 'Links', icon: Link2 },
-  { id: 'findings', label: 'Findings', icon: ListChecks },
-  { id: 'history', label: 'Audit History', icon: History },
-  { id: 'site', label: 'Site Audits', icon: Globe },
-  { id: 'previews', label: 'Previews', icon: Newspaper },
-  { id: 'content', label: 'Content', icon: BookOpen },
-  { id: 'export', label: 'Export', icon: Download },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'overview', label: t('navOverview'), icon: LayoutDashboard },
+  { id: 'metadata', label: t('navMetadata'), icon: FileText },
+  { id: 'headings', label: t('navHeadings'), icon: Heading },
+  { id: 'images', label: t('navImages'), icon: Image },
+  { id: 'links', label: t('navLinks'), icon: Link2 },
+  { id: 'findings', label: t('navFindings'), icon: ListChecks },
+  { id: 'history', label: t('navHistory'), icon: History },
+  { id: 'site', label: t('navSite'), icon: Globe },
+  { id: 'previews', label: t('navPreviews'), icon: Newspaper },
+  { id: 'content', label: t('navContent'), icon: BookOpen },
+  { id: 'export', label: t('navExport'), icon: Download },
+  { id: 'settings', label: t('navSettings'), icon: Settings },
 ];
 
 const SECTION_TITLES: Record<Section, { title: string; subtitle: string }> = {

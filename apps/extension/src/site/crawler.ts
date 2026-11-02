@@ -337,16 +337,27 @@ async function loadRobots(
         status: 'allowed',
         blocked: true,
         blockReason:
-          'robots.txt redirect metadata is opaque in this browser; the redirect was not followed.',
+          'The site redirects /robots.txt, but the browser hides the destination. Open the final robots.txt in a tab, then start the audit on the origin it redirects to.',
       };
-    if (response.status >= 300 && response.status < 400)
+    if (response.status >= 300 && response.status < 400) {
+      let destination: string | null = null;
+      const location = response.headers.get('location');
+      if (location) {
+        try {
+          destination = new URL(location, robotsUrl).href.slice(0, 500);
+        } catch {
+          destination = null;
+        }
+      }
       return {
         policy: EMPTY_ROBOTS_POLICY,
         status: 'allowed',
         blocked: true,
-        blockReason:
-          'robots.txt returned a redirect; redirects are not followed when destination safety cannot be verified.',
+        blockReason: destination
+          ? `The site redirects /robots.txt with HTTP ${response.status} to ${destination}. Open that final robots.txt in a tab, then start the audit on the origin it redirects to.`
+          : `The site redirects /robots.txt with HTTP ${response.status}, but did not expose a destination. Open the final robots.txt in a tab, then start the audit on the origin it redirects to.`,
       };
+    }
     // Fail closed: a robots.txt redirect that leaves the origin (or any
     // non-http(s) final URL) is treated as a blocked audit, not as "no
     // rules" — the fetched content is not trusted.
@@ -357,7 +368,7 @@ async function loadRobots(
           policy: EMPTY_ROBOTS_POLICY,
           status: 'allowed',
           blocked: true,
-          blockReason: `robots.txt redirected off-origin (to ${finalUrl.slice(0, 120)}) — the audit was blocked for safety.`,
+          blockReason: `The site redirects /robots.txt to ${finalUrl.slice(0, 500)}. Open that final robots.txt in a tab, then start the audit on the origin it redirects to.`,
         };
       }
     } catch {

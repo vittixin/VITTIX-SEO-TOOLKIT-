@@ -806,6 +806,57 @@ describe('Phase 4 — permission enforcement (fail closed)', () => {
 });
 
 describe('Phase 4 — robots redirect fail-closed', () => {
+  it('explains how to proceed when the browser hides the robots redirect destination', async () => {
+    const fetchImpl = vi.fn((input: string | URL) => {
+      if (String(input).endsWith('/robots.txt')) {
+        return Promise.resolve({
+          type: 'opaqueredirect',
+          status: 0,
+          ok: false,
+          url: `${ORIGIN}/robots.txt`,
+          headers: new Headers(),
+        } as unknown as Response);
+      }
+      return Promise.resolve(htmlResponse('<p>must not fetch</p>'));
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+
+    const session = await getSiteSession(sessionId);
+    expect(session?.status).toBe('failed');
+    expect(session?.stopReason).toBe(
+      'The site redirects /robots.txt, but the browser hides the destination. Open the final robots.txt in a tab, then start the audit on the origin it redirects to.',
+    );
+  });
+
+  it('reports a visible robots redirect status and destination with remediation', async () => {
+    const destination = 'https://redirected.test/robots.txt';
+    const fetchImpl = vi.fn((input: string | URL) => {
+      if (String(input).endsWith('/robots.txt')) {
+        return Promise.resolve(
+          new Response(null, { status: 302, headers: { location: destination } }),
+        );
+      }
+      return Promise.resolve(htmlResponse('<p>must not fetch</p>'));
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+
+    const session = await getSiteSession(sessionId);
+    expect(session?.status).toBe('failed');
+    expect(session?.stopReason).toBe(
+      `The site redirects /robots.txt with HTTP 302 to ${destination}. Open that final robots.txt in a tab, then start the audit on the origin it redirects to.`,
+    );
+  });
+
   it('blocks the audit when robots.txt redirects off-origin', async () => {
     const fetchImpl = vi.fn((input: string | URL) => {
       if (String(input).endsWith('/robots.txt')) {
@@ -822,7 +873,8 @@ describe('Phase 4 — robots redirect fail-closed', () => {
 
     const session = await getSiteSession(sessionId);
     expect(session?.status).toBe('failed');
-    expect(session?.stopReason).toContain('off-origin');
+    expect(session?.stopReason).toContain('redirects /robots.txt to https://evil.test/robots.txt');
+    expect(session?.stopReason).toContain('start the audit on the origin it redirects to');
     const pageFetches = fetchImpl.mock.calls.filter(
       ([input]) => !String(input).endsWith('/robots.txt'),
     );

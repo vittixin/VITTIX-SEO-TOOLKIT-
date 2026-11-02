@@ -1,6 +1,6 @@
 {
   "name": "@vittix/shared",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "private": true,
   "type": "module",
   "description": "Shared Zod schemas, TypeScript types and constants for Vittix SEO Toolkit.",

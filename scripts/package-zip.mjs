@@ -59,7 +59,10 @@ function walk(dir) {
 }
 walk(BUILD_DIR);
 
-const version = manifest.version;
+// Chrome's machine-readable manifest version must stay numeric. WXT sets
+// version_name from the extension package's prerelease version, so use that
+// display version for the downloadable artifact filename.
+const version = manifest.version_name ?? manifest.version;
 const zipPath = resolve(OUT_DIR, `vittix-seo-toolkit-${version}-chrome.zip`);
 if (existsSync(zipPath)) {
   console.log(`removing previous ${basename(zipPath)}`);

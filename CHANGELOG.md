@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.0-rc.1 — 2026-11-02
+
+- Prepared the first release candidate with production-parity checks, a
+  deterministic stale-highlight test, and a 10-run green e2e soak.
+- Added light-theme and non-text contrast checks and raised semantic muted,
+  control, danger, and score-ring tokens to the measured thresholds.
+- The optional side panel now displays the latest locally stored audit and
+  refreshes after a user-started analysis is saved. Opening it does not read a
+  page or start an audit.
+- Added store permission explanations, a standalone privacy policy, a manual
+  Chrome acceptance checklist, and five production 1280x800 store screenshots.
+- No Phase D background crawling or scheduled audits are included.
+
 ## Unreleased — Phase D Part 1
 
 - Added opt-in site audits for only `http://localhost/*` and

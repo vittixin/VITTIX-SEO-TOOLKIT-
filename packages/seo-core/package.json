@@ -1,6 +1,6 @@
 {
   "name": "@vittix/seo-core",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "private": true,
   "type": "module",
   "description": "Pure TypeScript SEO analyzers, rule engine, scoring engine and export serializers for Vittix SEO Toolkit.",

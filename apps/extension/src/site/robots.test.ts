@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { Worker } from 'node:worker_threads';
+import { fileURLToPath } from 'node:url';
 import { parseRobotsTxt, PRODUCT_TOKEN } from './robots';
 
 /**
@@ -7,6 +9,57 @@ import { parseRobotsTxt, PRODUCT_TOKEN } from './robots';
  */
 
 const policy = (body: string) => parseRobotsTxt(body);
+
+const matcherWorkerSource = `
+const { parentPort, workerData } = require('node:worker_threads');
+const fs = require('node:fs');
+const esbuild = require('esbuild');
+esbuild.transform(fs.readFileSync(workerData.sourcePath, 'utf8'), { loader: 'ts', format: 'esm' })
+  .then(async ({ code }) => {
+    const moduleUrl = 'data:text/javascript;base64,' + Buffer.from(code).toString('base64');
+    const { parseRobotsTxt } = await import(moduleUrl);
+    const policy = parseRobotsTxt('User-agent: VittixBot\\nDisallow: ' + workerData.pattern);
+    parentPort.postMessage({ ready: true });
+    const started = performance.now();
+    const allowed = policy.allows(workerData.path);
+    parentPort.postMessage({ allowed, elapsedMs: performance.now() - started });
+  })
+  .catch((error) => { throw error; });
+`;
+
+function measureMatcher(pattern: string, path: string): Promise<number> {
+  const worker = new Worker(matcherWorkerSource, {
+    eval: true,
+    workerData: {
+      sourcePath: fileURLToPath(new URL('./robots.ts', import.meta.url)),
+      pattern,
+      path,
+    },
+  });
+  return new Promise((resolve, reject) => {
+    let timeout = setTimeout(() => {
+      void worker.terminate();
+      reject(new Error('robots matcher worker did not initialize'));
+    }, 5_000);
+    worker.on('message', (result: { ready?: boolean; elapsedMs?: number }) => {
+      if (result.ready) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          void worker.terminate();
+          reject(new Error('robots matcher exceeded 100 ms'));
+        }, 100);
+        return;
+      }
+      clearTimeout(timeout);
+      void worker.terminate();
+      resolve(result.elapsedMs!);
+    });
+    worker.once('error', (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+  });
+}
 
 describe('robots grouping', () => {
   it('consecutive User-agent lines form ONE group', () => {
@@ -112,6 +165,34 @@ describe('robots matching details', () => {
   it('ignores rules that appear before any User-agent line', () => {
     const p = policy('Disallow: /\nUser-agent: *\nDisallow: /x\n');
     expect(p.allows('/')).toBe(true);
+  });
+});
+
+describe('robots matching complexity and input limits', () => {
+  it('matches a 30-star pattern against a 5,000-character path in under 50 ms', async () => {
+    const elapsedMs = await measureMatcher('/' + '*'.repeat(30), '/' + 'a'.repeat(4_999));
+    console.info(`30-star robots matcher: ${elapsedMs.toFixed(3)} ms`);
+    expect(elapsedMs).toBeLessThan(50);
+  });
+
+  it('matches an adversarial repeated-literal pattern against a long path in under 50 ms', async () => {
+    const elapsedMs = await measureMatcher('/*a*a*a*a*a*b', '/' + 'a'.repeat(4_999));
+    console.info(`adversarial robots matcher: ${elapsedMs.toFixed(3)} ms`);
+    expect(elapsedMs).toBeLessThan(50);
+  });
+
+  it('ignores patterns longer than 2,000 characters', () => {
+    const longPath = '/' + 'a'.repeat(2_000);
+    const p = policy(`User-agent: VittixBot\nDisallow: ${longPath}\n`);
+    expect(p.allows(longPath)).toBe(true);
+  });
+
+  it('ignores rules after the first 10,000 in a group', () => {
+    const rules = Array.from({ length: 10_000 }, (_, index) => `Disallow: /other-${index}`).join(
+      '\n',
+    );
+    const p = policy(`User-agent: VittixBot\n${rules}\nDisallow: /target\n`);
+    expect(p.allows('/target')).toBe(true);
   });
 });
 

@@ -42,6 +42,8 @@ interface RobotsGroup {
 
 /** Our crawler's product token — groups match by case-insensitive prefix. */
 export const PRODUCT_TOKEN = 'VittixBot';
+const MAX_PATTERN_LENGTH = 2_000;
+const MAX_RULES_PER_GROUP = 10_000;
 
 /**
  * Normalize a path for matching: percent-decode (best-effort, leaving the
@@ -56,27 +58,53 @@ function normalizePath(pathWithQuery: string): string {
   }
 }
 
-/** Convert a robots pattern (`*` wildcard, optional trailing `$`) to a regex. */
-function patternToRegex(pattern: string): RegExp {
-  let source = '';
-  for (const char of pattern) {
-    if (char === '*') source += '.*';
-    else source += char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Greedy two-pointer glob match; `*` spans any chars and a final `$` anchors end. */
+function globMatches(pattern: string, text: string): boolean {
+  const anchored = pattern.endsWith('$');
+  const limit = anchored ? pattern.length - 1 : pattern.length;
+  let patternIndex = 0;
+  let textIndex = 0;
+  let lastStarIndex = -1;
+  let lastStarTextIndex = -1;
+
+  while (textIndex < text.length) {
+    if (patternIndex === limit && !anchored) return true;
+    const char = pattern[patternIndex];
+    if (char === '*') {
+      // Collapse adjacent wildcards while remembering the final star for
+      // greedy backtracking. This avoids regex compilation and regex backtracking.
+      while (patternIndex + 1 < limit && pattern[patternIndex + 1] === '*') patternIndex++;
+      lastStarIndex = patternIndex;
+      lastStarTextIndex = textIndex;
+      patternIndex++;
+      continue;
+    }
+    if (patternIndex < limit && char === text[textIndex]) {
+      patternIndex++;
+      textIndex++;
+      continue;
+    }
+    if (lastStarIndex !== -1) {
+      patternIndex = lastStarIndex + 1;
+      textIndex = ++lastStarTextIndex;
+      continue;
+    }
+    return false;
   }
-  if (source.endsWith('\\$')) source = source.slice(0, -2) + '$';
-  return new RegExp(`^${source}`);
+
+  while (patternIndex < limit && pattern[patternIndex] === '*') patternIndex++;
+  return patternIndex === limit;
 }
 
 function patternMatches(pattern: string, normalizedPath: string, rawPath: string): boolean {
   // RFC 9309 crawlers match the DECODED path against the DECODED pattern;
   // testing the raw forms too keeps the original escapes significant (e.g.
   // a pattern containing a literal %2F must not suddenly match a slash).
-  const rawRegex = patternToRegex(pattern);
-  if (rawRegex.test(rawPath) || rawRegex.test(normalizedPath)) return true;
+  if (globMatches(pattern, rawPath) || globMatches(pattern, normalizedPath)) return true;
   const decodedPattern = normalizePath(pattern);
   if (decodedPattern !== pattern) {
-    const decodedRegex = patternToRegex(decodedPattern);
-    if (decodedRegex.test(normalizedPath) || decodedRegex.test(rawPath)) return true;
+    if (globMatches(decodedPattern, normalizedPath) || globMatches(decodedPattern, rawPath))
+      return true;
   }
   return false;
 }
@@ -155,9 +183,21 @@ export function parseRobotsTxt(text: string): RobotsPolicy {
 
     if (field === 'disallow') {
       // Empty Disallow in a group means "allow everything".
-      if (value !== '') current.rules.push({ allow: false, pattern: value });
+      if (
+        value !== '' &&
+        value.length <= MAX_PATTERN_LENGTH &&
+        current.rules.length < MAX_RULES_PER_GROUP
+      ) {
+        current.rules.push({ allow: false, pattern: value });
+      }
     } else if (field === 'allow') {
-      if (value !== '') current.rules.push({ allow: true, pattern: value });
+      if (
+        value !== '' &&
+        value.length <= MAX_PATTERN_LENGTH &&
+        current.rules.length < MAX_RULES_PER_GROUP
+      ) {
+        current.rules.push({ allow: true, pattern: value });
+      }
     } else if (field === 'crawl-delay') {
       const seconds = Number(value);
       if (Number.isFinite(seconds) && seconds >= 0) {

@@ -12,3 +12,5 @@ The initial scan found 126 low contrast nodes:
 Muted text, controls, and score-ring tracks now use semantic tokens. Danger text, surfaces, and borders use `--vittix-text-danger`, `--vittix-surface-danger`, and `--vittix-border-danger`. Both themes have explicit token values.
 
 `dark-theme/contrast-failures.json` records the final measured counts and any failing elements. The production-build e2e computes contrast for rendered RGB, sRGB, and OKLCH colors and fails below the WCAG thresholds.
+
+A separate production-build fixture test seeds a stored audit so the score ring and severity badges are present. In both themes it measured both score-ring strokes at 3:1 or higher and 50 severity badges at 4.5:1 or higher. Light theme score-ring ratios were 4.76:1 and 3.77:1; dark theme ratios were 5.71:1 and 3.88:1. The lowest severity-badge text ratio was 4.72:1 in both themes. This supplements the view matrix, whose empty-audit state does not render these components.

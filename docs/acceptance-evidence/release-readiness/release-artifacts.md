@@ -4,8 +4,8 @@ Prepared 2026-11-02. This is a local release candidate only; it was not
 published or pushed.
 
 - Archive: `apps/extension/.output/vittix-seo-toolkit-1.0.0-rc.1-chrome.zip`
-- Size: 341,066 bytes (333.1 KiB)
-- SHA-256: `c5656e5ca52a104c1ccc2ceb91c90b5ec1a11ef87687afaf2cbcd085b326d25c`
+- Size: 341,062 bytes (333.1 KiB)
+- SHA-256: `9c8eaca300bc8c7da5fec09cd94910d1c499c0d89d8c59cc45d5b50f0a4cb01b`
 - Archive contents: 41 files; no source maps, TypeScript, test fixtures,
   `.env`, test results, or Playwright reports.
 - The Chrome-required numeric manifest `version` is `1.0.0`; its display

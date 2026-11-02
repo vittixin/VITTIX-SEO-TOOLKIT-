@@ -23,6 +23,7 @@ export function ScoreRing({ score, size = 150 }: { score: number; size?: number 
 
   return (
     <div
+      data-testid="score-ring"
       className="relative inline-flex items-center justify-center"
       style={{ width: size, height: size }}
     >

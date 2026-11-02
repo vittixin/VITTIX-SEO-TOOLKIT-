@@ -375,7 +375,7 @@ async function loadRobots(
       // 4xx → no robots rules; RFC 9309 allows crawling.
       return { policy: EMPTY_ROBOTS_POLICY, status: 'unreachable', blocked: false };
     }
-    const text = (await response.text()).slice(0, 500_000);
+    const { html: text } = await readBodyCapped(response, 500_000);
     const policy = parseRobotsTxt(text);
     // Caller-side enforcement: only same-origin Sitemap URLs are exposed
     // (sitemap discovery is a future feature; the filter guarantees that
@@ -968,14 +968,17 @@ async function processUrl(
   });
 }
 
-async function readBodyCapped(response: Response): Promise<{ html: string; truncated: boolean }> {
+async function readBodyCapped(
+  response: Response,
+  maxBytes: number = SITE_LIMITS.maxResponseBytes,
+): Promise<{ html: string; truncated: boolean }> {
   if (!response.body) {
     // Test doubles and genuinely body-less responses may not expose a stream.
     // Production Fetch responses with content use the streaming branch below.
     if (typeof response.blob !== 'function') return { html: '', truncated: false };
     const blob = await response.blob();
-    const truncated = blob.size > SITE_LIMITS.maxResponseBytes;
-    return { html: await blob.slice(0, SITE_LIMITS.maxResponseBytes).text(), truncated };
+    const truncated = blob.size > maxBytes;
+    return { html: await blob.slice(0, maxBytes).text(), truncated };
   }
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -985,7 +988,7 @@ async function readBodyCapped(response: Response): Promise<{ html: string; trunc
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      const remaining = SITE_LIMITS.maxResponseBytes - size;
+      const remaining = maxBytes - size;
       if (value.byteLength > remaining) {
         if (remaining > 0) chunks.push(value.slice(0, remaining));
         size += Math.max(0, remaining);

@@ -463,6 +463,46 @@ describe('runSiteAudit', () => {
     expect(session?.robotsStatus).toBe('blocked');
   });
 
+  it('stops reading an oversized robots.txt stream at the 500,000-byte cap', async () => {
+    const totalBytes = 1_000_000;
+    const chunkBytes = 64 * 1024;
+    let producedBytes = 0;
+    let streamCancelled = false;
+    const directive = new TextEncoder().encode('User-agent: VittixBot\nDisallow: /private\n');
+    const robotsStream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const size = Math.min(chunkBytes, totalBytes - producedBytes);
+        const chunk = new Uint8Array(size).fill(0x78);
+        if (producedBytes === 0) chunk.set(directive);
+        producedBytes += size;
+        controller.enqueue(chunk);
+        if (producedBytes >= totalBytes) controller.close();
+      },
+      cancel() {
+        streamCancelled = true;
+      },
+    });
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(new Response(robotsStream));
+      return Promise.resolve(
+        htmlResponse('<a href="https://site.test/private/page">private</a>', url),
+      );
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+
+    expect(streamCancelled).toBe(true);
+    expect(producedBytes).toBeLessThan(totalBytes);
+    expect(fetchImpl.mock.calls.some(([input]) => String(input) === `${ORIGIN}/private/page`)).toBe(
+      false,
+    );
+  });
+
   it('skips Disallowed paths without fetching them', async () => {
     const fetchImpl = vi.fn((input: string | URL) => {
       const url = String(input);

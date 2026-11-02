@@ -158,6 +158,6 @@ MV3 build, manifest permission audit, zero known dependency vulnerabilities.
 - Opt-in site audits (per-origin permission, robots-aware crawler)
 - Chrome MV3, WXT + React 19 + TypeScript strict, Tailwind CSS 4
 
-## Unreleased � Phase C Part 1
+## Unreleased — Phase C Part 1
 
 - Added bounded same-origin sitemap discovery and evidence-gated sitemap comparisons to site audits, with optional sitemap crawl seeding.

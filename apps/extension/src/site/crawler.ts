@@ -388,9 +388,7 @@ async function loadRobots(
     }
     const { html: text } = await readBodyCapped(response, 500_000);
     const policy = parseRobotsTxt(text);
-    // Caller-side enforcement: only same-origin Sitemap URLs are exposed
-    // (sitemap discovery is a future feature; the filter guarantees that
-    // whenever it lands, no off-origin URL can enter the crawl queue).
+    // Caller-side enforcement: only same-origin Sitemap URLs are exposed.
     const sitemaps = policy.sitemaps.filter((url) => isSameOriginUrl(url, session.origin));
     return { policy: { ...policy, sitemaps }, status: 'allowed', blocked: false };
   } catch {

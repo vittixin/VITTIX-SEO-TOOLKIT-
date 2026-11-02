@@ -1,6 +1,6 @@
 # Privacy Policy — Vittix SEO Toolkit
 
-**Effective date: 2026-11-01.** This file is self-contained and may be hosted
+**Effective date: 2026-11-02.** This file is self-contained and may be hosted
 as a standalone Markdown page. It describes the behavior of the Chrome
 extension; it is not hosted at a public URL yet.
 
@@ -78,4 +78,4 @@ from that Chrome profile.
 
 ## Contact
 
-For privacy questions, use the project's public repository issue tracker.
+**Contact method (replace before publication): [ADD A PUBLIC PRIVACY CONTACT EMAIL OR URL].**

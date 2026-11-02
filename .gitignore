@@ -29,3 +29,6 @@ Desktop.ini
 
 # Codex/AI session transcripts (local working notes, not project files)
 codex-session-*.md
+transcripts/
+*.transcript
+*.transcript.*

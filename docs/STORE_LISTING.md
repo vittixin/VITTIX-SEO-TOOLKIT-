@@ -26,6 +26,8 @@ with remediation guidance. Analysis and storage stay on your device.
 - See a preliminary score with a score cap explanation and rule details.
 - Keep local history, compare compatible audits, and highlight selected page
   elements on demand.
+- Optionally enable a side panel to view the latest saved audit; opening it
+  does not read the active page.
 - Export JSON, CSV, HTML, or Markdown reports. Excerpts and target keywords
   are excluded by default and require an explicit export option.
 

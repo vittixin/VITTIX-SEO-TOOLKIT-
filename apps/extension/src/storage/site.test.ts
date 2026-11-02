@@ -158,16 +158,28 @@ describe('buildSiteSummary — Phase 4 additions', () => {
     expect(summary.missingCanonical).toEqual([`${ORIGIN}/a`, `${ORIGIN}/b`]);
   });
 
-  it('derives broken-link candidates from VERIFIED failed crawl results only', () => {
+  it('derives broken-link candidates from VERIFIED HTTP failures regardless of content type', () => {
     const summary = buildSiteSummary(makeSession(), [
-      makeOkPage(`${ORIGIN}/`, { links: ['/dead', '/never-crawled'] }),
-      makePage({ url: `${ORIGIN}/dead`, status: 'failed', httpStatus: 404 }),
+      makeOkPage(`${ORIGIN}/`, { links: ['/dead-json', '/server-error', '/never-crawled'] }),
+      makePage({ url: `${ORIGIN}/dead-json`, status: 'failed', httpStatus: 404 }),
+      makePage({ url: `${ORIGIN}/server-error`, status: 'failed', httpStatus: 500 }),
       // /never-crawled was never fetched — NOT a candidate.
     ]);
-    expect(summary.brokenLinkCandidates).toHaveLength(1);
-    expect(summary.brokenLinkCandidates[0]?.url).toBe(`${ORIGIN}/dead`);
-    expect(summary.brokenLinkCandidates[0]?.httpStatus).toBe(404);
-    expect(summary.brokenLinkCandidates[0]?.linkedFrom).toEqual([`${ORIGIN}/`]);
+    expect(summary.brokenLinkCandidates).toHaveLength(2);
+    expect(summary.brokenLinkCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          url: `${ORIGIN}/dead-json`,
+          httpStatus: 404,
+          linkedFrom: [`${ORIGIN}/`],
+        }),
+        expect.objectContaining({
+          url: `${ORIGIN}/server-error`,
+          httpStatus: 500,
+          linkedFrom: [`${ORIGIN}/`],
+        }),
+      ]),
+    );
   });
 
   it('reports orphan pages only with sufficient evidence, else null', () => {

@@ -887,11 +887,13 @@ async function processUrl(
         return;
       }
       const contentType = response.headers.get('content-type') ?? '';
-      if (!contentType.toLowerCase().includes('text/html')) {
+      if (!response.ok) {
+        const authFailure = response.status === 401 || response.status === 403;
         await updateSitePage(pageId, {
-          status: 'skipped-non-html',
+          status: authFailure ? 'failed-auth' : 'failed',
           finalUrl,
           httpStatus: response.status,
+          error: `HTTP ${response.status}`,
           responseMetadata: safe.metadata,
           responseFindings,
         });
@@ -900,13 +902,11 @@ async function processUrl(
         return;
       }
 
-      if (!response.ok) {
-        const authFailure = response.status === 401 || response.status === 403;
+      if (!contentType.toLowerCase().includes('text/html')) {
         await updateSitePage(pageId, {
-          status: authFailure ? 'failed-auth' : 'failed',
+          status: 'skipped-non-html',
           finalUrl,
           httpStatus: response.status,
-          error: `HTTP ${response.status}`,
           responseMetadata: safe.metadata,
           responseFindings,
         });

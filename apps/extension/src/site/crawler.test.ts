@@ -575,6 +575,53 @@ describe('runSiteAudit', () => {
     expect(pages.find((page) => page.url === `${ORIGIN}/locked`)?.status).toBe('failed-auth');
   });
 
+  it('records HTTP errors before content type filtering and reports broken-link candidates', async () => {
+    const linkedUrls = ['/missing-json', '/server-error', '/document.pdf'];
+    const rootHtml = linkedUrls.map((path) => `<a href="${ORIGIN}${path}">${path}</a>`).join('');
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(new Response('', { status: 404 }));
+      if (url === `${ORIGIN}/`)
+        return Promise.resolve(
+          new Response(rootHtml, { headers: { 'content-type': 'text/html' } }),
+        );
+      if (url === `${ORIGIN}/missing-json`)
+        return Promise.resolve(
+          new Response('{"error":"missing"}', {
+            status: 404,
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+      if (url === `${ORIGIN}/server-error`)
+        return Promise.resolve(new Response('unavailable', { status: 500 }));
+      if (url === `${ORIGIN}/document.pdf`)
+        return Promise.resolve(
+          new Response('%PDF-1.7', { status: 200, headers: { 'content-type': 'application/pdf' } }),
+        );
+      return Promise.resolve(new Response('', { status: 404 }));
+    });
+    const sessionId = await seedSession();
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+
+    const pages = await listSitePages(sessionId);
+    expect(pages.find((page) => page.url === `${ORIGIN}/missing-json`)).toMatchObject({
+      status: 'failed',
+      httpStatus: 404,
+    });
+    expect(pages.find((page) => page.url === `${ORIGIN}/server-error`)).toMatchObject({
+      status: 'failed',
+      httpStatus: 500,
+    });
+    expect(pages.find((page) => page.url === `${ORIGIN}/document.pdf`)).toMatchObject({
+      status: 'skipped-non-html',
+      httpStatus: 200,
+    });
+  });
+
   it('enforces the hard page cap', async () => {
     const fetchImpl = vi.fn((input: string | URL) => {
       const url = String(input);

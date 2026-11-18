@@ -708,11 +708,16 @@ describe('runSiteAudit', () => {
     const origin = 'https://cap.test';
     const fetchImpl = vi.fn((input: string | URL) => {
       const url = String(input);
-      if (url.endsWith('/robots.txt')) return Promise.resolve(jsonResponse(404, url));
+      if (url.endsWith('/robots.txt'))
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          url,
+          headers: new Headers(),
+          text: async () => '',
+        } as unknown as Response);
       if (url === `${origin}/`) {
-        const links = [1, 2, 3, 4]
-          .map((n) => `<a href="${origin}/p${n}">p${n}</a>`)
-          .join('');
+        const links = [1, 2, 3, 4].map((n) => `<a href="${origin}/p${n}">p${n}</a>`).join('');
         return Promise.resolve(htmlResponse(links, url));
       }
       const m = /^https:\/\/cap\.test\/p([1-4])$/.exec(url);
@@ -816,7 +821,13 @@ describe('runSiteAudit', () => {
     const fetchImpl = vi.fn((input: string | URL) => {
       const url = String(input);
       if (url.endsWith('/robots.txt'))
-        return Promise.resolve({ ok: false, status: 404, url, headers: new Headers(), text: async () => '' } as unknown as Response);
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          url,
+          headers: new Headers(),
+          text: async () => '',
+        } as unknown as Response);
       if (url === `${origin}/`) {
         return Promise.resolve(
           htmlResponse(

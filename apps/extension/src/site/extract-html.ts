@@ -88,8 +88,7 @@ export function parsePageSnapshot(
   const doc = new DOMParser().parseFromString(html, 'text/html');
   // In site mode the decoded charset is provided by the fetcher (Content-Type /
   // meta sniff / UTF-8 fallback). Do not report DOMParser's characterSet.
-  const detectedCharset =
-    notBlankGlobal(options.charset) ?? metaCharsetFromDoc(doc) ?? 'utf-8';
+  const detectedCharset = notBlankGlobal(options.charset) ?? metaCharsetFromDoc(doc) ?? 'utf-8';
   const inNoscriptOrTemplate = (el: Element): boolean => el.closest('noscript, template') !== null;
   const headTitleCount = (): number => {
     const head = doc.head;

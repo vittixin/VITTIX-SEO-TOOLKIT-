@@ -448,7 +448,6 @@ export function sitePagesToCsv(session: SiteSession, pages: SitePageRecord[]): s
   return rows.map((row) => row.map(csvEscape).join(',')).join('\r\n') + '\r\n';
 }
 
-
 export interface SiteComparison {
   comparable: boolean;
   reason: string;

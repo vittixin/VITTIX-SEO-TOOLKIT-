@@ -172,9 +172,7 @@ export async function runSiteAudit(sessionId: number, options: CrawlerOptions = 
   // `seen` stores normalized dedupe keys (not authored fetch URLs) so resumed
   // sessions and discovery treat equivalent forms (e.g. /path vs /path/) alike.
   const seen = new Set(
-    existing
-      .map((page) => normalizeSiteUrl(page.url))
-      .filter((url): url is string => url !== null),
+    existing.map((page) => normalizeSiteUrl(page.url)).filter((url): url is string => url !== null),
   );
   const queue: { url: string; depth: number }[] = existing
     .filter((page) => page.status === 'pending')

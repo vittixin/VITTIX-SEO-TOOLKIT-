@@ -1,7 +1,7 @@
 # SEO audit: Vittix Real Flow Fixture Page With A Long Title
 
 URL: https://fixture\.test/real\-flow
-Analyzed: 2026\-11\-01T08:15:43\.660Z · Profile: standard · Rule set: 0\.5\.0
+Analyzed: 2026\-11\-18T18:04:47\.281Z · Profile: standard · Rule set: 0\.9\.0
 Score: 97/100 — Excellent (preliminary)
 
 ## Warning (3)

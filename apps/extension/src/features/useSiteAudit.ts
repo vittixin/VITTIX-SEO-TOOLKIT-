@@ -94,14 +94,11 @@ export function useSiteAudit() {
       if (latest !== null) {
         setGrantedOrigin(latest.origin);
         await applySession(latest);
-        if (latest.status === 'running') {
-          setPhase('finished'); // paused state — user can resume or discard
-        } else {
-          setPhase('finished');
-        }
+        setPhase('finished'); // paused/running/finished state handled by status + resume controls
+      } else {
+        const settings = await loadSettings();
+        setMaxPages(settings.siteAuditMaxPages);
       }
-      const settings = await loadSettings();
-      setMaxPages(settings.siteAuditMaxPages);
     })();
   }, [applySession]);
 
@@ -264,6 +261,26 @@ export function useSiteAudit() {
     setPhase('setup');
   }
 
+  async function revokeAccess(): Promise<void> {
+    const target = session?.origin ?? grantedOrigin;
+    if (target === null) return;
+    try {
+      const removed = await browser.permissions.remove({
+        origins: [permissionPatternForOrigin(target)],
+      });
+      if (!removed) {
+        setError('Origin permission could not be removed.');
+      }
+    } catch (removeError) {
+      setError(
+        `Could not revoke access: ${
+          removeError instanceof Error ? removeError.message : String(removeError)
+        }`,
+      );
+    }
+    setPermissionGranted(await checkPermission(target));
+  }
+
   const filteredPages = pages.filter((page) => {
     const matchesUrl =
       urlFilter.trim() === '' || page.url.toLowerCase().includes(urlFilter.trim().toLowerCase());
@@ -310,5 +327,6 @@ export function useSiteAudit() {
     cancelAudit,
     discardSession,
     clearSiteData,
+    revokeAccess,
   };
 }

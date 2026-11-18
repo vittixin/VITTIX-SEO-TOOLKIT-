@@ -33,6 +33,23 @@ vi.mock('@/src/storage/site', (): unknown => {
     listSiteSessions: async () => [...sessions.values()],
     listSitePages: async (sessionId: number) =>
       [...pages.values()].filter((page) => page.sessionId === sessionId),
+    listPendingPages: async (sessionId: number) =>
+      [...pages.values()]
+        .filter((page) => page.sessionId === sessionId && page.status === 'pending')
+        .map((page) => ({ id: page.id as number, url: page.url as string })),
+    countPagesByStatus: async (sessionId: number) => {
+      const rows = [...pages.values()].filter((page) => page.sessionId === sessionId);
+      let pagesDone = 0;
+      let pagesFailed = 0;
+      let pagesSkipped = 0;
+      for (const row of rows) {
+        const status = String(row.status ?? '');
+        if (status === 'ok') pagesDone += 1;
+        else if (status.startsWith('failed')) pagesFailed += 1;
+        else if (status.startsWith('skipped')) pagesSkipped += 1;
+      }
+      return { pagesDone, pagesFailed, pagesSkipped };
+    },
     addSitePages: async (records: Record<string, unknown>[]) => {
       if (failPageWrites) throw new Error('QuotaExceededError');
       for (const record of records) {
@@ -679,16 +696,180 @@ describe('runSiteAudit', () => {
     });
 
     const pages = await listSitePages(sessionId);
-    expect(pages.length).toBeLessThanOrEqual(3);
+    expect(pages.length).toBe(3);
     const { getSiteSession } = await import('@/src/storage/site');
     const session = await getSiteSession(sessionId);
     // The cap limits DISCOVERY (records created), not processing: every
     // recorded page was processed, so the audit completes within scope.
-    // (A session that ends with UNPROCESSED pending pages is the failure
-    // case — covered by the finalize safety net.)
     expect(session?.status).toBe('completed');
   });
 
+  it('does not under-crawl when seen already includes queued URLs (item 2)', async () => {
+    const origin = 'https://cap.test';
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) return Promise.resolve(jsonResponse(404, url));
+      if (url === `${origin}/`) {
+        const links = [1, 2, 3, 4]
+          .map((n) => `<a href="${origin}/p${n}">p${n}</a>`)
+          .join('');
+        return Promise.resolve(htmlResponse(links, url));
+      }
+      const m = /^https:\/\/cap\.test\/p([1-4])$/.exec(url);
+      if (m) {
+        const n = m[1];
+        const children = [1, 2, 3, 4, 5]
+          .map((c) => `<a href="${origin}/p${n}c${c}">c</a>`)
+          .join('');
+        return Promise.resolve(htmlResponse(children, url));
+      }
+      return Promise.resolve(htmlResponse('<p>leaf</p>', url));
+    });
+    const sessionId = await seedSession({ origin, maxPages: 12, maxDepth: 3, concurrency: 1 });
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+    const pages = await listSitePages(sessionId);
+    expect(pages.length).toBe(12);
+  });
+
+  it('keeps workers alive for fan-out so concurrency is effective', async () => {
+    const origin = 'https://fanout.test';
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          url,
+          headers: new Headers(),
+          text: async () => '',
+        } as unknown as Response);
+      }
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      const body =
+        url === `${origin}/`
+          ? '<a href="https://fanout.test/a">a</a><a href="https://fanout.test/b">b</a><a href="https://fanout.test/c">c</a>'
+          : '<p>leaf</p>';
+      // Root returns immediately; child pages are slow so concurrent workers
+      // overlap while fetching the fan-out links.
+      const delayMs = url === `${origin}/` ? 0 : 40;
+      return new Promise<Response>((resolve) => {
+        setTimeout(() => {
+          inFlight -= 1;
+          resolve(htmlResponse(body, url));
+        }, delayMs);
+      });
+    });
+    const sessionId = await seedSession({
+      origin,
+      concurrency: 3,
+      maxPages: 10,
+      maxDepth: 2,
+    });
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+    const pages = await listSitePages(sessionId);
+    expect(pages.filter((page) => page.status === 'ok')).toHaveLength(4);
+    expect(maxInFlight).toBeGreaterThan(1);
+    expect(maxInFlight).toBeLessThanOrEqual(3);
+  });
+
+  it('crawls http://localhost dev origins past the start page', async () => {
+    const origin = 'http://localhost:3000';
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) {
+        return Promise.resolve(
+          new Response('', { status: 404, headers: new Headers(), url }) as unknown as Response,
+        );
+      }
+      if (url === `${origin}/`) {
+        const links = [1, 2, 3, 4, 5]
+          .map((n) => `<a href="http://localhost:3000/p${n}">p${n}</a>`)
+          .join('');
+        return Promise.resolve(htmlResponse(links, url));
+      }
+      return Promise.resolve(htmlResponse('<p>leaf</p>', url));
+    });
+    const sessionId = await seedSession({ origin, maxPages: 10, maxDepth: 2, concurrency: 1 });
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+    const pages = await listSitePages(sessionId);
+    expect(pages.filter((page) => page.status === 'ok')).toHaveLength(6);
+    expect(pages.map((page) => page.url)).toContain(`${origin}/p5`);
+  });
+
+  it('fetches trailing-slash links as authored and dedupes equivalent normalized forms', async () => {
+    const origin = 'https://slash.test';
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt'))
+        return Promise.resolve({ ok: false, status: 404, url, headers: new Headers(), text: async () => '' } as unknown as Response);
+      if (url === `${origin}/`) {
+        return Promise.resolve(
+          htmlResponse(
+            '<a href="https://slash.test/blog/">blog</a><a href="https://slash.test/blog">blog2</a>',
+            url,
+          ),
+        );
+      }
+      return Promise.resolve(htmlResponse('<p>leaf</p>', url));
+    });
+    const sessionId = await seedSession({ origin, maxPages: 10, maxDepth: 2, concurrency: 1 });
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+    const pages = await listSitePages(sessionId);
+    expect(pages.map((page) => page.url)).toContain(`${origin}/blog/`);
+    expect(fetchImpl.mock.calls.some(([input]) => String(input) === `${origin}/blog/`)).toBe(true);
+    // /blog and /blog/ normalize to the same dedupe key: whichever is
+    // discovered first is fetched/recorded, and the other is not fetched again.
+    const blogFetches = fetchImpl.mock.calls.filter(
+      ([input]) => String(input) === `${origin}/blog` || String(input) === `${origin}/blog/`,
+    );
+    expect(blogFetches).toHaveLength(1);
+  });
+
+  it('clamps excessive robots Crawl-delay and records a warning instead of waiting', async () => {
+    const origin = 'https://crawl-delay.test';
+    const fetchImpl = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/robots.txt')) {
+        return Promise.resolve(
+          new Response('User-agent: *\nCrawl-delay: 86400\n', {
+            status: 200,
+            headers: new Headers(),
+            url,
+          }) as unknown as Response,
+        );
+      }
+      return Promise.resolve(htmlResponse('<p>ok</p>', url));
+    });
+    const sessionId = await seedSession({ origin, maxPages: 1, delayMs: 0 });
+    await runSiteAudit(sessionId, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      delay: async () => {},
+      hasPermission: async () => true,
+    });
+    const { getSiteSession } = await import('@/src/storage/site');
+    const session = await getSiteSession(sessionId);
+    expect(session?.stopReason ?? '').toContain('Crawl-delay 86400000ms');
+    expect(session?.stopReason ?? '').toContain('capped at 30000ms');
+  });
   it('stops without fetching when the session was cancelled beforehand', async () => {
     const fetchImpl = vi.fn((input: string | URL) => {
       if (String(input).endsWith('/robots.txt')) return Promise.resolve(jsonResponse(404));

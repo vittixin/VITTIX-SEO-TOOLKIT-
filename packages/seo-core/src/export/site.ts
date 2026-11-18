@@ -3,6 +3,7 @@ import { diffSitemap } from '../sitemap.js';
 import { detectDuplicateClusters } from '../duplicates.js';
 import { buildInternalLinkGraph } from '../link-graph.js';
 import { analyzeInternalRedirectLinks } from '../analyzers/site-graph.js';
+import { csvEscape } from './csv.js';
 
 export const SITE_AUDIT_EXPORT_FORMAT = 'vittix-site-audit';
 export const SITE_AUDIT_EXPORT_FORMAT_VERSION = 1;
@@ -447,12 +448,6 @@ export function sitePagesToCsv(session: SiteSession, pages: SitePageRecord[]): s
   return rows.map((row) => row.map(csvEscape).join(',')).join('\r\n') + '\r\n';
 }
 
-/** RFC 4180 escaping + spreadsheet formula-injection guard. */
-function csvEscape(value: string): string {
-  let safe = value;
-  if (/^[=+\-@\t\r]/.test(safe)) safe = `'${safe}`;
-  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
-}
 
 export interface SiteComparison {
   comparable: boolean;

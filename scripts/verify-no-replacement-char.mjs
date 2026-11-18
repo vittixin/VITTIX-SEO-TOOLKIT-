@@ -1,11 +1,4 @@
-import {
-  mkdtempSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -56,7 +49,9 @@ function verify(root, forceFallback = false) {
   }
 
   console.log(`Checking Markdown/TypeScript files using ${mode}.`);
-  const offenders = files.filter((path) => readFileSync(path, 'utf8').includes(replacementCharacter));
+  const offenders = files.filter((path) =>
+    readFileSync(path, 'utf8').includes(replacementCharacter),
+  );
   if (offenders.length > 0) {
     console.error(`Found U+FFFD in files:\n${offenders.map((path) => `- ${path}`).join('\n')}`);
     return 1;
@@ -76,12 +71,15 @@ function selfCheck() {
     mkdirSync(badRoot, { recursive: true });
     writeFileSync(bad, `contains ${replacementCharacter}`);
     writeFileSync(good, 'clean');
-    const run = (path) => spawnSync(process.execPath, [scriptPath, '--root', path], { encoding: 'utf8' });
+    const run = (path) =>
+      spawnSync(process.execPath, [scriptPath, '--root', path], { encoding: 'utf8' });
     const badResult = run(badRoot);
     const goodResult = run(goodRoot);
     if (badResult.status !== 1 || goodResult.status !== 0) {
       console.error('Fallback self-check failed.');
-      console.error(`Expected exit codes 1 and 0; got ${badResult.status} and ${goodResult.status}.`);
+      console.error(
+        `Expected exit codes 1 and 0; got ${badResult.status} and ${goodResult.status}.`,
+      );
       return 1;
     }
     console.log('Fallback self-check passed (exit codes 1 and 0).');

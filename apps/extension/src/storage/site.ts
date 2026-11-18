@@ -99,6 +99,37 @@ export async function listSitePages(sessionId: number): Promise<SitePageRecord[]
     .map((result) => result.data);
 }
 
+/** Targeted query: pending page URLs in storage order (avoids parsing all rows). */
+export async function listPendingPages(sessionId: number): Promise<{ id: number; url: string }[]> {
+  const rows = await db.sitePages
+    .where('[sessionId+status]')
+    .equals([sessionId, 'pending'])
+    .toArray();
+  return rows
+    .map((row) => {
+      if (row.id === undefined || typeof row.url !== 'string') return null;
+      return { id: row.id, url: row.url };
+    })
+    .filter((row): row is { id: number; url: string } => row !== null);
+}
+
+/** Targeted query: derive session counters without parsing full page records. */
+export async function countPagesByStatus(
+  sessionId: number,
+): Promise<{ pagesDone: number; pagesFailed: number; pagesSkipped: number }> {
+  const rows = await db.sitePages.where('sessionId').equals(sessionId).toArray();
+  let pagesDone = 0;
+  let pagesFailed = 0;
+  let pagesSkipped = 0;
+  for (const row of rows) {
+    const status = (row as { status?: string }).status ?? '';
+    if (status === 'ok') pagesDone += 1;
+    else if (status.startsWith('failed')) pagesFailed += 1;
+    else if (status.startsWith('skipped')) pagesSkipped += 1;
+  }
+  return { pagesDone, pagesFailed, pagesSkipped };
+}
+
 export async function updateSitePage(id: number, changes: Partial<SitePageInput>): Promise<void> {
   await db.sitePages.update(id, changes);
 }

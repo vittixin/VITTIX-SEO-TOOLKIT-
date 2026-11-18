@@ -57,7 +57,9 @@ export class PacedRunner {
   }
 
   private async acquire(): Promise<void> {
-    if (this.inFlight >= this.concurrency) {
+    // Re-check after waking: another waiter may have claimed the freed slot
+    // before this one was scheduled, so a single if can oversubscribe.
+    while (this.inFlight >= this.concurrency) {
       await new Promise<void>((resolve) => this.queue.push(resolve));
     }
     this.inFlight += 1;

@@ -26,8 +26,10 @@ blockers, not config options).
    origin for the lifetime of the audit session (and any later session for
    the same origin, until revoked).
 5. Revocation: Chrome's extension details (_Remove permission_), plus the
-   UI offers `chrome.permissions.remove` for the granted origin. A session
-   started without the still-valid grant fails fast with a clear error.
+   UI offers a **Revoke access** button (calling
+   `chrome.permissions.remove` for the granted origin) in the Site Audit
+   view and after an audit completes. A session started without the
+   still-valid grant fails fast with a clear error.
 6. Manifest implications: `optional_host_permissions: ["https://*/*"]` is
    declared so arbitrary user-entered origins can be requested. This is a
    **catalog of grantable patterns, not a grant** — the install-time

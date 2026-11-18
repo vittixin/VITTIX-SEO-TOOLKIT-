@@ -38,10 +38,18 @@ describe('checkCrawlableOrigin — the SSRF / private-network boundary', () => {
       'https://foo.localhost',
       'https://printer.local',
       'https://db.internal',
+      'https://router.lan',
+      'https://nas.home.arpa',
+      'https://box.localdomain',
     ]) {
       const result = checkCrawlableOrigin(url);
       expect(result.allowed).toBe(false);
     }
+  });
+
+  it('rejects single-label hostnames (no dot, not localhost)', () => {
+    expect(checkCrawlableOrigin('https://intranet/').allowed).toBe(false);
+    expect(checkCrawlableOrigin('https://router/').allowed).toBe(false);
   });
 
   it('rejects private and loopback IPv4 literals with specific reasons', () => {

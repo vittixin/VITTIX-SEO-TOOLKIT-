@@ -103,18 +103,19 @@ export function computeScore(
 ): Score {
   const categoryWeights = options.weights ?? CATEGORY_WEIGHTS;
   const categories = CATEGORIES.map((category) => {
-    // Deduplicate by ruleId so one underlying issue can never be penalized
-    // twice, and only score-affecting severities count.
-    const seen = new Set<string>();
-    let penalty = 0;
+    // Only score-affecting severities count. When several findings share the
+    // same ruleId in a category, deduct the WORST (highest) penalty once so
+    // ordering of mixed severities (e.g. warn then error) cannot under-penalize.
+    const worstByRule = new Map<string, number>();
     for (const finding of findings) {
       if (finding.category !== category || finding.ignored) continue;
       if (!SCORE_AFFECTING_SEVERITIES.includes(finding.severity)) continue;
-      if (seen.has(finding.ruleId)) continue;
-      seen.add(finding.ruleId);
-      penalty += penaltyFor(finding);
+      const penalty = penaltyFor(finding);
+      worstByRule.set(finding.ruleId, Math.max(worstByRule.get(finding.ruleId) ?? 0, penalty));
     }
-    return { category, score: Math.max(0, 100 - penalty) };
+    let totalPenalty = 0;
+    for (const penalty of worstByRule.values()) totalPenalty += penalty;
+    return { category, score: Math.max(0, 100 - totalPenalty) };
   });
 
   let total = Math.round(

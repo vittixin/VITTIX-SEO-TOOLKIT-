@@ -87,13 +87,32 @@ describe('robots grouping', () => {
     expect(starOnly.allows('/anything')).toBe(false); // star applies
   });
 
-  it('longest matching agent token wins between specific groups', () => {
+  it('matches the product token exactly (case-insensitive), not by prefix', () => {
     const p = policy(
       'User-agent: Vittix\nDisallow: /short\n\nUser-agent: VittixBot\nDisallow: /long\n',
     );
-    // "Vittix" (6) and "VittixBot" (9) both prefix-match; longest wins.
+    // "Vittix" is a prefix token but must NOT match VittixBot.
     expect(p.allows('/short')).toBe(true);
     expect(p.allows('/long')).toBe(false);
+
+    expect(policy('User-agent: V\nDisallow: /\n').allows('/anything')).toBe(true);
+    expect(policy('User-agent: vittixbot\nDisallow: /x\n').allows('/x')).toBe(false);
+  });
+
+  it('merges all groups whose user-agent matches and takes max Crawl-delay (RFC 9309 §2.2.1)', () => {
+    const starMerged = policy(
+      'User-agent: *\nDisallow: /a\n\nUser-agent: *\nDisallow: /b\nCrawl-delay: 2\n\nUser-agent: *\nCrawl-delay: 5\n',
+    );
+    expect(starMerged.allows('/a')).toBe(false);
+    expect(starMerged.allows('/b')).toBe(false);
+    expect(starMerged.crawlDelayMs).toBe(5_000);
+
+    const specificMerged = policy(
+      'User-agent: VittixBot\nDisallow: /x\nCrawl-delay: 1\n\nUser-agent: VittixBot\nDisallow: /y\nCrawl-delay: 3\n',
+    );
+    expect(specificMerged.allows('/x')).toBe(false);
+    expect(specificMerged.allows('/y')).toBe(false);
+    expect(specificMerged.crawlDelayMs).toBe(3_000);
   });
 
   it('product token is ' + PRODUCT_TOKEN, () => {

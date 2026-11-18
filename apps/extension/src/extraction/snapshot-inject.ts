@@ -401,7 +401,11 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
   const svgStats = { total: 0, unnamed: 0 };
   document.querySelectorAll('svg[role="img" i]').forEach((svg) => {
     svgStats.total += 1;
-    const title = (svg.querySelector('title')?.textContent ?? '').trim();
+    const titleEl = svg.querySelector('title');
+    const title =
+      titleEl && titleEl.closest('noscript, template') === null
+        ? (titleEl.textContent ?? '').trim()
+        : '';
     const label = (svg.getAttribute('aria-label') ?? '').trim();
     const labelledBy = resolveLabelledBy(svg);
     if (title === '' && label === '' && labelledBy === '') svgStats.unnamed += 1;
@@ -570,7 +574,15 @@ export function extractPageSnapshot(limits: ExtractorLimits): PageSnapshot {
     schemaVersion: 6,
     url: location.href,
     title: (document.title ?? '').slice(0, 500),
-    titleCount: document.querySelectorAll('title').length,
+    titleCount: (() => {
+      const head = document.head;
+      if (!head) return document.querySelectorAll('title').length;
+      let count = 0;
+      head.querySelectorAll('title').forEach((el) => {
+        if (el.namespaceURI === 'http://www.w3.org/1999/xhtml') count += 1;
+      });
+      return count;
+    })(),
     meta: pageMeta,
     descriptions: descriptionValues,
     canonicals: canonicalValues,

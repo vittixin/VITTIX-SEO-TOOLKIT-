@@ -14,7 +14,9 @@ import { EXTRACTOR_LIMITS } from '../extraction/limits';
 import { parsePageSnapshot, extractVisibleTextForSimilarity } from './extract-html';
 import {
   addSitePages,
+  countPagesByStatus,
   getSiteSession,
+  listPendingPages,
   listSitePages,
   updateSitePage,
   updateSiteSession,
@@ -106,8 +108,19 @@ export async function runSiteAudit(sessionId: number, options: CrawlerOptions = 
   }
   onProgress();
 
-  const effectiveDelay = Math.max(session.delayMs, robots.policy.crawlDelayMs ?? 0);
+  const robotsDelay = robots.policy.crawlDelayMs ?? 0;
+  const ROBOTS_DELAY_CAP_MS = 30_000;
+  const effectiveDelay = Math.max(session.delayMs, Math.min(robotsDelay, ROBOTS_DELAY_CAP_MS));
   const runner = new PacedRunner(session.concurrency, effectiveDelay, options.delay);
+  if (robotsDelay > ROBOTS_DELAY_CAP_MS) {
+    try {
+      await updateSiteSession(sessionId, {
+        stopReason: `robots.txt requested Crawl-delay ${robotsDelay}ms; capped at ${ROBOTS_DELAY_CAP_MS}ms to avoid excessive waits.`,
+      });
+    } catch (error) {
+      console.warn('[vittix] could not persist robots crawl-delay warning', error);
+    }
+  }
 
   if (session.stopRequested) {
     await updateSiteSession(sessionId, {
@@ -156,48 +169,62 @@ export async function runSiteAudit(sessionId: number, options: CrawlerOptions = 
 
   // --- crawl state (BFS) ------------------------------------------------------
   const existing = await listSitePages(sessionId);
-  const seen = new Set(existing.map((page) => page.url));
+  // `seen` stores normalized dedupe keys (not authored fetch URLs) so resumed
+  // sessions and discovery treat equivalent forms (e.g. /path vs /path/) alike.
+  const seen = new Set(
+    existing
+      .map((page) => normalizeSiteUrl(page.url))
+      .filter((url): url is string => url !== null),
+  );
   const queue: { url: string; depth: number }[] = existing
     .filter((page) => page.status === 'pending')
     .map((page) => ({ url: page.url, depth: page.depth }));
 
   if (queue.length === 0 && existing.length === 0) {
-    const start = normalizeSiteUrl(session.origin);
-    if (start !== null && isSameOriginUrl(start, session.origin)) {
+    const startKey = normalizeSiteUrl(session.origin);
+    const startUrl = toAuthoredUrl(session.origin);
+    if (startKey !== null && startUrl !== null && isSameOriginUrl(startUrl, session.origin)) {
       try {
-        await addSitePages([{ sessionId, url: start, status: 'pending', depth: 0 }]);
+        await addSitePages([{ sessionId, url: startUrl, status: 'pending', depth: 0 }]);
       } catch (error) {
         // Without durable state there is no audit — fail closed instead of
         // crawling unrecorded.
         await failSession(
           sessionId,
-          `Could not persist crawl state (${error instanceof Error ? error.message : String(error)}). The audit was stopped to avoid unrecorded crawling.`,
+          `Could not persist crawl state (${error instanceof Error ? error.message : String(error)}). Discovered URLs would be silently lost, so the audit was stopped.`,
         );
         onProgress();
         return;
       }
-      queue.push({ url: start, depth: 0 });
-      seen.add(start);
+      queue.push({ url: startUrl, depth: 0 });
+      // `seen` stores normalized dedupe keys (not fetch URLs) so discovery can
+      // suppress equivalent authored forms like /path and /path/ consistently.
+      seen.add(startKey);
     }
   }
   if (session.seedFromSitemap) {
-    const currentPages = await listSitePages(sessionId);
-    const candidates = sitemapState.entries
-      .map((entry) => normalizeSiteUrl(entry.url))
-      .filter((url): url is string => url !== null && isSameOriginUrl(url, session.origin))
-      .filter((url) => robots.policy.allows(new URL(url).pathname + new URL(url).search))
-      .filter((url) => !seen.has(url))
-      .slice(0, Math.max(0, session.maxPages - currentPages.length));
+    const candidates: { url: string; key: string }[] = [];
+    for (const entry of sitemapState.entries) {
+      // `seen` contains every known URL (seeded/queued/recorded), so it is the
+      // correct page-count bound.
+      if (seen.size >= session.maxPages) break;
+      const key = normalizeSiteUrl(entry.url);
+      const authored = toAuthoredUrl(entry.url);
+      if (key === null || authored === null || !isSameOriginUrl(authored, session.origin)) continue;
+      if (!robots.policy.allows(new URL(authored).pathname + new URL(authored).search)) continue;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      candidates.push({ url: authored, key });
+    }
     if (candidates.length) {
-      const records = candidates.map((url) => ({
+      const records = candidates.map((candidate) => ({
         sessionId,
-        url,
+        url: candidate.url,
         status: 'pending' as const,
         depth: 1,
       }));
       await addSitePages(records);
       queue.push(...records.map(({ url, depth }) => ({ url, depth })));
-      candidates.forEach((url) => seen.add(url));
     }
   }
 
@@ -211,26 +238,44 @@ export async function runSiteAudit(sessionId: number, options: CrawlerOptions = 
     hasPermission,
     sessionId,
   };
+  // Track in-flight page processing so workers stay alive while peers are
+  // still working: with fan-out discovery a worker that finds the queue empty
+  // must wait, otherwise it exits early and concurrency collapses. Count a URL
+  // as active as soon as it is claimed (before async pre-fetch checks) so other
+  // workers cannot observe "queue empty, active 0" in that window and exit.
+  const workerState = { active: 0 };
   const workers: Promise<void>[] = [];
   for (let i = 0; i < session.concurrency; i += 1) {
     workers.push(
       (async () => {
         for (;;) {
           const current = await takeNext(sessionId, queue);
-          if (current === null) return; // queue drained
-          if (await shouldStop(sessionId)) return;
-          // Re-verify the origin permission before EVERY fetch (fail closed
-          // on revocation mid-audit).
-          if (!(await hasPermission(session.origin))) {
-            await failSession(
-              sessionId,
-              `Permission for ${session.origin} was revoked during the audit — crawling stopped immediately.`,
-            );
-            onProgress();
-            runner.stop();
-            return;
+          if (current === null) {
+            if (await shouldStop(sessionId)) return;
+            // Only finished when no URL is waiting AND no other worker can
+            // still discover/enqueue more work.
+            if (queue.length === 0 && workerState.active === 0) return;
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            continue;
           }
-          await processUrl(sessionId, session, current, robots.policy, workerContext);
+          workerState.active += 1;
+          try {
+            if (await shouldStop(sessionId)) return;
+            // Re-verify the origin permission before EVERY fetch (fail closed
+            // on revocation mid-audit).
+            if (!(await hasPermission(session.origin))) {
+              await failSession(
+                sessionId,
+                `Permission for ${session.origin} was revoked during the audit — crawling stopped immediately.`,
+              );
+              onProgress();
+              runner.stop();
+              return;
+            }
+            await processUrl(sessionId, session, current, robots.policy, workerContext);
+          } finally {
+            workerState.active -= 1;
+          }
         }
       })(),
     );
@@ -295,9 +340,9 @@ async function takeNext(
     // merely queued, so backlinks can never re-enqueue an already-seen URL.
     const session = await getSiteSession(sessionId);
     if (session === null || session.stopRequested || session.status !== 'running') return null;
-    const pages = await listSitePages(sessionId);
-    const match = pages.find((page) => page.url === candidate.url && page.status === 'pending');
-    if (match !== null) return { url: candidate.url, depth: candidate.depth };
+    const pending = await listPendingPages(sessionId);
+    const match = pending.find((page) => page.url === candidate.url);
+    if (match !== undefined) return { url: candidate.url, depth: candidate.depth };
     // Already processed (e.g. resume replay) — skip.
   }
 }
@@ -817,8 +862,8 @@ async function processUrl(
 ): Promise<void> {
   const { runner, onProgress } = context;
 
-  const pages = await listSitePages(sessionId);
-  const record = pages.find((page) => page.url === target.url && page.status === 'pending');
+  const pending = await listPendingPages(sessionId);
+  const record = pending.find((page) => page.url === target.url);
   if (record === undefined || record.id === undefined) return;
   const pageId: number = record.id;
 
@@ -924,9 +969,9 @@ async function processUrl(
         return;
       }
 
-      const { html, truncated: bodyTruncated } = await readBodyCapped(response);
+      const { html, truncated: bodyTruncated, charset } = await readBodyCapped(response);
       const metadata = { ...safe.metadata, bodyTruncated };
-      const snapshot = parsePageSnapshot(html, finalUrl, EXTRACTOR_LIMITS);
+      const snapshot = parsePageSnapshot(html, finalUrl, EXTRACTOR_LIMITS, { charset });
       const visibleText = extractVisibleTextForSimilarity(html, 50_000);
       const similarityTokens = visibleText.match(/[\p{L}\p{N}]+/gu) ?? [];
       const result = analyzeSnapshot(snapshot, {
@@ -977,47 +1022,86 @@ async function processUrl(
   });
 }
 
+function charsetFromContentType(contentType: string | null): string | null {
+  if (!contentType) return null;
+  const match = /charset\s*=\s*"?([^";,\s]+)"?/i.exec(contentType);
+  return match?.[1] ?? null;
+}
+
+function sniffMetaCharset(bytes: Uint8Array): string | null {
+  const prefix = new TextDecoder('windows-1252').decode(bytes.slice(0, 1024));
+  const metaCharset = /<meta[^>]+charset\s*=\s*["']?\s*([a-zA-Z0-9._:-]+)/i.exec(prefix);
+  if (metaCharset) return metaCharset[1] ?? null;
+  const httpEquiv =
+    /<meta[^>]+http-equiv\s*=\s*["']?content-type["']?[^>]+content\s*=\s*["'][^"']*charset\s*=\s*([a-zA-Z0-9._:-]+)/i.exec(
+      prefix,
+    );
+  if (httpEquiv) return httpEquiv[1] ?? null;
+  const httpEquivRev =
+    /<meta[^>]+content\s*=\s*["'][^"']*charset\s*=\s*([a-zA-Z0-9._:-]+)[^"']*["'][^>]+http-equiv\s*=\s*["']?content-type["']?/i.exec(
+      prefix,
+    );
+  return httpEquivRev ? (httpEquivRev[1] ?? null) : null;
+}
+
+function decodeHtmlBytes(
+  bytes: Uint8Array,
+  contentType: string | null,
+): { html: string; charset: string } {
+  const label = charsetFromContentType(contentType) ?? sniffMetaCharset(bytes) ?? 'utf-8';
+  try {
+    return { html: new TextDecoder(label).decode(bytes), charset: label };
+  } catch {
+    return { html: new TextDecoder('utf-8').decode(bytes), charset: 'utf-8' };
+  }
+}
+
 async function readBodyCapped(
   response: Response,
   maxBytes: number = SITE_LIMITS.maxResponseBytes,
-): Promise<{ html: string; truncated: boolean }> {
+): Promise<{ html: string; truncated: boolean; charset: string }> {
+  let bytes: Uint8Array;
+  let truncated = false;
   if (!response.body) {
     // Test doubles and genuinely body-less responses may not expose a stream.
     // Production Fetch responses with content use the streaming branch below.
-    if (typeof response.blob !== 'function') return { html: '', truncated: false };
-    const blob = await response.blob();
-    const truncated = blob.size > maxBytes;
-    return { html: await blob.slice(0, maxBytes).text(), truncated };
-  }
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  let truncated = false;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const remaining = maxBytes - size;
-      if (value.byteLength > remaining) {
-        if (remaining > 0) chunks.push(value.slice(0, remaining));
-        size += Math.max(0, remaining);
-        truncated = true;
-        await reader.cancel();
-        break;
-      }
-      chunks.push(value);
-      size += value.byteLength;
+    if (typeof response.blob !== 'function') {
+      return { html: '', truncated: false, charset: 'utf-8' };
     }
-  } finally {
-    reader.releaseLock();
+    const blob = await response.blob();
+    truncated = blob.size > maxBytes;
+    bytes = new Uint8Array(await blob.slice(0, maxBytes).arrayBuffer());
+  } else {
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const remaining = maxBytes - size;
+        if (value.byteLength > remaining) {
+          if (remaining > 0) chunks.push(value.slice(0, remaining));
+          size += Math.max(0, remaining);
+          truncated = true;
+          await reader.cancel();
+          break;
+        }
+        chunks.push(value);
+        size += value.byteLength;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
   }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return { html: new TextDecoder().decode(bytes), truncated };
+  const decoded = decodeHtmlBytes(bytes, response.headers?.get('content-type') ?? null);
+  return { html: decoded.html, truncated, charset: decoded.charset };
 }
 
 async function enqueueDiscovered(
@@ -1030,20 +1114,31 @@ async function enqueueDiscovered(
 ): Promise<void> {
   const candidates: NewPageCandidate[] = [];
   for (const link of snapshot.links) {
-    if (context.seen.size + context.queue.length >= session.maxPages) break;
+    // `seen` holds the normalized dedupe key for every known URL (seeded,
+    // queued, or recorded), so it is the correct page-count bound.
+    if (context.seen.size >= session.maxPages) break;
     let resolved: URL;
     try {
       resolved = new URL(link.href, baseUrl);
     } catch {
       continue;
     }
-    if (resolved.protocol !== 'https:') continue;
     if (!checkCrawlableOrigin(resolved.href).allowed) continue;
-    const normalized = normalizeSiteUrl(resolved.href);
-    if (normalized === null || !isSameOriginUrl(normalized, session.origin)) continue;
-    if (context.seen.has(normalized)) continue;
-    context.seen.add(normalized);
-    candidates.push({ url: normalized, depth });
+    const normalizedKey = normalizeSiteUrl(resolved.href);
+    const authoredUrl = toAuthoredUrl(resolved.href);
+    if (
+      normalizedKey === null ||
+      authoredUrl === null ||
+      !isSameOriginUrl(authoredUrl, session.origin)
+    ) {
+      continue;
+    }
+    if (context.seen.has(normalizedKey)) continue;
+    context.seen.add(normalizedKey);
+    // Store/fetch the URL as authored (resolved, fragment removed). Dedupe
+    // uses `normalizedKey`, so /path and /path/ are treated as the same page
+    // and whichever form is discovered first is the one fetched/recorded.
+    candidates.push({ url: authoredUrl, depth });
   }
   if (candidates.length > 0) {
     try {
@@ -1092,27 +1187,32 @@ interface NewPageCandidate {
   depth: number;
 }
 
+/** Authored fetch URL: resolved and fragment-free, but otherwise preserved. */
+function toAuthoredUrl(input: string): string | null {
+  try {
+    const parsed = new URL(input);
+    parsed.hash = '';
+    return parsed.href;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * INVARIANT: counter values must agree with persisted page records.
  *
  * Instead of independently incrementing counters (which drift the moment a
  * counter write fails while a page write succeeds), counters are DERIVED
  * from the page records and persisted in one write. If this write fails it
- * is only advisory — the dashboard summary recomputes the same numbers from
- * the records, so the UI never disagrees with durable state.
- *
- * Called after every terminal page-status write.
+ * fails loudly — the displayed progress may lag, but it can never become
+ * permanently inconsistent with the durable truth.
  */
 async function syncCounters(sessionId: number): Promise<void> {
   try {
-    const pages = await listSitePages(sessionId);
+    const counts = await countPagesByStatus(sessionId);
     const session = await getSiteSession(sessionId);
     if (session === null) return;
-    await updateSiteSession(sessionId, {
-      pagesDone: pages.filter((page) => page.status === 'ok').length,
-      pagesFailed: pages.filter((page) => page.status.startsWith('failed')).length,
-      pagesSkipped: pages.filter((page) => page.status.startsWith('skipped')).length,
-    });
+    await updateSiteSession(sessionId, counts);
   } catch (error) {
     console.warn('[vittix] could not persist progress counters', error);
   }

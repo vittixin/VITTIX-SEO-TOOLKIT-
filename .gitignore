@@ -32,3 +32,6 @@ codex-session-*.md
 transcripts/
 *.transcript
 *.transcript.*
+
+# Local assistant/tool scratch (untracked)
+.commandcode/

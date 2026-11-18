@@ -48,6 +48,22 @@ export function extractVisibleTextForSimilarity(html: string, charLimit = 50_000
   return parts.join(' ').replace(/\s+/g, ' ').trim().slice(0, charLimit);
 }
 
+function notBlankGlobal(value: string | null | undefined, max = 500): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.slice(0, max) : null;
+}
+
+function metaCharsetFromDoc(doc: Document): string | null {
+  const metaCharset = doc.querySelector('meta[charset]')?.getAttribute('charset');
+  if (metaCharset && metaCharset.trim() !== '') return metaCharset.trim();
+  const httpEquiv = doc.querySelector(
+    'meta[http-equiv="content-type" i], meta[http-equiv=\'content-type\' i]',
+  );
+  const content = httpEquiv?.getAttribute('content') ?? '';
+  const m = /charset\s*=\s*([a-zA-Z0-9._:-]+)/i.exec(content);
+  return m ? (m[1] ?? null) : null;
+}
+
 /**
  * Snapshot extraction for FETCHED HTML (site mode).
  *
@@ -56,9 +72,10 @@ export function extractVisibleTextForSimilarity(html: string, charLimit = 50_000
  * orchestration lives in the dashboard, see docs/SITE_AUDIT.md).
  *
  * Differences vs. the live-DOM injector (documented):
- *  - word count uses textContent (no layout / innerText in a detached doc)
+ *  - word count uses visible text (no layout / innerText in a detached doc)
  *  - stylesheet-driven hiding cannot apply; the same inline
  *    display:none/visibility:hidden checks are used
+ *  - elements inside <noscript>/<template> are excluded from counted content
  * Everything else (aria-labelledby resolution, hidden counts, hreflang,
  * SVG stats, per-collection omitted counts) mirrors the live injector.
  */
@@ -66,8 +83,24 @@ export function parsePageSnapshot(
   html: string,
   url: string,
   limits: SiteExtractorLimits = EXTRACTOR_LIMITS,
+  options: { charset?: string | null } = {},
 ): PageSnapshot {
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  // In site mode the decoded charset is provided by the fetcher (Content-Type /
+  // meta sniff / UTF-8 fallback). Do not report DOMParser's characterSet.
+  const detectedCharset =
+    notBlankGlobal(options.charset) ?? metaCharsetFromDoc(doc) ?? 'utf-8';
+  const inNoscriptOrTemplate = (el: Element): boolean => el.closest('noscript, template') !== null;
+  const headTitleCount = (): number => {
+    const head = doc.head;
+    if (!head) return doc.querySelectorAll('title').length;
+    let count = 0;
+    head.querySelectorAll('title').forEach((el) => {
+      // Count only HTML <title> elements in head (exclude inline SVG <title>).
+      if (el.namespaceURI === 'http://www.w3.org/1999/xhtml') count += 1;
+    });
+    return count;
+  };
 
   const notBlank = (value: string | null | undefined, max = 500): string | null => {
     const trimmed = value?.trim();
@@ -149,7 +182,11 @@ export function parsePageSnapshot(
     if (imgAlt !== '') return imgAlt;
     const svg = anchor.querySelector('svg');
     if (svg !== null) {
-      const svgTitle = pick(svg.querySelector('title')?.textContent);
+      const svgTitleEl = svg.querySelector('title');
+      const svgTitle =
+        svgTitleEl && svgTitleEl.closest('noscript, template') === null
+          ? pick(svgTitleEl.textContent)
+          : '';
       if (svgTitle !== '') return svgTitle;
       const svgLabel = pick(svg.getAttribute('aria-label'));
       if (svgLabel !== '') return svgLabel;
@@ -163,6 +200,7 @@ export function parsePageSnapshot(
   const hiddenCounts = { headings: 0, images: 0, links: 0 };
   let headingsSeen = 0;
   doc.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach((el) => {
+    if (inNoscriptOrTemplate(el)) return;
     const tag = el.tagName.toLowerCase() as PageSnapshot['headings'][number]['tag'];
     if (isHidden(el)) {
       hiddenCounts.headings += 1;
@@ -177,8 +215,6 @@ export function parsePageSnapshot(
   });
 
   // --- images (v4: performance attributes; foldIndex unavailable here) -------
-  // NOTE: getBoundingClientRect is not available in a detached document, so
-  // foldIndex is always null on the fetched-HTML path (documented limitation).
   const imageEls = doc.querySelectorAll('img');
   const images: PageSnapshot['images'] = [];
   let imagesHidden = 0;
@@ -191,6 +227,7 @@ export function parsePageSnapshot(
     return lowered === 'jpeg' ? 'jpeg' : lowered;
   };
   imageEls.forEach((el) => {
+    if (inNoscriptOrTemplate(el)) return;
     if (isHidden(el)) {
       imagesHidden += 1;
       return;
@@ -231,8 +268,13 @@ export function parsePageSnapshot(
   // --- SVG stats ---------------------------------------------------------------
   const svgStats = { total: 0, unnamed: 0 };
   doc.querySelectorAll('svg[role="img" i]').forEach((svg) => {
+    if (inNoscriptOrTemplate(svg)) return;
     svgStats.total += 1;
-    const title = (svg.querySelector('title')?.textContent ?? '').trim();
+    const titleEl = svg.querySelector('title');
+    const title =
+      titleEl && titleEl.closest('noscript, template') === null
+        ? (titleEl.textContent ?? '').trim()
+        : '';
     const label = (svg.getAttribute('aria-label') ?? '').trim();
     const labelledBy = resolveLabelledBy(svg);
     if (title === '' && label === '' && labelledBy === '') svgStats.unnamed += 1;
@@ -243,6 +285,7 @@ export function parsePageSnapshot(
   const links: PageSnapshot['links'] = [];
   let linksSeen = 0;
   linkEls.forEach((el) => {
+    if (inNoscriptOrTemplate(el)) return;
     if (isHidden(el)) {
       hiddenCounts.links += 1;
       return;
@@ -333,7 +376,7 @@ export function parsePageSnapshot(
     canonical: canonicalValues[0] ?? null,
     robots: robotsValues[0] ?? null,
     viewport: meta('meta[name="viewport" i]'),
-    charset: notBlank(doc.characterSet) ?? meta('meta[charset]'),
+    charset: detectedCharset ?? meta('meta[charset]'),
     lang: notBlank(doc.documentElement.getAttribute('lang'), 50),
     ogTitle: meta('meta[property="og:title"]'),
     ogDescription: meta('meta[property="og:description"]'),
@@ -369,22 +412,20 @@ export function parsePageSnapshot(
     if (value !== '') microdataRdfaTypes.push(value.slice(0, 200));
   });
 
-  // --- text stats + content summary (textContent — no layout in a detached doc) -
-  let sample = '';
-  try {
-    sample = (doc.body?.textContent ?? '').slice(0, limits.textSampleChars);
-  } catch {
-    sample = '';
-  }
-  const wordCount = (sample.match(/\S+/g) ?? []).length;
-  const sentenceCount = countSentences(sample) || 0;
-  const paragraphCount = countParagraphs(sample);
-  const syllableCount = countSyllables(sample);
+  // --- text stats + content summary from visible text only ----------------------
+  // Visible text excludes SCRIPT/STYLE/NOSCRIPT/TEMPLATE and hidden nodes, so
+  // word counts, sentence/paragraph/syllable stats, keywords and the sample hash
+  // are derived from content users/bots can see (not inline scripts or JSON).
   const leadText = extractLeadText(
     collectVisibleBodyText(limits.leadTextChars),
     limits.leadTextWords,
     limits.leadTextChars,
   );
+  const sample = collectVisibleBodyText(limits.textSampleChars);
+  const wordCount = (sample.match(/\S+/g) ?? []).length;
+  const sentenceCount = countSentences(sample) || 0;
+  const paragraphCount = countParagraphs(sample);
+  const syllableCount = countSyllables(sample);
 
   const omitted = {
     headings: Math.max(0, headingsSeen - headings.length),
@@ -402,7 +443,7 @@ export function parsePageSnapshot(
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     url,
     title: (doc.title ?? '').slice(0, 500),
-    titleCount: doc.querySelectorAll('title').length,
+    titleCount: headTitleCount(),
     meta: pageMeta,
     descriptions: descriptionValues,
     canonicals: canonicalValues,

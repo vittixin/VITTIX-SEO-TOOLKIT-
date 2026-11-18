@@ -12,6 +12,9 @@ const PRIVATE_HOST_PATTERNS: RegExp[] = [
   /\.localhost$/i,
   /\.local$/i,
   /\.internal$/i,
+  /\.lan$/i,
+  /\.home\.arpa$/i,
+  /\.localdomain$/i,
 ];
 
 const PRIVATE_IP_CHECKS: { match: (host: string) => boolean; label: string }[] = [
@@ -84,6 +87,15 @@ export function checkCrawlableOrigin(input: string): OriginCheckResult {
   const host = parsed.hostname;
   if (host === '') {
     return { allowed: false, reason: 'URL has no host.' };
+  }
+
+  // Reject single-label hostnames (no dot, not localhost) and known private
+  // suffixes to avoid accidentally auditing intranet names.
+  if (!localDev && !host.includes('.') && host.toLowerCase() !== 'localhost') {
+    return {
+      allowed: false,
+      reason: `"${host}" is a single-label hostname and cannot be audited.`,
+    };
   }
 
   if (!localDev && PRIVATE_HOST_PATTERNS.some((pattern) => pattern.test(host))) {

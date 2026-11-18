@@ -65,6 +65,23 @@ describe('parseRobotsTxt', () => {
     expect(policy.crawlDelayMs).toBe(2000);
   });
 
+  it('matches the product token exactly, not by prefix', () => {
+    const policy = parseRobotsTxt(
+      'User-agent: Vittix\nDisallow: /short\n\nUser-agent: VittixBot\nDisallow: /long\n',
+    );
+    expect(policy.allows('/short')).toBe(true);
+    expect(policy.allows('/long')).toBe(false);
+  });
+
+  it('merges all matching user-agent groups and takes max Crawl-delay', () => {
+    const policy = parseRobotsTxt(
+      'User-agent: *\nDisallow: /a\n\nUser-agent: *\nDisallow: /b\nCrawl-delay: 5\n',
+    );
+    expect(policy.allows('/a')).toBe(false);
+    expect(policy.allows('/b')).toBe(false);
+    expect(policy.crawlDelayMs).toBe(5000);
+  });
+
   it('strips comments', () => {
     const policy = parseRobotsTxt('User-agent: * # everyone\nDisallow: /x # blocked\n');
     expect(policy.allows('/x')).toBe(false);
@@ -74,14 +91,14 @@ describe('parseRobotsTxt', () => {
 
 describe('PacedRunner', () => {
   it('runs tasks and respects the cap', async () => {
-    const runner = new PacedRunner(2, 0);
+    const runner = new PacedRunner(2, 0, async () => {});
     let concurrent = 0;
     let maxConcurrent = 0;
-    const tasks = Array.from({ length: 6 }, () =>
+    const tasks = Array.from({ length: 12 }, () =>
       runner.run(async () => {
         concurrent += 1;
         maxConcurrent = Math.max(maxConcurrent, concurrent);
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 5));
         concurrent -= 1;
       }),
     );

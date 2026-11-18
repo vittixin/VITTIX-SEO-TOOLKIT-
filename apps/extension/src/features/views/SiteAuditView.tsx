@@ -218,6 +218,16 @@ export function SiteAuditView() {
                     </button>
                   </div>
                 ) : null}
+                {site.permissionGranted ? (
+                  <button
+                    type="button"
+                    data-testid="site-revoke-access"
+                    onClick={() => void site.revokeAccess()}
+                    className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-medium text-amber-700 transition hover:bg-amber-50"
+                  >
+                    <ShieldQuestion className="size-3.5" aria-hidden /> Revoke access
+                  </button>
+                ) : null}
                 {(site.session.status !== 'running' || !running) && (
                   <button
                     type="button"

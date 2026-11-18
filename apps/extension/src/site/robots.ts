@@ -3,14 +3,16 @@
  *
  * - Grouping: consecutive `User-agent:` lines form ONE group. A group ends
  *   at the first rule line followed by another User-agent line.
- * - Group selection: the group whose user-agent token is the longest
- *   case-insensitive PREFIX of our product token wins ("VittixBot"); the `*`
- *   group applies only when no specific group matches.
+ * - Group selection: groups whose user-agent token exactly matches our
+ *   product token (case-insensitive, "VittixBot") apply; if several match,
+ *   their rules are merged and the maximum Crawl-delay is used. The `*`
+ *   groups apply only when no specific group matches (all matching `*`
+ *   groups are merged, per RFC 9309 §2.2.1).
  * - Patterns: `Disallow` / `Allow` prefixes supporting `*` wildcards and a
  *   trailing `$` end-anchor; longest pattern wins, Allow wins ties.
  * - Paths are matched against path + query after percent-encoding
  *   normalization (decode unreserved/recoverable escapes on BOTH sides).
- * - `Crawl-delay` (seconds) is taken from the matched group.
+ * - `Crawl-delay` (seconds) is taken as the maximum from matched groups.
  * - `Sitemap:` lines are collected additively (same-origin enforcement is
  *   the caller's job).
  */
@@ -40,10 +42,11 @@ interface RobotsGroup {
   crawlDelayMs: number | null;
 }
 
-/** Our crawler's product token — groups match by case-insensitive prefix. */
+/** Our crawler's product token — groups match by exact token (case-insensitive). */
 export const PRODUCT_TOKEN = 'VittixBot';
 const MAX_PATTERN_LENGTH = 2_000;
 const MAX_RULES_PER_GROUP = 10_000;
+const MAX_MERGED_RULES = 10_000;
 
 /**
  * Normalize a path for matching: percent-decode (best-effort, leaving the
@@ -109,25 +112,29 @@ function patternMatches(pattern: string, normalizedPath: string, rawPath: string
   return false;
 }
 
-/** Pick the group whose agent is the longest case-insensitive prefix of PRODUCT_TOKEN. */
-function selectGroup(groups: RobotsGroup[]): RobotsGroup | null {
-  let best: RobotsGroup | null = null;
-  let bestLength = -1;
+/** Merge all groups whose user-agent token applies to PRODUCT_TOKEN (RFC 9309). */
+function selectGroups(groups: RobotsGroup[]): RobotsGroup[] {
   const token = PRODUCT_TOKEN.toLowerCase();
+  const specific = groups.filter((group) =>
+    group.agents.some((agent) => agent.toLowerCase() === token),
+  );
+  if (specific.length > 0) return specific;
+  return groups.filter((group) => group.agents.some((agent) => agent === '*'));
+}
+
+function mergeGroups(groups: RobotsGroup[]): RobotsGroup | null {
+  if (groups.length === 0) return null;
+  const merged: RobotsGroup = { agents: [], rules: [], crawlDelayMs: null };
   for (const group of groups) {
-    for (const agent of group.agents) {
-      const lowered = agent.toLowerCase();
-      if (lowered === '*') continue;
-      // RFC 9309 "matching": the group's token is a prefix of the crawler's
-      // product token (e.g. group "Vittix" matches crawler "VittixBot").
-      if (token.startsWith(lowered) && lowered.length > bestLength) {
-        best = group;
-        bestLength = lowered.length;
-      }
+    for (const rule of group.rules) {
+      if (merged.rules.length >= MAX_MERGED_RULES) break;
+      merged.rules.push(rule);
+    }
+    if (group.crawlDelayMs !== null) {
+      merged.crawlDelayMs = Math.max(merged.crawlDelayMs ?? 0, group.crawlDelayMs);
     }
   }
-  if (best !== null) return best;
-  return groups.find((group) => group.agents.some((agent) => agent === '*')) ?? null;
+  return merged;
 }
 
 function longestMatchWins(group: RobotsGroup, normalizedPath: string, rawPath: string): boolean {
@@ -207,7 +214,7 @@ export function parseRobotsTxt(text: string): RobotsPolicy {
     // Unknown fields (e.g. Cache-delay) are ignored per spec leniency.
   }
 
-  const group = selectGroup(groups);
+  const group = mergeGroups(selectGroups(groups));
   if (group === null) return { ...EMPTY_ROBOTS_POLICY, sitemaps };
 
   return {

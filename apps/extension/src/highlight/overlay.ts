@@ -5,6 +5,19 @@
 export function highlightOnPage(
   locators: { kind: 'heading' | 'image' | 'link'; nthIndex: number }[],
 ): void {
+  const OVERLAY_ID = 'vittix-highlight-overlay';
+  const OUTLINE_ATTR = 'data-vittix-highlight-outline';
+
+  // Idempotent: clean up any previous invocation so original outlines are
+  // captured/restored exactly once per element across repeated clicks.
+  const existing = document.getElementById(OVERLAY_ID);
+  if (existing) existing.remove();
+  document.querySelectorAll(`[${OUTLINE_ATTR}]`).forEach((el) => {
+    const stored = el.getAttribute(OUTLINE_ATTR);
+    (el as HTMLElement).style.outline = stored ?? '';
+    el.removeAttribute(OUTLINE_ATTR);
+  });
+
   const selectorByKind: Record<string, string> = {
     heading: 'h1,h2,h3,h4,h5,h6',
     image: 'img',
@@ -18,13 +31,16 @@ export function highlightOnPage(
     if (element) targets.push(element);
   }
 
-  const previousStyles = targets.map((element) => (element as HTMLElement).style.outline);
   targets.forEach((element) => {
+    if (!element.hasAttribute(OUTLINE_ATTR)) {
+      element.setAttribute(OUTLINE_ATTR, (element as HTMLElement).style.outline ?? '');
+    }
     (element as HTMLElement).style.outline = '3px solid #7c3aed';
     element.scrollIntoView({ block: 'center', behavior: 'smooth' });
   });
 
   const overlay = document.createElement('div');
+  overlay.id = OVERLAY_ID;
   overlay.setAttribute('role', 'status');
   overlay.setAttribute('aria-live', 'polite');
   overlay.style.cssText =
@@ -46,8 +62,10 @@ export function highlightOnPage(
   const cleanup = () => {
     if (cleaned) return;
     cleaned = true;
-    targets.forEach((element, index) => {
-      (element as HTMLElement).style.outline = previousStyles[index] ?? '';
+    document.querySelectorAll(`[${OUTLINE_ATTR}]`).forEach((el) => {
+      const stored = el.getAttribute(OUTLINE_ATTR);
+      (el as HTMLElement).style.outline = stored ?? '';
+      el.removeAttribute(OUTLINE_ATTR);
     });
     overlay.remove();
     window.removeEventListener('beforeunload', cleanup);

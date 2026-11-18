@@ -35,3 +35,6 @@ transcripts/
 
 # Local assistant/tool scratch (untracked)
 .commandcode/
+
+# Local HTTPS test-server runtime artifacts (cert, request log, port state)
+e2e/local-server/
